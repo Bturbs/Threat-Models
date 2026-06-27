@@ -1,0 +1,205 @@
+@startuml NotaryProgramLifecycleSeq1
+
+title Notary Program Lifecycle (via Squads Multisig 2-of-4)
+
+autonumber "<b>##"
+
+box "Multisig Key Holders" #LightGray
+actor "Key Holder 1" as KH1
+actor "Key Holder 2" as KH2
+actor "Key Holder 3" as KH3
+actor "Key Holder 4" as KH4
+actor "Key Holder Successor" as KHS
+actor "Temporary Deployer Key\n(ephemeral)" as DEP
+end box
+
+box "Solana" #DFF3FF
+participant "Squads Program\n(2-of-4 multisig)" as SQ
+participant "Notary Program" as NP
+database "On-chain State\n(Program + Metadata)" as CHAIN
+end box
+
+
+note over KH1,KH4
+Four independent operators hold signer keys.
+Threshold for privileged actions is 2-of-4.
+end note
+
+== Squads Multisig Registration (PDA Initialization) ==
+
+KH2 -> KH1: <color brown>**DF_SHARE_MEMBER_PUBKEY**</color>\nShare member public key
+KH3 -> KH1: <color brown>**DF_SHARE_MEMBER_PUBKEY**</color>\nShare member public key
+KH4 -> KH1: <color brown>**DF_SHARE_MEMBER_PUBKEY**</color>\nShare member public key
+KH1 -> KH1: <color brown>**DF_VALIDATE_MEMBER_PUBKEYS**</color>\nValidate collected member pubkeys
+
+note right of KH1
+Validation should prove key ownership, not only key format.
+Recommended control: out-of-band challenge signature per member key,
+verified before multisig registration.
+end note
+
+KH1 -> SQ: <color brown>**DF_REGISTER_MULTISIG**</color>\nSelect createKey (unique seed/public key)
+SQ -> SQ: Derive multisig PDA from (createKey + Squads program ID)
+
+KH1 -> SQ: <color brown>**DF_REGISTER_MULTISIG**</color>\nSubmit initial member pubkeys + threshold
+note right of SQ
+v4 registration includes role assignment per member key:
+- Proposer
+- Voter
+- Executor
+end note
+
+KH1 -> SQ: <color brown>**DF_REGISTER_MULTISIG**</color>\nSign creation tx and pay rent for account storage
+SQ -> CHAIN: <color brown>**DF_REGISTER_MULTISIG**</color>\nCreate Multisig account state at derived PDA
+SQ -> CHAIN: <color brown>**DF_REGISTER_MULTISIG**</color>\nPersist member pubkeys, threshold, and role config
+
+note over SQ,CHAIN
+Multisig account state is the global Squad configuration.
+Registered pubkeys become authorized controllers of the Squads vault/governance.
+end note
+
+note over KH1,SQ
+Creation process summary:
+1) Seed selection (createKey) for uniqueness
+2) Member input (initial pubkeys; some UI flows cap initial input e.g., up to 5)
+3) Deployment transaction (creator signs + funds rent)
+4) Registration on-chain (members + threshold + roles)
+end note
+
+== Deployment Ceremony (Bootstrap + Handover) ==
+
+note over DEP,SQ
+Temporary deployer key exists only for bootstrap.
+Ceremony objective: deploy -> transfer authority -> retire key.
+end note
+
+note over DEP,SQ #E6F3FF
+Countermeasure mapping:
+- ATOMIC_AUTHORITY_HANDOVER
+- EPHEMERAL_DEPLOY_KEY_RETIREMENT
+- SECURE_DEPLOYMENT_ENVIRONMENT
+end note
+
+DEP -> NP: Bootstrap deploy using temporary deployment key
+NP -> CHAIN: Program deployed (temporarily mutable during bootstrap window)
+note right of DEP
+SECURE_DEPLOYMENT_ENVIRONMENT:
+Use hardened, dedicated deployment environment;
+avoid personal developer laptops.
+end note
+
+KH1 -> SQ: <color brown>**DF_DEPLOY_NOTARY_PROGRAM**</color>\nPropose deployment transaction
+SQ -> SQ: Record proposal (status: pending)
+
+KH2 -> SQ: Vote approve
+KH3 -> SQ: Vote approve
+SQ -> SQ: Quorum reached (2-of-4)
+
+SQ -> NP: <color brown>**DF_DEPLOY_NOTARY_PROGRAM**</color>\nExecute deploy instruction
+NP -> CHAIN: <color brown>**DF_DEPLOY_NOTARY_PROGRAM**</color>\nWrite program code + initial authorities
+NP --> SQ: Deployment success
+
+KH1 -> SQ: ATOMIC_AUTHORITY_HANDOVER\nPropose authority transfer (temporary key -> Squads PDA)
+KH2 -> SQ: Vote approve
+SQ -> NP: Execute authority transfer
+NP -> CHAIN: Upgrade authority = Squads multisig PDA
+
+DEP -> DEP: EPHEMERAL_DEPLOY_KEY_RETIREMENT\nRetire temporary deployment key
+
+note over DEP,CHAIN #FFCCCC
+If temporary key is not retired immediately,
+exfiltration risk persists beyond ceremony.
+end note
+
+== Post-Deployment Verification ==
+
+note over KH1,CHAIN #E6F3FF
+PRE_USE_ONCHAIN_VERIFICATION:
+Mandatory on-chain verification before first use.
+end note
+
+KH1 -> CHAIN: <color brown>**DF_VERIFY_DEPLOYMENT**</color>\nRead deployed program ID / code hash / authority state
+KH2 -> CHAIN: <color brown>**DF_VERIFY_DEPLOYMENT**</color>\nIndependently confirm expected release artifact
+
+KH1 -> CHAIN: Confirm no unexpected privileged tx during bootstrap window
+
+alt Verification passed
+	KH1 -> SQ: Record governance note (deployment valid)
+else Verification failed
+	KH1 -> SQ: Raise incident and pause privileged operations
+end
+
+== Runtime Administration ==
+
+KH1 -> SQ: <color brown>**DF_CREATE_NETWORK**</color>\nPropose admin action (add Corda network)
+KH4 -> SQ: Vote approve
+SQ -> NP: <color brown>**DF_CREATE_NETWORK**</color>\nExecute create_network admin instruction
+NP -> CHAIN: <color brown>**DF_CREATE_NETWORK**</color>\nPersist new Corda network configuration
+
+KH2 -> SQ: <color brown>**DF_NOTARY_ADMIN**</color>\nPropose admin action (authorize/revoke notary)
+KH3 -> SQ: Vote approve
+SQ -> NP: <color brown>**DF_NOTARY_ADMIN**</color>\nExecute admin instruction
+NP -> CHAIN: <color brown>**DF_NOTARY_ADMIN**</color>\nPersist admin state changes
+
+== Program Upgrade Lifecycle ==
+
+KH2 -> SQ: <color brown>**DF_UPGRADE_NOTARY_PROGRAM**</color>\nPropose notary program upgrade
+KH3 -> SQ: Vote approve
+SQ -> SQ: Quorum reached (2-of-4)
+SQ -> NP: <color brown>**DF_UPGRADE_NOTARY_PROGRAM**</color>\nExecute upgrade transaction
+NP -> CHAIN: <color brown>**DF_UPGRADE_NOTARY_PROGRAM**</color>\nStore upgraded program code
+
+KH1 -> CHAIN: Re-check code hash and authority constraints
+KH2 -> CHAIN: Confirm upgrade matches approved artifact
+
+== Transition to Immutability ==
+
+KH1 -> SQ: <color brown>**DF_IMMUTABLE_LOCK**</color>\nPropose lock/immutable finalization
+KH2 -> SQ: Vote approve
+SQ -> NP: <color brown>**DF_IMMUTABLE_LOCK**</color>\nExecute immutable lock (disable upgrades)
+NP -> CHAIN: <color brown>**DF_IMMUTABLE_LOCK**</color>\nMark program immutable
+
+note over NP,CHAIN
+After immutable lock, no further code upgrades are possible.
+Governance can still operate only through allowed runtime admin paths.
+end note
+
+== Attempted Upgrade After Lock ==
+
+KH3 -> SQ: Propose program upgrade (post-lock)
+KH4 -> SQ: Vote approve
+SQ -> NP: Execute upgrade attempt
+NP --> SQ: Reject (program immutable)
+
+== Membership Changes After Creation ==
+
+KH2 -> SQ: <color brown>**DF_MEMBER_UPDATE**</color>\nPropose member update (add/remove key)
+KH3 -> SQ: Vote approve
+KH4 -> SQ: Vote approve
+SQ -> SQ: Quorum reached under current membership policy
+SQ -> CHAIN: <color brown>**DF_MEMBER_UPDATE**</color>\nUpdate multisig member list and role assignments
+
+== Key Holder Succession (Anti-Bricking Control) ==
+
+KHS -> KH1: <color brown>**DF_KEY_HOLDER_SUCCESSION**</color>\nShare successor wallet pubkey + ownership proof
+KH1 -> SQ: <color brown>**DF_KEY_HOLDER_SUCCESSION**</color>\nPropose succession member update (add successor)
+KH2 -> SQ: Vote approve
+KH3 -> SQ: Vote approve
+SQ -> CHAIN: <color brown>**DF_KEY_HOLDER_SUCCESSION**</color>\nRegister successor as active multisig member
+
+KH1 -> SQ: <color brown>**DF_KEY_HOLDER_SUCCESSION**</color>\nPropose retirement/removal of departing key holder
+KH2 -> SQ: Vote approve
+KH4 -> SQ: Vote approve
+SQ -> CHAIN: <color brown>**DF_KEY_HOLDER_SUCCESSION**</color>\nFinalize member rotation (remove old key)
+
+note over KHS,SQ
+Successor onboarding and rotation must happen through Squads governance transactions.
+No direct off-chain replacement of member keys is possible.
+end note
+
+note over KH1,CHAIN
+Member list changes are only possible through the multisig itself.
+No external actor can directly rewrite registered pubkeys.
+end note
+
+@enduml

@@ -1,0 +1,1509 @@
+ID: NotaryProgramLifecycle
+schemaVersion: 2
+title: Notary Program Lifecycle
+# version: 1.0
+status: Draft
+# authors: |
+#   Threat Modeling Team
+# parent: CordaSolanaToolkit
+
+scope:
+  description: |
+    This threat model covers key management for Solana Notary Program deployment and administration.
+
+    The deployment uses Squads multisig with a 3-of-5 threshold for two privileged authorities:
+
+    - Upgrade Authority (program upgrade operations)
+    - Notary Admin (administrative operations such as authorize/revoke notary)
+
+    **Implementation Reference (TODO verify code):**
+
+    The following SDK snippet is treated as an illustrative reference for setup flow only.
+    It is not validated in this threat model and must be verified against the currently supported
+    Squads v4 SDK/API before production use.
+
+    ```typescript
+    import * as multisig from "@sqds/multisig";
+    import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+    import { Permissions } from "@sqds/multisig/types";
+
+    async function createSquad() {
+      const connection = new Connection("https://api.mainnet-beta.solana.com");
+
+      const creator = Keypair.generate();
+      const createKey = Keypair.generate();
+      const [multisigPda] = multisig.getMultisigPda({
+        createKey: createKey.publicKey,
+      });
+
+      const members = [
+        {
+          key: creator.publicKey,
+          permissions: Permissions.all(),
+        },
+        {
+          key: new PublicKey("SECOND_MEMBER_PUBKEY"),
+          permissions: Permissions.all(),
+        }
+      ];
+
+      const signature = await multisig.rpc.multisigCreateV2({
+        connection,
+        createKey,
+        creator,
+        multisigPda,
+        configAuthority: null,
+        timeLock: 0,
+        threshold: 2,
+        members,
+        memo: "My Team Multisig",
+      });
+
+      console.log("Multisig Created! PDA:", multisigPda.toBase58());
+      console.log("Transaction Signature:", signature);
+    }
+    ```
+
+    **Main Notary Program Lifecycle Flows:**
+
+    <img src="img/NotaryProgramLifecycleSeq1.svg"/>
+
+  securityObjectives:
+
+    - ID: KEY_GOVERNANCE_INTEGRITY
+      title: Key Governance Integrity
+      description: |
+        Ensure governance for Upgrade Authority and Notary Admin keys enforces segregation of duties and auditable approvals.
+      group: Key Management
+      contributesTo:
+        - REFID: ASSET_INTEGRITY
+
+  assets:
+    - ID: SQUADS_MULTISIG_SYSTEM
+      type: system
+      title: Squads Multisig Account
+      description: |
+        Solana Squads multisig used to authorize privileged operations with a 3-of-5 signing threshold.
+      inScope: true
+
+    - ID: UPGRADE_AUTHORITY_WALLET
+      type: key
+      title: Upgrade Authority Wallet
+      description: |
+        Privileged wallet/key (PDA) used to approve program upgrade operations.
+      inScope: true
+      properties:
+        keyType: PDA (Program Derived Address)
+        curve: Ed25519
+        storage: On-chain (Squads Multisig)
+        threshold: 3-of-5
+
+    - ID: NOTARY_WALLET_STN
+      type: key
+      title: Notary Admin Wallet
+      description: |
+        Privileged wallet/key (PDA) used to approve administrative instructions for the notary deployment.
+      inScope: true
+      properties:
+        keyType: PDA (Program Derived Address)
+        curve: Ed25519
+        storage: On-chain (Squads Multisig)
+        threshold: 3-of-5
+
+    - ID: DEPLOYMENT_KEYPAIR
+      type: credential
+      title: Temporary Deployment Keypair
+      description: |
+        Ephemeral keypair used during bootstrap deployment before upgrade authority
+        is transferred to the Squads multisig PDA.
+      inScope: true
+      properties:
+        format: Ed25519 keypair
+        intendedLifetime: Single deployment ceremony
+        risk: If compromised during bootstrap, attacker can subvert initial trust state
+
+    # - ID: SIGNER_KEYS
+    #   type: credential
+    #   title: Multisig Signer Keys (4)
+    #   description: |
+    #     Five signer keys enrolled in Squads multisig and used to reach the 3-of-5 threshold.
+    #   inScope: true
+
+    - ID: DEPLOYMENT_APPROVAL_FLOW
+      type: dataflow
+      title: Deployment and Admin Approval Flow
+      description: |
+        Proposal creation, review, and co-signing workflow for privileged Solana transactions.
+      inScope: true
+
+    - ID: DF_SHARE_MEMBER_PUBKEY
+      type: dataflow
+      title: Member Public Key Exchange Flow
+      description: |
+        Flow where candidate multisig members share their public keys with the multisig initializer
+        through authenticated communication channels.
+      inScope: true
+
+    - ID: DF_VALIDATE_MEMBER_PUBKEYS
+      type: dataflow
+      title: Member Public Key Validation Flow
+      description: |
+        Flow where the multisig initializer validates submitted member keys and confirms key ownership,
+        ideally via out-of-band challenge signature verification.
+      inScope: true
+
+    - ID: DF_REGISTER_MULTISIG
+      type: dataflow
+      title: Multisig Registration Flow
+      description: |
+        Flow for createKey selection, initial member pubkey submission, threshold configuration,
+        and multisig PDA creation in the Squads program.
+      inScope: true
+
+    - ID: DF_DEPLOY_NOTARY_PROGRAM
+      type: dataflow
+      title: Notary Program Deployment Flow
+      description: |
+        Governed flow where multisig members propose and approve deployment,
+        and Squads executes deployment of the Notary Program.
+      inScope: true
+
+    - ID: DF_VERIFY_DEPLOYMENT
+      type: dataflow
+      title: Deployment Verification Flow
+      description: |
+        Post-deployment verification flow that reads on-chain program ID, code hash,
+        and authority state against expected release artifacts.
+      inScope: true
+
+    - ID: DF_CREATE_NETWORK
+      type: dataflow
+      title: Create Corda Network Administration Flow
+      description: |
+        Governed administrative flow to execute create_network instruction
+        and persist network configuration on-chain.
+      inScope: true
+
+    - ID: DF_NOTARY_ADMIN
+      type: dataflow
+      title: Notary Administration Flow
+      description: |
+        Governed administrative flow for authorize/revoke notary and related
+        on-chain notary administration state changes.
+      inScope: true
+
+    - ID: DF_UPGRADE_NOTARY_PROGRAM
+      type: dataflow
+      title: Notary Program Upgrade Flow
+      description: |
+        Governed flow for proposing, approving, and executing program upgrades,
+        followed by post-upgrade verification checks.
+      inScope: true
+
+    - ID: DF_IMMUTABLE_LOCK
+      type: dataflow
+      title: Immutable Lock Finalization Flow
+      description: |
+        Governed flow that executes immutable lock and persists immutable program state,
+        disabling future code upgrades.
+      inScope: true
+
+    - ID: DF_MEMBER_UPDATE
+      type: dataflow
+      title: Multisig Member Update Flow
+      description: |
+        Flow for adding or removing member pubkeys and updating role assignments,
+        executed only through multisig proposal and threshold voting.
+      inScope: true
+
+  assumptions:
+    - ID: DISTINGUISHED_OPERATORS
+      description: |
+        The five signer keys are controlled by distinct operators and not by the same individual.
+
+    - ID: HARDWARE_BACKED_KEYS
+      description: |
+        Signers will transition to hardware-backed wallets or hardened signing environments for key custody.
+
+        **Phase 1 (initial deployment):** Software wallets (e.g., Phantom) are used during bootstrapping.
+        This assumption is relaxed during Phase 1 — see HARDWARE_SIGNING countermeasure for migration plan
+        and accepted risk.
+
+    - ID: NOTARY_PROGRAM_MUTABLE_AT_DEPLOYMENT
+      description: |
+        During deployment and initial configuration, the notary program may be in a mutable state
+        until immutability is explicitly finalized and verified on-chain.
+
+  attackers:
+    - ID: EXTERNAL_ATTACKER
+      title: External Attacker
+      description: |
+        Adversary without legitimate privileges attempting to compromise signer endpoints or approval workflow.
+      inScope: true
+
+    - ID: MALICIOUS_SIGNER
+      title: Malicious Signer
+      description: |
+        Legitimate signer who abuses their role or colludes with another signer to approve unauthorized actions.
+      inScope: true
+
+    - ID: COMPROMISED_DEVELOPER
+      title: Compromised Developer
+      description: |
+        Developer whose machine or local environment is compromised, exposing deploy keypairs,
+        `.keys/` folder contents, or devnet credentials that are reused or production-adjacent.
+      inScope: true
+
+    - ID: COMPROMISED_OPERATOR
+      title: Compromised Operator
+      description: |
+        Operator or deployment engineer whose CI/CD context or deployment ceremony is compromised,
+        allowing manipulation of what gets deployed or how the deployment is executed.
+        Unlike COMPROMISED_DEVELOPER (key material leak), this attacker controls the execution
+        channel itself and can tamper with deployment artifacts, scripts, or ceremony steps.
+      inScope: true
+
+    - ID: SOLANA_CORE_COMPROMISE
+      title: Solana Core Compromise
+      description: |
+        Catastrophic compromise of Solana core protocol or validator majority.
+      inScope: false
+
+analysis: |
+  This analysis focuses on practical governance and deployment controls for the Notary Program lifecycle.
+
+  **Operational procedures context:**
+  This threat model informs the definition of key management procedures and operational controls
+  for Solana Notary signers. Key decisions being evaluated include multisig threshold selection
+  (3-of-5 selected), geographical signer distribution, phased key management (software wallets
+  to hardware wallets), signing ceremony procedures, and succession playbooks.
+
+  **Primary elevation-of-privilege impacts** (from signer compromise or collusion — upgrade code + admin):
+
+  - Double spending via malicious program upgrade (higher impact, likely)
+  - Routing bridging/unbridging assets to attacker-controlled Solana accounts (higher impact, unlikely — TBC)
+  - Adding unauthorized Corda network (lower impact)
+
+  **Primary denial-of-service impacts** (from lost keys or signer unavailability):
+
+  - Cannot add a new Corda network (mitigable via redeployment + new ProgramID configuration)
+  - Cannot fix a critical bug timely (extended vulnerability exposure window)
+
+  **Risk concentration areas:**
+
+  - Bootstrap deployment key exposure before upgrade-authority handover
+  - Governance misconfiguration (members, threshold, and role assignments)
+  - Signer compromise/collusion against multisig threshold
+  - Liveness failures (unavailable signers, deadlock, or poor succession planning)
+
+  **Priority controls:**
+
+  - Atomic deployment ceremony with immediate authority handover
+  - Mandatory independent post-deployment verification (program ID, code hash, authority)
+  - Hardware-backed key custody (phased migration) with signer diversity and monitoring
+  - Documented succession and break-glass processes with regular signing drills
+
+  STRIDE matrix details are intentionally excluded in this version to keep the model
+  deployment-lifecycle focused and easier to maintain.
+
+threats:
+
+  - ID: BOOTSTRAP_ABUSE
+    title: Deployment Bootstrap and development Key Compromise Before Authority Handover
+    attack: |
+      A temporary deployment key is used to deploy the Notary Program before upgrade authority
+      is transferred to the governed multisig.
+
+      If this temporary key is compromised during the bootstrap window, an attacker can execute
+      malicious deployment-time actions before handover finalization.
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      The attacker can subvert the initial trust state before multisig governance takes control.
+
+      - Deploy unexpected or backdoored program code
+      - Set an attacker-controlled authority during bootstrap
+      - Trigger unauthorized upgrade or configuration changes before handover
+
+      This undermines downstream governance assumptions even if multisig is configured later.
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+      - REFID: COMPROMISED_OPERATOR
+      - REFID: COMPROMISED_DEVELOPER
+    assets:
+      - REFID: DEPLOYMENT_KEYPAIR
+      - REFID: UPGRADE_AUTHORITY_WALLET
+      - REFID: DF_DEPLOY_NOTARY_PROGRAM
+      - REFID: DF_VERIFY_DEPLOYMENT
+      - REFID: DF_CREATE_NETWORK
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+
+      - ID: ATOMIC_AUTHORITY_HANDOVER
+        title: Atomic Handover to Multisig During Deployment Ceremony
+        description: |
+          Treat deployment and upgrade-authority transfer as one controlled ceremony.
+
+          - Submit authority transfer immediately after deployment
+          - Block operational use until transfer is finalized on-chain
+          - Record transaction evidence for both steps in the same release ticket
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: PRE_USE_ONCHAIN_VERIFICATION
+        title: Mandatory On-Chain Verification from Independent Channel
+        description: |
+          **CRITICAL**: Run post-deploy verification from a separate, independent channel —
+          not from the same operator machine, CI/CD pipeline, or deployment context that
+          performed the deployment. This is the primary control against COMPROMISED_OPERATOR:
+          if the deployment channel is compromised, verification from the same channel is worthless.
+
+          Require independent verification by at least two operators before enabling production use.
+          Block production operations until all checks pass.
+
+          **Pre-Production Verification Checklist** (automated script, run from independent environment):
+
+          | Check | Description |
+          |---|---|
+          | No prior upgrades | Verify program hasn't been upgraded by unauthorized party (check upgrade tx history) |
+          | Correct program ID | Verify deployed program ID matches expected address |
+          | Upgrade authority | Verify upgrade authority == Squads multisig PDA (not still deployer key) |
+          | Notary admin authority | Verify notary admin authority matches approved multisig PDA |
+          | Code hash | Verify deployed bytecode matches deterministic build (Anchor verifiable build) |
+          | Initialization state | Verify network and notary accounts exist and are properly initialized |
+          | No unexpected txs | Audit program transaction history for unauthorized activity during bootstrap |
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: EPHEMERAL_DEPLOY_KEY_RETIREMENT
+        title: Retire Temporary Deployment Key After Handover
+        description: |
+          Use an ephemeral deployment key only during the bootstrap ceremony and
+          permanently retire it immediately after authority transfer completes.
+
+          This control reduces two risks:
+
+          - Limits bootstrap abuse window before multisig governance is active
+          - Limits blast radius if the deploy key is exfiltrated during ceremony
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: NOTARY_OWN_DEPLOYMENT
+        title: Notary Program Self-Deployment
+        description: |
+          Corda Network operator (Corda Network operator) perform their own deployment.
+
+          This strategy requires configuration (ProgramID) and potentially code changes to the
+          Corda Release (Uniqueness Provider) to support self-deployment by the notary program,
+          but it eliminates the need for a separate upgrade bootstrap key.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Corda Network operator
+
+      - ID: DETERMINISTIC_VERIFIABLE_BUILD
+        title: Use Anchor Verifiable Builds for Deterministic Bytecode
+        description: |
+          Build the notary program using `anchor build --verifiable` to produce deterministic,
+          reproducible bytecode that can be independently verified against the deployed program.
+
+          **Build command**:
+          ```
+          anchor build --verifiable
+          ```
+
+          **Verification command** (anyone can run):
+          ```
+          anchor verify <PROGRAM_ID> --provider.cluster mainnet
+          ```
+
+          This fetches on-chain bytecode and compares against a fresh verifiable build.
+          Mismatch indicates tampering or non-deterministic build was deployed.
+
+          Benefits:
+
+          - Enables independent third-party verification of deployed code
+          - Detects if deployed bytecode differs from audited source
+          - Required for the code hash check in pre-production verification
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: DEPLOYMENT_CEREMONY_RUNBOOK
+        title: End-to-End Deployment Ceremony Runbook
+        description: |
+          Consolidate all deployment-phase controls into a single sequenced operational runbook
+          that covers the full lifecycle from bootstrap to production readiness.
+
+          **Ceremony sequence:**
+
+          1. **Pre-ceremony:** Verify signer availability, confirm build artifacts,
+             prepare independent verification environment
+          2. **Bootstrap deployment:** Deploy notary program using ephemeral deployment keypair
+             (EPHEMERAL_DEPLOY_KEY_RETIREMENT)
+          3. **Authority handover:** Transfer upgrade authority and notary admin to Squads
+             multisig PDA in same ceremony (ATOMIC_AUTHORITY_HANDOVER)
+          4. **Independent verification:** Run pre-production verification checklist from
+             independent channel (PRE_USE_ONCHAIN_VERIFICATION)
+          5. **Initial configuration:** Execute create_network and authorize_notary via
+             multisig governance flow
+          6. **Post-config verification:** Verify on-chain state matches expected configuration
+          7. **Sign-off:** At least two independent operators confirm deployment is production-ready
+          8. **Key retirement:** Permanently retire ephemeral deployment keypair
+
+          **Evidence requirements:**
+
+          - Record all transaction signatures and verification outputs
+          - Capture operator attestations at each stage
+          - Store ceremony log in release ticket for audit trail
+
+          **Abort criteria:**
+
+          - Any verification check failure
+          - Signer unavailability during ceremony
+          - Unexpected on-chain state at any stage
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+  - ID: DEPLOYMENT_KEYPAIR_ABUSE
+    title: Deployment Keypair Abuse
+    attack: |
+      An attacker exfiltrates
+      the temporary deployment keypair used in bootstrap.
+
+      If key exfiltration occurs before handover finalization, attacker-controlled
+      deployment or unauthorized upgrade activity may be executed.
+    threatType: Information Disclosure, Elevation of Privilege
+    impactDesc: |
+      Exfiltrated deployment keys can compromise initial trust establishment.
+
+      - Unauthorized deployment or bootstrap-time authority manipulation
+      - Malicious changes before governance controls are fully active
+      - Loss of confidence in release integrity and deployment evidence
+      - Squatting on expected program ID with rogue code if attacker deploys first and blocks legitimate deployment
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+      - REFID: COMPROMISED_DEVELOPER
+      - REFID: COMPROMISED_OPERATOR
+    assets:
+      - REFID: DEPLOYMENT_KEYPAIR
+      - REFID: DF_DEPLOY_NOTARY_PROGRAM
+      - REFID: DF_VERIFY_DEPLOYMENT
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - REFID: ATOMIC_AUTHORITY_HANDOVER
+
+      - REFID: PRE_USE_ONCHAIN_VERIFICATION
+
+      - REFID: EPHEMERAL_DEPLOY_KEY_RETIREMENT
+
+      - ID: SECURE_DEPLOYMENT_ENVIRONMENT
+        title: Secure and Isolate Deployment Environment
+        description: |
+          Run bootstrap deployment from hardened, dedicated environments with restricted
+          operator access and short-lived credentials.
+
+          - Avoid personal developer laptops for bootstrap deployment
+          - Restrict filesystem and secret access to deployment process only
+          - Capture immutable deployment logs for audit evidence
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+      
+      - ID: CONFIDENTIAL_DEPLOYMENT_KEY
+        title: Confidential Handling of Deployment Key Material
+        description: |
+          Treat deployment keypairs as sensitive secrets with access controls.
+
+          - Avoid storing deployment keys in public version control or public shared storage
+
+          Deployment keys will still need to be shared for ease of development and secure coding practices (keeping ProgramsIDs and CPI calls constant across environments). Pollution of CPIs and ProgramsIds has more severeconsequences. OTher controls during the bootstrap mitigates the risk of deployment keys compromise. 
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: GITIGNORE_KEY_MATERIAL
+        title: Enforce .gitignore for All Key Material
+        description: |
+          Ensure `target/deploy/`, `.keys/`, and `*-keypair.json` patterns are in `.gitignore`
+          and enforced via pre-commit hooks. Audit git history for accidental commits.
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: NOTARY_ADMIN_SINGLE_KEY_COMPROMISE
+    title: Notary Admin Single-Key Compromise
+    attack: |
+      If Notary Admin authority is controlled by a single private key instead of governed multisig,
+      compromise of that key allows unilateral administrative control.
+
+      Attack vectors include endpoint compromise, phishing, key exfiltration, or malicious insider abuse.
+    threatType: Elevation of Privilege, Denial of Service
+    impactDesc: |
+      A compromised admin key can directly alter notary trust decisions and service behavior.
+
+      Concrete impact scenarios:
+
+      - **Add unauthorized Corda network:** Attacker uses admin authority to register a rogue
+        Corda network, enabling illegitimate notarization requests.
+
+      - **Double spending (if admin can influence notary authorization):** Attacker authorizes
+        rogue notaries or revokes legitimate ones, potentially creating conditions for double-spend
+        (likelihood TBC — depends on whether admin-only actions can enable this without code upgrade).
+
+      - Authorize rogue notaries
+      - Revoke legitimate notaries
+      - Trigger denial of service through destructive admin actions
+
+      Unlike deployment bootstrap risk, this threat persists for the full operational lifetime
+      if single-key admin is retained.
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: NOTARY_WALLET_STN
+      - REFID: DF_NOTARY_ADMIN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+
+      - ID: SQUADS_MULTISIG_ADMIN
+        title: Use Squads Multisignature for Notary Admin Authority
+        description: |
+          Do not retain single-key control for Notary Admin operations.
+
+          Use a Squads multisig account (3-of-5 threshold) so that no single signer can
+          authorize or revoke notaries unilaterally.
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: MULTISIG_POLICY_MISCONFIGURATION
+    title: Multisig Policy Misconfiguration
+    attack: |
+      During setup or maintenance, operators misconfigure the multisig policy for Upgrade Authority or Notary Admin.
+      Examples include reducing threshold below 2, enrolling unauthorized signers, or assigning the wrong multisig account
+      as authority.
+
+      The attacker then exploits weaker policy to execute privileged transactions.
+    threatType: Tampering
+    impactDesc: |
+      Privileged operations can be executed without intended governance guarantees, enabling unauthorized
+      upgrades or administrative actions.
+
+      - Unauthorized program upgrade
+      - Unauthorized notary admin action
+      - Loss of trust in deployment governance
+
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      - REFID: UPGRADE_AUTHORITY_WALLET
+      - REFID: NOTARY_WALLET_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: POLICY_AS_CODE
+        title: Enforce Multisig Policy as Code
+        description: |
+          Define authority addresses, threshold, and member set in version-controlled deployment manifests.
+          Add pre-deployment validation gates that fail if expected values do not match on-chain state.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: TWO_PERSON_REVIEW
+        title: Independent Two-Person Review for Policy Changes
+        description: |
+          Require security and platform reviewers to approve any multisig membership or threshold update.
+          Changes must include rollback steps and explicit risk acceptance.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: OOB_CHALLENGE_SIGNATURE
+        title: Out-of-Band Challenge Signature Verification for Member Keys
+        description: |
+          Before registering or updating member keys, require each candidate member to sign a fresh
+          challenge message with the submitted public key. Verify signatures out-of-band and record
+          evidence with reviewer approval.
+
+          This reduces spoofing and tampering risk in member key onboarding.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: SIGNER_ONBOARDING_CEREMONY
+        title: Signer Selection and Onboarding Ceremony
+        description: |
+          Define and execute a structured process for selecting, vetting, and onboarding
+          multisig signers.
+
+          **Signer selection criteria:**
+
+          - Signer must be a distinct trusted individual (not shared accounts or bots)
+          - Signer must meet geographic separation requirements (see SIGNER_SELECTION_RULES)
+          - Signer must not share a management chain with another signer
+          - Signer must have operational availability commitments (SLA for signing response)
+          - Signer must accept key custody responsibilities and succession obligations
+
+          **Onboarding steps:**
+
+          - Identity verification of candidate signer by at least two existing signers
+          - Candidate generates keypair on approved device (Phase 1: Phantom, Phase 2: hardware wallet)
+          - Candidate shares public key via authenticated channel (DF_SHARE_MEMBER_PUBKEY)
+          - Out-of-band challenge signature verification (OOB_CHALLENGE_SIGNATURE)
+          - Two-person review and approval of membership addition
+          - Multisig member update executed on-chain (DF_MEMBER_UPDATE)
+          - Post-update on-chain verification of new member set
+
+          **Records:**
+
+          - Document signer identity, public key, geographic location, and approval evidence
+          - Maintain a signer registry for audit and succession planning
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+  - ID: WRONG_SIGNERS_GROUP
+    title: Inadequate Multisig Signer Selection
+    attack: |
+      Signers are selected without following established criteria or a formal approval process.
+      Selection failures include:
+
+      - All signers located in the same geographic jurisdiction — a single legal order,
+        regional outage, or coordinated physical threat can compromise or freeze quorum
+      - Signers from the same management chain — managerial pressure can coerce coordinated
+        action, effectively collapsing the multisig to single-party control
+      - Signers without adequate technical competence — increased risk of key loss,
+        operational errors, or susceptibility to phishing/social engineering
+      - Signers with undisclosed conflicts of interest — hidden relationships that
+        increase collusion probability
+      - No formal vetting or identity verification — signer identity cannot be reliably
+        established or audited after the fact
+      - No documented acceptance of custody responsibilities — signers may not understand
+        or commit to their obligations, creating accountability gaps
+
+      This threat is a precondition amplifier: weak signer selection increases the likelihood
+      and impact of TWO_SIGNER_COLLUSION_OR_COMPROMISE and MULTISIG_LIVENESS_FAILURE.
+
+    threatType: Elevation of Privilege, Denial of Service, Repudiation
+    impactDesc: |
+      Governance guarantees are undermined regardless of technical multisig configuration.
+
+      **Security impacts:**
+
+      - Correlated compromise: geographically co-located signers can be simultaneously
+        targeted via legal seizure, physical coercion, or infrastructure failure
+      - Collusion enablement: organizationally dependent signers can be pressured into
+        coordinated malicious action
+      - Operational fragility: technically incompetent signers increase liveness risk
+        and key loss probability
+
+      **Compliance impacts:**
+
+      - No audit trail of signer selection rationale or due diligence
+      - Cannot demonstrate to regulators or auditors that governance meets fiduciary standards
+      - Signer accountability gaps if responsibilities were never formally accepted
+      - Non-compliance with key ceremony and custody standards (e.g., SOC2, PCI-DSS key management)
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: ASSET_INTEGRITY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+
+      - ID: SIGNER_SELECTION_RULES
+        title: Formal Signer Selection Criteria and Approval Process
+        description: |
+          Define documented, version-controlled rules for who qualifies as a multisig signer
+          and a multi-person approval process for signer appointments.
+
+          **Mandatory selection criteria:**
+
+          - Geographic diversity: no quorum of signers in the same jurisdiction or physical location
+          - Organizational independence: no quorum of signers in the same management chain or team
+          - Technical competence: demonstrated ability to operate signing tools (wallet setup,
+            transaction review, key backup procedures)
+          - Operational availability: committed SLA for signing response (e.g., 4-hour response
+            for routine, 1-hour for emergency)
+          - Identity verification: verified by at least two existing signers or governance authority
+          - Conflict of interest disclosure: signed declaration of no undisclosed relationships
+            with other signers
+          - Key custody commitment: acceptance of hardware wallet migration timeline and
+            custody responsibilities
+
+          **Approval process:**
+
+          - Signer nomination must be proposed with documented justification
+          - At least two independent reviewers (not the nominee) must approve
+          - Security team sign-off required for diversity and competence assessment
+          - Approval record stored in governance log
+
+          **Periodic recertification:**
+
+          - Review signer eligibility at least annually or upon organizational changes
+          - Verify geographic, organizational, and technical criteria still met
+          - Trigger replacement process if criteria are no longer satisfied
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: SIGNER_SELECTION_REPORT
+        title: Signer Selection Evidence Report
+        description: |
+          Produce a documented report for each signer selection round that provides
+          auditable evidence of the process being followed.
+
+          **Report contents:**
+
+          - List of candidates considered and selection rationale
+          - Diversity assessment: geographic locations, organizational affiliations,
+            and management chain analysis for the full signer set
+          - Competence verification evidence (e.g., test signing drill results)
+          - Identity verification records (method used, verifiers involved)
+          - Conflict of interest declarations collected
+          - Approval signatures from reviewers and security team
+          - Final signer roster with public keys, locations, and roles
+
+          **Retention and access:**
+
+          - Store report in governance repository with version control
+          - Make available to auditors and compliance reviewers on request
+          - Update report when signer set changes (additions, removals, recertification)
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: SIGNER_ACCEPTANCE
+        title: Formal Signer Responsibility Acceptance
+        description: |
+          Each selected signer must formally accept their role and responsibilities
+          before being registered in the multisig.
+
+          **Acceptance requirements:**
+
+          - Sign a signer responsibility agreement covering:
+            - Key custody obligations (secure storage, no sharing, hardware migration timeline)
+            - Availability commitments (response SLA for routine and emergency operations)
+            - Succession obligations (cooperate with replacement if departing)
+            - Incident reporting duty (report suspected compromise immediately)
+            - Confidentiality of signing operations and proposal details
+          - Acknowledge understanding of the break-glass process and drill participation
+          - Confirm geographic location and organizational independence declarations
+          - Provide emergency contact information for out-of-band coordination
+
+          **Ongoing obligations:**
+
+          - Participate in scheduled signing drills (DRILLS)
+          - Notify governance team of any changes to location, role, or availability
+          - Cooperate with annual recertification (SIGNER_SELECTION_RULES)
+
+          **Records:**
+
+          - Signed acceptance stored in signer registry alongside public key and identity evidence
+          - Acceptance must be renewed upon key rotation or role change
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+      - REFID: SIGNER_ONBOARDING_CEREMONY
+
+  - ID: TWO_SIGNER_COLLUSION_OR_COMPROMISE
+    title: Two-Signer Collusion or Compromise
+    attack: |
+      Two of the five signer keys are compromised or their holders collude (through malware, phishing,
+      insider collusion, or weak custody practices).
+
+      With a 2-of-4 threshold this would have been sufficient to approve unauthorized transactions.
+      With the 3-of-5 threshold, two colluding or compromised signers cannot reach quorum and
+      therefore cannot approve any privileged operation.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      If quorum were reachable (i.e., under a weaker threshold), the impact would be complete
+      compromise of privileged governance:
+
+      - Double spending via malicious program upgrade
+      - Routing bridging/unbridging assets to attacker accounts
+      - Adding unauthorized Corda network
+      - Unauthorized authorization/revocation of notaries
+
+      With 3-of-5, two-signer collusion is insufficient to execute any of these scenarios.
+
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      # - REFID: SIGNER_KEYS
+      - REFID: UPGRADE_AUTHORITY_WALLET
+      - REFID: NOTARY_WALLET_STN
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: true
+    countermeasures:
+      - REFID: THRESHOLD_DESIGN_GUARDRAILS
+
+      - ID: HARDWARE_SIGNING
+        title: Hardware-Backed Signing with Phased Migration
+        description: |
+          Target state: all multisig signers use hardware-backed wallets with non-exportable private keys
+          and signer endpoint hardening.
+
+          **Phased migration plan:**
+
+          - **Phase 1 (initial deployment):** Software wallets (e.g., Phantom browser wallet)
+            for initial signer onboarding and operational bootstrapping. Acceptable for
+            early-stage deployment with limited asset exposure.
+
+          - **Phase 2 (production hardening):** Transition all signers to hardware wallets
+            (e.g., Ledger, Trezor) with non-exportable keys. Enforce device binding and
+            anti-phishing controls.
+
+          **Migration procedure:**
+
+          - Generate new keypairs on hardware devices
+          - Execute multisig member update flow (DF_MEMBER_UPDATE) to replace software keys
+          - Verify new member set on-chain before retiring software wallets
+          - Document key rotation evidence in governance log
+
+          **Risk acceptance (Phase 1):** Software wallet keys are more vulnerable to endpoint
+          compromise, clipboard hijacking, and browser extension attacks. Phase 1 risk is
+          accepted only for the initial bootstrapping period.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: ONCHAIN_MONITORING
+        title: Continuous Monitoring of Multisig Proposals
+        description: |
+          Alert on creation and approval of privileged proposals. Require human escalation
+          for unusual targets, urgency patterns, or signer combinations.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+  - ID: THREE_SIGNER_COMPROMISE
+    title: Three-Signer Key Compromise (External Quorum Takeover)
+    attack: |
+      An external attacker compromises three of the five signer keys remotely through malware,
+      phishing, supply chain attacks, or endpoint exploitation. The signers are unwilling victims
+      whose keys are stolen or abused without their knowledge.
+
+      The attacker may compromise keys sequentially over time, exploiting weak custody practices,
+      unpatched endpoints, or social engineering against individual signers.
+
+      With 3-of-5 control, the attacker can approve unauthorized Upgrade Authority or Notary Admin
+      transactions without any insider cooperation.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Complete compromise of privileged governance for deployment and administration.
+
+      Concrete impact scenarios (in order of severity):
+
+      - **Double spending (higher impact, likely):** Attacker upgrades the notary program code
+        to bypass uniqueness checks, enabling double-spend of assets on Corda via the Solana notary.
+        This directly undermines ASSET_INTEGRITY.
+
+      - **Route bridging/unbridging to attacker accounts (higher impact, unlikely but TBC):**
+        Attacker modifies program logic or admin state to redirect bridging or unbridging operations
+        to attacker-controlled Solana accounts, stealing assets in transit.
+
+      - **Add unauthorized Corda network (lower impact):** Attacker uses admin authority
+        to authorize a rogue Corda network, potentially enabling illegitimate notarization
+        requests from an attacker-controlled network.
+
+      - Malicious program upgrade introducing backdoors or persistent compromise
+      - Unauthorized authorization/revocation of notaries
+
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: UPGRADE_AUTHORITY_WALLET
+      - REFID: NOTARY_WALLET_STN
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - REFID: THRESHOLD_DESIGN_GUARDRAILS
+
+      - REFID: HARDWARE_SIGNING
+
+      - REFID: SIGNER_SELECTION_RULES
+
+      - REFID: ONCHAIN_MONITORING
+
+  - ID: THREE_SIGNER_COLLUSION
+    title: Three-Signer Insider Collusion (Quorum Takeover)
+    attack: |
+      Three of the five signers willingly collude to approve unauthorized transactions.
+      Collusion may be motivated by:
+
+      - Financial incentive (bribery, profit-sharing from stolen assets)
+      - Organizational coercion (signers in the same management chain pressured by leadership)
+      - Shared interest or conflict of interest (undisclosed relationships between signers)
+
+      Hardware wallets do not prevent this attack — colluding signers use their own legitimate
+      keys to sign. The attack succeeds entirely through abuse of authorized access.
+
+      A combined scenario is also possible: an external attacker compromises one or two keys
+      and recruits or coerces additional insiders to reach the 3-of-5 threshold.
+
+    threatType: Elevation of Privilege, Repudiation
+    impactDesc: |
+      Complete compromise of privileged governance for deployment and administration.
+
+      Concrete impact scenarios (in order of severity):
+
+      - **Double spending (higher impact, likely):** Colluding signers approve a malicious program
+        upgrade that bypasses uniqueness checks, enabling double-spend of assets on Corda via the
+        Solana notary.
+
+      - **Route bridging/unbridging to attacker accounts (higher impact, unlikely but TBC):**
+        Colluding signers approve program logic changes or admin state modifications to redirect
+        bridging or unbridging operations to their own or accomplice-controlled Solana accounts.
+
+      - **Add unauthorized Corda network (lower impact):** Colluding signers use admin authority
+        to authorize a rogue Corda network for illegitimate notarization.
+
+      - Repudiation risk: colluding insiders may deny intent ("I thought I was approving a
+        legitimate upgrade"), making attribution and accountability difficult without strong
+        audit trails and formal acceptance records.
+
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: UPGRADE_AUTHORITY_WALLET
+      - REFID: NOTARY_WALLET_STN
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - REFID: THRESHOLD_DESIGN_GUARDRAILS
+
+      - REFID: SIGNER_SELECTION_RULES
+
+      - REFID: SIGNER_ACCEPTANCE
+
+      - REFID: ONCHAIN_MONITORING
+
+  - ID: MULTISIG_LIVENESS_FAILURE
+    title: Multisig Liveness Failure for Urgent Operations
+    attack: |
+      Operational failures (lost devices, unavailable operators, incident response delays, or
+      simultaneous signer outages) prevent reaching 3-of-5 quorum in required time for emergency upgrade
+      rollback or urgent admin action.
+    threatType: Denial of Service
+    impactDesc: |
+      Authorized emergency operations cannot be executed in time, increasing incident impact.
+
+      Concrete impact scenarios:
+
+      - **Cannot add a new Corda network:** Blocked admin operations prevent onboarding
+        new Corda networks. Mitigable via redeployment to a new ProgramID and configuration
+        update on the Corda Notary Node (see REDEPLOYMENT_AS_RECOVERY), but this incurs
+        downtime and operational overhead.
+
+      - **Cannot fix a bug timely:** If a critical vulnerability is discovered in the notary
+        program, inability to reach multisig quorum delays the upgrade, leaving the system
+        exposed to known exploits for an extended window.
+
+      - Delayed incident containment and prolonged exposure to known vulnerabilities
+      - Service disruption if admin actions are blocked
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      # - REFID: SIGNER_KEYS
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+
+      - ID: BREAK_GLASS_PROCESS
+        title: Define and Test Break-Glass Governance Process
+        description: |
+          Document emergency approval runbook for signer loss scenarios, including verified backup devices,
+          authenticated out-of-band coordination, and time-bound post-incident review.
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: DRILLS
+        title: Run Regular Signing Liveness and Ceremony Drills
+        description: |
+          Execute regular drills (at least quarterly) to verify operational readiness of the
+          multisig signing process.
+
+          **Signing drill types:**
+
+          - **Liveness drill:** Simulate signer unavailability scenarios and measure time to
+            reach quorum for an emergency upgrade or admin action. Track recovery time objective.
+
+          - **Signing ceremony drill:** Full end-to-end rehearsal of a privileged operation
+            (e.g., propose, review, co-sign, execute a no-op upgrade or test admin instruction)
+            to validate tooling, communication channels, and signer coordination.
+
+          - **Break-glass drill:** Simulate a scenario requiring the break-glass governance
+            process (BREAK_GLASS_PROCESS) and verify backup coordination works.
+
+          **Drill outcomes to track:**
+
+          - Time to first signer response
+          - Time to quorum
+          - Communication channel reliability
+          - Tooling issues encountered
+          - Lessons learned and procedure updates
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+      - REFID: REDEPLOYMENT_AS_RECOVERY
+
+  - ID: MULTISIG_BRICKING_AND_PERMANENT_DEADLOCK
+    title: Multisig Bricking and Permanent Deadlock
+    attack: |
+      Operators mismanage multisig threshold settings or lose access to a critical number of signer keys.
+      Common failure modes include setting an impractical threshold (for example, effectively requiring all
+      members in larger teams), inadequate key recovery planning, and simultaneous signer attrition.
+
+      Once quorum becomes unreachable, privileged governance actions can no longer be executed.
+    threatType: Denial of Service
+    impactDesc: |
+      Privileged assets and operations can become permanently unrecoverable due to governance deadlock.
+
+      - Funds or controlled resources become inaccessible
+      - Emergency changes and recovery actions cannot be approved
+      - Long-term operational lockout and incident escalation
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      # - REFID: SIGNER_KEYS
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - ID: SUCCESSION_PLAN_FOR_SIGNERS
+        title: Establish Signer Succession Playbook and Recovery Plan
+        description: |
+          Define, document, and test a comprehensive succession playbook covering signer
+          replacement, key loss, and operator departure.
+
+          **Playbook contents:**
+
+          - **Planned departure:** Step-by-step process for orderly signer offboarding, including
+            new signer onboarding, multisig member update (DF_MEMBER_UPDATE), and key retirement.
+
+          - **Emergency replacement:** Pre-authorized procedure for replacing a compromised or
+            unavailable signer, including identity verification, key generation ceremony, and
+            on-chain member update under time pressure.
+
+          - **Key loss recovery:** Procedure when a signer permanently loses access to their key
+            (device failure, theft). Includes immediate revocation and replacement flow.
+
+          - **Role handover controls:** Ensure no single person can both remove an old signer and
+            add a replacement without independent approval.
+
+          - **Periodic validation:** Review succession playbook at least annually and after every
+            actual signer change. Run succession drills as part of DRILLS schedule.
+
+          **Critical constraint:** Succession must preserve quorum at all times — never reduce
+          the active signer count below the threshold during transitions.
+        inPlace: false
+        public: false
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: THRESHOLD_DESIGN_GUARDRAILS
+        title: At least 3-of-5 Multisig Threshold
+        description: |
+          Selected configuration: 3-of-5 threshold for both Upgrade Authority and Notary Admin.
+
+          **Rationale for 3-of-5 over 2-of-4:**
+
+          - Collusion resistance: requires compromising 3 signers (majority) instead of 2 (minority)
+          - After a single key compromise, attacker is still 2 steps from quorum (vs 1 step in 2-of-4)
+          - Liveness: tolerates 2 unavailable signers (same as 2-of-4)
+          - Aligns with industry best practices for high-value governance
+
+          **Operational constraints:**
+
+          - Requires 5 qualified, geographically diverse signers (see SIGNER_SELECTION_RULES)
+          - 3 approvals needed for each privileged operation
+          - Signing coordination across time zones must be planned for routine and emergency operations
+
+          Other options are 4 of 7 signers.
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+  - ID: UNVERIFIED_LOGIC_PATH_IN_PRIVILEGED_FLOW
+    title: Unverified Logic Path in Privileged Flow
+    attack: |
+      An attacker identifies a privileged instruction path or state transition that was not covered by formal proofs
+      (or where proofs are stale after code changes). The attacker crafts transaction parameters that satisfy runtime
+      checks but violate intended governance invariants.
+
+      This can occur when verification scope does not include all critical properties for multisig authorization
+      and state transitions.
+    threatType: Tampering
+    impactDesc: |
+      Privileged transaction processing may behave differently than intended, potentially allowing unauthorized
+      or unsafe governance actions.
+
+      - Invariant bypass in approval workflow
+      - Unsafe state transition in privileged operation
+      - Reduced assurance in deployment governance
+
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: true
+    countermeasures:
+      - ID: FORMAL_VERIFICATION
+        title: Formal Verification of Critical Governance Logic
+        description: |
+          Maintain mathematical proofs for critical safety and authorization properties covering proposal lifecycle,
+          threshold enforcement, and execution constraints.
+
+          Enforce verification as a release gate so changes cannot ship without updated proofs and independent review.
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: MUTABLE_PROGRAM_RISK_FOR_PRIVILEGED_CONTROL
+    title: Mutable Program Risk for Privileged Control
+    attack: |
+      An attacker attempts to introduce malicious behavior by targeting a mutable deployment path, or by tricking
+      operators into interacting with a mutable/incorrect program instance rather than the immutable v4 instance.
+
+      If successful, attacker-controlled logic could alter proposal validation or privileged execution behavior.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Governance trust assumptions fail if privileged operations are routed through mutable or non-canonical code.
+
+      - Unauthorized logic changes in control plane
+      - Bypass of expected governance guarantees
+      - Potential persistent compromise of privileged actions
+
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      - REFID: UPGRADE_AUTHORITY_WALLET
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: V4_IMMUTABILITY_ENFORCEMENT
+        title: Enforce Immutable v4 Program Usage
+        description: |
+          Use only the immutable Squads v4 program instance (immutable since November 2024) for privileged workflows.
+
+          Add startup and CI checks that verify:
+
+          - Program ID matches approved immutable v4 ID
+          - Upgrade authority is permanently disabled for that program
+          - Runtime configuration rejects non-approved alternatives
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: ROLE_PERMISSION_DRIFT_OR_ABUSE
+    title: Role Permission Drift or Abuse
+    attack: |
+      A signer or administrator misassigns or abuses Squads roles (Proposer, Voter, Executor), creating excess privileges
+      or collapsing separation of duties.
+
+      Examples include granting execution rights too broadly, allowing self-approval flows, or bypassing intended
+      proposal/vote/execution segregation.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Role abuse can weaken governance controls and increase the chance of unauthorized privileged execution.
+
+      - Separation-of-duties breakdown
+      - Increased insider abuse window
+      - Reduced auditability and accountability
+
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG_SYSTEM
+      # - REFID: SIGNER_KEYS
+      - REFID: DEPLOYMENT_APPROVAL_FLOW
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N'
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: ROLE_BASED_PERMISSION_MODEL
+        title: Enforce Squads Role-Based Permissions
+        description: |
+          Enforce granular role separation across Proposer, Voter, and Executor with least-privilege defaults.
+
+          Apply controls including:
+
+          - No single member can complete proposal, approval, and execution alone
+          - Role assignment reviews and periodic recertification
+          - Alerting on role changes and high-risk role combinations
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+  - ID: DEVNET_INFORMATION_LEAK
+    title: Program ID and Key Material Information Leak via Devnet
+    attack: |
+      Operators deploy test versions of the notary program to devnet using production-adjacent
+      keypairs or the same keypairs as intended for mainnet.
+
+      Devnet deployments are publicly visible. An attacker monitors devnet to:
+
+      - Identify the notary program ID planned for mainnet
+      - Discover deployment patterns and timing
+      - Extract notary admin public keys from initialization transactions
+      - Front-run mainnet deployment or prepare targeted attacks
+
+    threatType: Information Disclosure
+    impactDesc: |
+      Information leaked from devnet reduces attacker effort for mainnet attacks:
+
+      - Program ID enumeration and front-running
+      - Notary admin public key identification for social engineering
+      - Deployment timing intelligence for bootstrap window attacks
+      - Architecture and instruction pattern discovery
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: COMPROMISED_DEVELOPER
+    assets:
+      - REFID: DEPLOYMENT_KEYPAIR
+      - REFID: DF_DEPLOY_NOTARY_PROGRAM
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+
+      - ID: ACCEPT_PRE_RELEASE_CODE_DISCLOSURE
+        title: Accept that devnet code is public and visible to attackers
+        description: |
+          Acknowledge that deploying to devnet inherently exposes program IDs and
+          initialization transactions publicly. Focus security efforts on secure code and mainnet
+          deployment controls rather than attempting to hide devnet activity.
+        inPlace: true
+        public: true
+        operational: false
+
+      - ID: ACCEPT_PUBLIC_PROGRAM_IDS
+        title: Accept That Program IDs Are Public After Deployment
+        description: |
+          Acknowledge that once deployed, program IDs are inherently public on Solana.
+          Focus security on key custody and governance rather than ID secrecy.
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: IMMUTABLE_LOCK_PREMATURE_OR_INCOMPLETE
+    title: Premature or Incomplete Immutable Lock
+    attack: |
+      Operators execute immutable lock (revoke upgrade authority) on the notary program
+      before all initialization, configuration, and verification steps are complete.
+
+      Alternatively, operators fail to lock the program when it should be immutable, leaving
+      an unnecessary upgrade attack surface.
+
+    threatType: Denial of Service, Tampering
+    impactDesc: |
+      Premature lock:
+
+      - Cannot fix discovered bugs or misconfigurations in the notary program
+      - Cannot update network configuration or notary administration logic
+      - Requires full redeployment and state migration to recover
+
+      Incomplete lock:
+
+      - Upgradeable program remains vulnerable to governance compromise
+      - Inconsistent security posture if lock was part of the intended release plan
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: DF_IMMUTABLE_LOCK
+      - REFID: UPGRADE_AUTHORITY_WALLET
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: true
+    countermeasures:
+      - ID: NO_IMMUTABLE_LOCK
+        title: Do Not Lock Program — Retain Multisig Upgrade Capability
+        description: |
+          Deliberately avoid making the notary program immutable. Keep it upgradeable
+          via Squads multisig governance indefinitely.
+
+          **Rationale**:
+
+          - Preserves ability to fix critical vulnerabilities post-deployment
+          - Eliminates risk of premature lock causing permanent operational issues
+          - Multisig already provides sufficient protection against unauthorized upgrades
+          - Network Operator is centralized initially, so a single governance policy applies
+
+          **Trade-off accepted**:
+
+          - Program remains theoretically upgradeable if multisig is compromised
+          - Mitigated by multisig signer controls (hardware wallets, diversity, monitoring)
+
+          This approach avoids the entire threat category of premature/incomplete locking.
+        inPlace: true
+        public: true
+        operational: true
+        operator: Platform Operations and Security team
+
+      - ID: REDEPLOYMENT_AS_RECOVERY
+        title: Redeploy Notary Program as Recovery Path
+        description: |
+          Unlike multi-program systems with cross-program hardcoded IDs and non-rotatable admin keys,
+          the notary program is a single replaceable program. If a critical misconfiguration or
+          compromise occurs, the Network Operator can:
+
+          - Deploy a fresh notary program instance to a new program ID
+          - Update the Corda Notary Node (Uniqueness Provider) configuration to point to the new instance
+          - Re-initialize network and notary authorization state on-chain
+          - Retire the compromised program instance
+
+          This recovery path is viable because:
+
+          - No other programs hardcode the notary program ID
+          - Admin authority is multisig-governed (not permanently set at initialization)
+          - Corda node configuration is operator-controlled and updateable
+        inPlace: true
+        public: true
+        operational: true
+        operator: Corda Network operator
+
+      - ID: LOCK_PRECONDITIONS_CHECKLIST
+        title: Mandatory Pre-Lock Verification Checklist
+        supersededBy: NO_IMMUTABLE_LOCK
+        description: |
+          **Not applicable**: Program will not be locked.
+
+          Original purpose: Before executing immutable lock, verify all deployment and
+          initialization steps are complete using the pre-production verification checklist.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform Operations and Security team

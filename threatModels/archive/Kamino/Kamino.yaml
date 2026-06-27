@@ -1,0 +1,386 @@
+ID: KAMINO
+schemaVersion: 2
+title: Kamino Lending Market
+version: ""
+status: Draft
+scope:
+  description: |
+    Conceptual threat analysis for Kamino lending-market use cases and listed actors.
+
+    <img src="img/KaminoSEQ1.svg" alt="Kamino sequence diagram" />
+  securityObjectives:
+    - ID: DATA_CONFIDENTIALITY
+      title: Data Confidentiality
+      description: Protect sensitive position-linked data from unauthorized disclosure.
+      group: Data Security
+      treeImage: true
+    - ID: SYSTEM_INTEGRITY
+      title: System Integrity
+      description: Ensure balances, pricing, liquidations, and risk state remain
+        correct and tamper resistant.
+      group: System Integrity
+      treeImage: true
+    - ID: REQUEST_INTEGRITY
+      title: Request and Execution Integrity
+      description: Ensure borrow, liquidation, and parameter-change execution paths
+        are accurate and authorized.
+      group: System Integrity
+      contributesTo:
+        - REFID: SYSTEM_INTEGRITY
+    - ID: SERVICE_AVAILABILITY
+      title: Service Availability
+      description: Preserve borrow, lend, repay, and liquidation operations during
+        volatility.
+      group: Availability
+      treeImage: true
+    - ID: SOLVENCY_PROTECTION
+      title: Solvency Protection
+      description: Prevent bad debt and preserve lender recoverability.
+      group: Financial Safety
+      treeImage: true
+      contributesTo:
+        - REFID: SYSTEM_INTEGRITY
+        - REFID: SERVICE_AVAILABILITY
+  assets:
+    - ID: KAMINO_LENDING_PROGRAM
+      type: system
+      title: Kamino Lending Program
+      description: Core collateral, debt, and liquidation threshold logic.
+      inScope: true
+    - ID: KAMINO_VAULT_PROGRAM
+      type: system
+      title: Kamino Vault Program
+      description: Stablecoin allocation across isolated markets.
+      inScope: true
+    - ID: LOOPING_LOGIC
+      type: system
+      title: Looping and Flash-Loan Logic
+      description: Atomic leverage flow using borrow-swap-deposit loops.
+      inScope: true
+    - ID: SOLANA_RUNTIME
+      type: system
+      title: Solana Blockchain Runtime
+      description: Public chain execution and ordering environment.
+      inScope: false
+    - ID: SPL_TOKEN_PROGRAM
+      type: system
+      title: SPL Token Program
+      description: Token transfer/accounting primitive used by protocol flows.
+      inScope: false
+    - ID: LENDER_LIQUIDITY
+      type: data
+      title: Lender Stablecoin Liquidity
+      description: Lender-supplied stablecoin principal.
+      inScope: true
+    - ID: BORROWER_POSITIONS
+      type: data
+      title: Borrower Collateral and Debt Positions
+      description: Collateral balances and debt health factors.
+      inScope: true
+    - ID: ORACLE_FEEDS
+      type: data
+      title: Oracle Price Feeds
+      description: Chainlink/Pyth/Redstone input used for risk checks.
+      inScope: true
+    - ID: RESERVE_ATTESTATIONS
+      type: data
+      title: Reserve Attestation Signals
+      description: Backing/proof-of-reserve related issuer signals.
+      inScope: true
+    - ID: RISK_CONFIG
+      type: data
+      title: Risk Configuration
+      description: LTV, liquidation thresholds, caps, and market limits.
+      inScope: true
+    - ID: PRIVILEGED_KEYS
+      type: credential
+      title: Governance and Operator Signer Keys
+      description: Keys used for parameter changes and operational automation.
+      inScope: true
+      properties:
+        format: Ed25519 keypairs
+        location: Wallet or key-management systems used by operators
+    - ID: DF_LENDING_TO_ORACLE
+      type: dataflow
+      title: Lending to Oracle Flow
+      description: Price query and validation for health/liquidation checks.
+      inScope: true
+    - ID: DF_LIQUIDATION_TO_DEX
+      type: dataflow
+      title: Liquidation to DEX Flow
+      description: Forced collateral sales into market liquidity routes.
+      inScope: true
+    - ID: DF_VAULT_TO_MARKET
+      type: dataflow
+      title: Vault to Isolated Market Flow
+      description: Capital routing from vault strategy into isolated pools.
+      inScope: true
+  assumptions:
+    - ID: MULTI_ORACLE_STRATEGY
+      description: Kamino uses multiple oracle providers to reduce single-feed dependence.
+    - ID: ISOLATED_MARKETS
+      description: Isolated-market design is used to limit cross-market contagion.
+  attackers:
+    - ID: EXTERNAL_ATTACKER
+      title: External Attacker
+      description: Public adversary seeking financial extraction via protocol abuse.
+      inScope: true
+    - ID: MALICIOUS_INSIDER
+      title: Malicious Insider
+      description: Privileged or semi-privileged actor abusing internal access.
+      inScope: true
+    - ID: ORACLE_MANIPULATOR
+      title: Oracle Manipulator
+      description: Actor attempting to skew, delay, or exploit oracle-dependent behavior.
+      inScope: true
+    - ID: MEV_OPERATOR
+      title: MEV Bot Operator
+      description: Searcher exploiting transaction ordering and liquidation routes.
+      inScope: true
+    - ID: MALICIOUS_ISSUER
+      title: Malicious or Negligent Issuer
+      description: Issuer providing misleading reserve or asset-quality information.
+      inScope: true
+    - ID: LIQUIDITY_GRIEFER
+      title: Liquidity Griefer
+      description: Actor that withdraws liquidity to create liquidation fragility.
+      inScope: true
+    - ID: ABUSIVE_BORROWER
+      title: Abusive Over-Leveraged Borrower
+      description: Borrower intentionally maximizing leverage and correlated risk.
+      inScope: true
+analysis: |
+  Kamino threat posture is dominated by oracle correctness, liquidation depth, leverage loops, issuer reserve trust, and governance-key safety under stress.
+  <img src="img/KaminoSEQ1.svg" alt="Kamino sequence 1" />
+
+threats:
+  - ID: ORACLE_PRICE_MANIPULATION_OR_LAG
+    title: Oracle Manipulation or Lag Causes Unsafe Borrow State
+    attack: 'Attacker exploits stale or manipulated prices to borrow against
+      underpriced risk by timing positions before liquidation thresholds
+      update.'
+    threatType: Tampering
+    impactDesc: 'Delayed liquidation and mispriced health factors can produce lender
+      shortfall and bad debt, violating solvency expectations.'
+    impactedSecObj:
+      - REFID: SYSTEM_INTEGRITY
+      - REFID: REQUEST_INTEGRITY
+      - REFID: SOLVENCY_PROTECTION
+    attackers:
+      - REFID: ORACLE_MANIPULATOR
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: ORACLE_FEEDS
+      - REFID: KAMINO_LENDING_PROGRAM
+      - REFID: DF_LENDING_TO_ORACLE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:L/I:H/A:H'
+    pentestTestable: true
+    public: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: MULTI_ORACLE_STALENESS_GUARDS
+        title: Multi-Oracle Freshness and Divergence Validation
+        description: 'Enforce feed age checks, divergence thresholds, and medianized
+          pricing for liquidation-critical decisions.'
+        inPlace: false
+        public: true
+        operational: false
+      - ID: ORACLE_INCIDENT_RESPONSE
+        title: Oracle Drift Incident Response
+        description: 'Predefine rapid parameter hardening, market-specific pauses, and
+          post-incident replay for mispricing events.'
+        inPlace: false
+        public: true
+        operational: true
+        operator: RISK_TEAM
+  - ID: LIQUIDATION_FAILURE_FROM_DEX_ILLIQUIDITY
+    title: DEX Illiquidity Breaks Liquidation Recovery
+    attack: 'During volatility, executable depth collapses, forcing high-slippage
+      collateral sales that cannot cover debt.'
+    threatType: Denial of Service
+    impactDesc: 'Liquidation backstop fails under stress, increasing bad debt and
+      reducing lender recoverability.'
+    impactedSecObj:
+      - REFID: REQUEST_INTEGRITY
+      - REFID: SERVICE_AVAILABILITY
+      - REFID: SOLVENCY_PROTECTION
+    attackers:
+      - REFID: LIQUIDITY_GRIEFER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DF_LIQUIDATION_TO_DEX
+      - REFID: LENDER_LIQUIDITY
+      - REFID: KAMINO_LENDING_PROGRAM
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: DEPTH_GATED_RISK_EXPANSION
+        title: Liquidity Depth Gates for LTV and Borrow Caps
+        description: 'Require sustained executable depth before increasing LTV, borrow
+          caps, or leverage features.'
+        inPlace: true
+        public: true
+        operational: true
+        operator: RISK_TEAM
+      - ID: VOLATILITY_CIRCUIT_BREAKERS
+        title: Volatility-Aware Liquidation Controls
+        description: 'Use dynamic liquidation incentives and temporary borrow throttles
+          when depth deteriorates sharply.'
+        inPlace: false
+        public: true
+        operational: false
+  - ID: LOOPING_LEVERAGE_CASCADE
+    title: Recursive Leverage Cascade and Correlated Liquidations
+    attack: 'Abusive borrowers repeatedly loop leverage so a single drawdown
+      triggers synchronized liquidations and feedback selling.'
+    threatType: Elevation of Privilege
+    impactDesc: 'Mass liquidations amplify slippage and may propagate instability
+      through capital allocation behavior.'
+    impactedSecObj:
+      - REFID: SYSTEM_INTEGRITY
+      - REFID: SERVICE_AVAILABILITY
+      - REFID: SOLVENCY_PROTECTION
+    attackers:
+      - REFID: ABUSIVE_BORROWER
+    assets:
+      - REFID: LOOPING_LOGIC
+      - REFID: BORROWER_POSITIONS
+      - REFID: RISK_CONFIG
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: RECURSIVE_LEVERAGE_LIMITS
+        title: Recursive Exposure and Concentration Limits
+        description: 'Cap effective leverage and concentration by collateral class,
+          tightening limits as volatility rises.'
+        inPlace: false
+        public: true
+        operational: false
+      - ID: STRESS_AUTOTUNING
+        title: Stress-Triggered Risk Parameter Autotuning
+        description: 'Automatically lower caps and raise safety buffers during
+          high-volatility and low-depth conditions.'
+        inPlace: false
+        public: true
+        operational: true
+        operator: RISK_TEAM
+  - ID: RESERVE_ATTESTATION_MISREPRESENTATION
+    title: Issuer Reserve Misrepresentation Weakens Collateral Trust
+    attack: 'Issuer provides stale or misleading reserve attestations, preserving
+      favorable risk treatment for impaired collateral.'
+    threatType: Spoofing
+    impactDesc: 'Collateral quality assumptions fail and liquidation recoveries may
+      be structurally insufficient for lender protection.'
+    impactedSecObj:
+      - REFID: SYSTEM_INTEGRITY
+      - REFID: SOLVENCY_PROTECTION
+    attackers:
+      - REFID: MALICIOUS_ISSUER
+      - REFID: MALICIOUS_INSIDER
+    assets:
+      - REFID: RESERVE_ATTESTATIONS
+      - REFID: BORROWER_POSITIONS
+      - REFID: RISK_CONFIG
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - ID: INDEPENDENT_ATTESTATION_VALIDATION
+        title: Independent Reserve Validation Pipeline
+        description: 'Cross-check issuer claims with independent data and automatically
+          reduce risk limits when confidence degrades.'
+        inPlace: false
+        public: true
+        operational: true
+        operator: RISK_TEAM
+      - ID: RWA_LISTING_GATES
+        title: Hard Listing and Delisting Gates for RWA Markets
+        description: 'Use strict onboarding, ongoing disclosure requirements, and
+          predefined unwind triggers for attestation failures.'
+        inPlace: true
+        public: true
+        operational: true
+        operator: GOVERNANCE_TEAM
+  - ID: MEV_LIQUIDATION_EXTRACTION
+    title: MEV Extraction Degrades Liquidation Outcomes
+    attack: 'MEV bots front-run or sandwich liquidation-related swaps to capture
+      value and worsen effective execution price.'
+    threatType: Tampering
+    impactDesc: 'Recovery is reduced in critical periods, increasing residual debt
+      and operational stress.'
+    impactedSecObj:
+      - REFID: REQUEST_INTEGRITY
+      - REFID: SOLVENCY_PROTECTION
+    attackers:
+      - REFID: MEV_OPERATOR
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DF_LIQUIDATION_TO_DEX
+      - REFID: SOLANA_RUNTIME
+      - REFID: KAMINO_LENDING_PROGRAM
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: PROTECTED_LIQUIDATION_EXECUTION
+        title: Protected and MEV-Aware Liquidation Execution
+        description: 'Use route hardening, minimum-out constraints, and fail-closed
+          execution when recovery drops below threshold.'
+        inPlace: false
+        public: true
+        operational: false
+      - ID: LIQUIDATION_SIMULATION_GUARDS
+        title: Pre-Execution Liquidation Simulation
+        description: 'Simulate expected recovery and block economically unsafe
+          liquidations; feed anomalies into risk updates.'
+        inPlace: false
+        public: true
+        operational: true
+        operator: LIQUIDATION_OPERATOR_TEAM
+  - ID: GOVERNANCE_OR_OPERATOR_KEY_COMPROMISE
+    title: Privileged Key Compromise Corrupts Risk Controls
+    attack: 'Attacker compromises governance/operator keys and changes parameters or
+      controls to weaken lender protections.'
+    threatType: Elevation of Privilege
+    impactDesc: 'Unauthorized high-impact changes can create systemic
+      misconfiguration, accelerate insolvency risk, and force emergency
+      actions.'
+    impactedSecObj:
+      - REFID: SYSTEM_INTEGRITY
+      - REFID: SERVICE_AVAILABILITY
+      - REFID: SOLVENCY_PROTECTION
+    attackers:
+      - REFID: MALICIOUS_INSIDER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: PRIVILEGED_KEYS
+      - REFID: RISK_CONFIG
+      - REFID: KAMINO_LENDING_PROGRAM
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - ID: MULTISIG_TIMELOCK_CONTROLS
+        title: Multisig and Timelock for Risk-Critical Changes
+        description: 'Require quorum authorization and delayed execution for sensitive
+          parameter updates, with rollback procedures.'
+        inPlace: true
+        public: true
+        operational: true
+        operator: GOVERNANCE_TEAM
+      - ID: HARDENED_KEY_MANAGEMENT
+        title: Hardware-Backed Key Management and Segregation
+        description: 'Use hardware-backed signing, least privilege, and real-time audit
+          alerting for privileged key usage.'
+        inPlace: false
+        public: true
+        operational: true
+        operator: SECURITY_TEAM

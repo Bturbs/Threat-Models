@@ -1,0 +1,631 @@
+ID: Corda4
+schemaVersion: 2
+title: Corda 4 Node
+version: 1.0
+
+parent: Corda # Indicates this extends the general Corda protocol model
+
+
+
+
+scope:
+  description: |
+    **NOTE:** This threat model focuses on the **R3 Corda 4 software implementation** (referencing codebase patterns from https://github.com/corda/corda), extending the protocol-level threat model (`parent: Corda`). It considers the node as a running JVM application, its configuration, dependencies, operational interfaces (RPC, Shell), and interaction with the host environment.
+
+    **Implementation Specifics In Scope:**
+    - The node as a JVM process: resource usage, JVM vulnerabilities, classloading, serialization.
+    - Node configuration files (`node.conf`, `bootstrap.conf`, etc.) and their security implications.
+    - Third-party dependencies (ArtemisMQ, Netty, Kryo, database drivers, etc.) and their potential vulnerabilities (CVEs).
+    - RPC interface security (authentication, authorization, input validation, DoS).
+    - Node Shell interface security.
+    - Database interactions (persistence layer vulnerabilities, credential management).
+    - CorDapp hosting environment: Sandboxing effectiveness, resource allocation to CorDapps.
+    - Logging mechanisms and potential data leakage or injection.
+    - Specific implementation details of core services (e.g., flow state management, network map caching).
+
+    **Out of Scope (Covered Elsewhere or Assumed):**
+    - Deep vulnerabilities within specific CorDapp *business logic* (unless they exploit a platform vulnerability).
+    - Underlying OS hardening (but interaction *with* the OS, like file access, is relevant).
+    - Physical security of the node hardware.
+    - Security of the external PKI infrastructure (CAs, root certs), though the node's *use* of PKI is in scope.
+    - General network infrastructure security (firewalls, load balancers), unless Corda's configuration directly impacts them.
+
+  securityObjectives:
+    # Inherited/Refined from Protocol Model
+    - ID: TX_VALIDITY
+      title: Transaction Validity
+      description: Ensure transactions comply with contracts and signatures (as 
+        implemented).
+      group: Ledger Integrity
+    - ID: UNIQUENESS_CONSENSUS
+      title: Uniqueness Consensus (No Double-Spends)
+      description: Prevent double-spends via Notary interaction (as 
+        implemented).
+      group: Ledger Integrity
+    - ID: DATA_CONFIDENTIALITY
+      title: Transaction & Node Data Confidentiality
+      description: Protect transaction data, configuration secrets, and keys 
+        within the node process and storage.
+      group: Data Security
+    - ID: LEDGER_INTEGRITY
+      title: Ledger Integrity and Consistency
+      description: Ensure node's local ledger view is consistent and 
+        tamper-proof.
+      group: Ledger Integrity
+    - ID: NODE_AUTHENTICATION
+      title: Node Authentication and Identity
+      description: Ensure reliable identification based on PKI implementation.
+      group: Access Control
+
+    - ID: FLOW_INTEGRITY
+      title: Flow Framework Integrity
+      description: Ensure reliable execution of flows within the node 
+        implementation.
+      group: System Integrity
+    - ID: AUDITABILITY
+      title: Auditability and Non-Repudiation
+      description: Ensure node actions (signing, initiating flows) are logged 
+        and attributable.
+      group: Compliance & Audit
+
+    # Implementation Specific Objectives
+    - ID: NODE_PROCESS_INTEGRITY
+      title: Node Process Integrity
+      description: Protect the running Corda node JVM process from crashing, 
+        corruption, or unauthorized manipulation.
+      group: System Security
+    - ID: RESOURCE_MANAGEMENT
+      title: Resource Management and Resilience
+      description: Prevent resource exhaustion (memory, CPU, disk, network 
+        connections, threads) leading to denial of service.
+      group: Availability & Operational Security
+    - ID: SECURE_CONFIGURATION
+      title: Secure Node Configuration
+      description: Ensure node configuration settings do not introduce 
+        vulnerabilities.
+      group: System Security
+
+    - ID: DEPENDENCY_SECURITY
+      title: Dependency Security Management
+      description: Mitigate risks from vulnerable third-party libraries used by 
+        the Corda node.
+      group: System Security
+
+    - ID: RPC_ACCESS_CONTROL
+      title: Secure RPC Access Control
+      description: Ensure only authorized users/systems can invoke RPC 
+        operations with appropriate permissions.
+      group: Access Control
+    - ID: SHELL_ACCESS_CONTROL
+      title: Secure Shell Access Control
+      description: Ensure only authorized users can access and use the node's 
+        interactive shell.
+      group: Access Control
+    - ID: SANDBOX_EFFECTIVENESS
+      title: CorDapp Sandbox Effectiveness
+      description: Ensure the CorDapp security sandbox prevents malicious 
+        CorDapps from compromising the node.
+      group: System Security
+
+  assets:
+    # # Inherited/Refined from Protocol Model
+    # - ID: NODE # Represents the overall node concept
+    # - ID: NOTARY
+    # - ID: NETWORK_MAP_SERVICE
+    # - ID: PERMISSIONING_SERVICE
+    # - ID: STATE_OBJECT
+    # - ID: CONTRACT_CODE
+    # - ID: TRANSACTION
+    # - ID: NODE_PRIVATE_KEY # Storage and access are implementation concerns
+    # - ID: IDENTITY_CERTIFICATE # Storage and validation are implementation concerns
+    # - ID: NETWORK_PARAMETERS
+    # - ID: FLOW_STATE # Persistence and management are implementation concerns
+    # - ID: NODE_TO_NODE_COMM
+    # - ID: NODE_TO_NOTARY_COMM
+    # - ID: NODE_TO_NETWORK_MAP_COMM
+    # - ID: NODE_TO_PERMISSIONING_COMM
+
+    # Implementation Specific Assets
+    - ID: NODE_PROCESS
+      type: system
+      title: Running Corda Node JVM Process
+      description: The executing Java Virtual Machine instance running the Corda
+        node software.
+      inScope: true
+    - ID: NODE_CONFIGURATION_FILES
+      type: data
+      title: Node Configuration Files
+      description: Files like `node.conf`, `bootstrap.conf`, network truststore,
+        potentially containing sensitive settings (credentials, ports, 
+        features).
+      inScope: true
+    - ID: NODE_DATABASE
+      type: system
+      title: Node Persistence Database
+      description: The underlying database (H2, PostgreSQL, SQL Server) storing 
+        vault states, transactions, flow checkpoints, etc.
+      inScope: true
+    - ID: DB_CREDENTIALS
+      type: credential
+      title: Database Credentials
+      description: Username and password used by the node process to connect to 
+        its database.
+      inScope: true
+    - ID: RPC_INTERFACE
+      type: endpoint
+      title: Node RPC Interface
+      description: The network endpoint allowing clients (users, applications) 
+        to interact with the node.
+      inScope: true
+    - ID: RPC_CREDENTIALS
+      type: credential
+      title: RPC User Credentials
+      description: Usernames and passwords for accessing the node's RPC 
+        interface.
+      inScope: true
+    - ID: NODE_SHELL
+      type: endpoint
+      title: Node Interactive Shell
+      description: The command-line interface for administrators to interact 
+        with the node process (via SSH or direct access).
+      inScope: true
+    - ID: SHELL_CREDENTIALS
+      type: credential
+      title: Shell/SSH Credentials
+      description: Credentials (password, keys) required to access the node's 
+        shell.
+      inScope: true
+    - ID: JVM_RUNTIME
+      type: system
+      title: Java Virtual Machine Runtime
+      description: The specific JVM version and configuration running the node.
+      inScope: true
+    - ID: MESSAGING_SYSTEM # ArtemisMQ often used
+      type: system
+      title: Internal/External Messaging System
+      description: The system used for P2P messaging (e.g., embedded ArtemisMQ 
+        or external broker).
+      inScope: true
+    - ID: DEPENDENCIES
+      type: data
+      title: Third-Party Libraries (JARs)
+      description: External libraries (Netty, Kryo, Jackson, DB drivers, etc.) 
+        included in the Corda distribution or added by CorDapps.
+      inScope: true
+    - ID: CORDAPP_JAR
+      type: data
+      title: CorDapp JAR File
+      description: The packaged CorDapp application loaded and executed by the 
+        node.
+      inScope: true
+    - ID: LOG_FILES
+      type: data
+      title: Node Log Files
+      description: Files containing operational logs, potentially including 
+        sensitive information or being a target for DoS (disk filling).
+      inScope: true
+    - ID: SERIALIZED_DATA
+      type: data
+      title: Serialized Objects (Kryo, etc.)
+      description: Data serialized for persistence (checkpoints) or network 
+        transmission.
+      inScope: true
+    - ID: NODE_KEYSTORE
+      type: data
+      title: Node Keystore Files
+      description: Files storing the node's identity keys, TLS keys, and trusted
+        certificates (e.g., `nodekeystore.jks`, `truststore.jks`).
+      inScope: true
+
+  assumptions:
+    # Refined from Protocol
+    - ID: PKI_SECURE
+    - ID: KEY_MANAGEMENT # Node's responsibility, but implementation affects *how* secure it is
+    - ID: TRANSPORT_SECURITY # Relies on correct TLS config within node.conf
+    - ID: NOTARY_HONESTY
+    - ID: CONTRACT_DETERMINISM
+    # Implementation Specific
+    - ID: HOST_OS_BASELINE
+      description: The underlying host Operating System has baseline security 
+        hardening, but attackers might gain local access.
+    - ID: JVM_UPDATED
+      description: Assumes a reasonably up-to-date and patched JVM is used, 
+        though specific JVM exploits could still apply.
+    - ID: ADMIN_COMPETENCE
+      description: Assumes node administrators have a basic level of competence 
+        but may make configuration errors.
+
+  attackers:
+    # # Inherited/Refined from Protocol
+    # - ID: MALICIOUS_NODE
+    # - ID: MALICIOUS_NOTARY
+    # - ID: MALICIOUS_NETWORK_SERVICE
+    # - ID: NETWORK_ATTACKER
+    # - ID: MALICIOUS_CORDAPP_DEV
+
+    # Implementation Specific Attackers
+    - ID: LOCAL_ATTACKER
+      description: |
+        An attacker with non-root or root access to the operating system hosting the Corda node process.
+      inScope: true
+    - ID: MALICIOUS_RPC_CLIENT
+      description: |
+        An authenticated or unauthenticated user interacting with the node's RPC interface with malicious intent.
+      inScope: true
+    - ID: MALICIOUS_SHELL_USER
+      description: |
+        An authorized or unauthorized user accessing the node's interactive shell.
+      inScope: true
+    - ID: CONFIGURATION_ERROR_ADMIN
+      description: |
+        A legitimate node administrator who unintentionally introduces vulnerabilities through insecure configuration settings.
+      inScope: true # Represents accidental misconfiguration risk
+    # - ID: DEPENDENCY_VULN_EXPLOITER
+    #   description: |
+    #     An attacker specifically targeting known CVEs in the third-party libraries used by Corda 4 or its CorDapps.
+    #   inScope: true
+
+analysis: |
+  This implementation-specific model highlights risks beyond the protocol design. The Corda 4 node, as a complex JVM application, is susceptible to configuration errors, resource exhaustion, vulnerabilities in its extensive dependencies, and insecure exposure of its management interfaces (RPC, Shell). The security of hosted CorDapps and the effectiveness of the sandbox are critical implementation concerns. Secure deployment, configuration, patching, and monitoring are crucial countermeasures.
+
+threats:
+  - ID: IMPROPER_CONFIGURATION
+    title: Insecure Node Configuration
+    attack: |
+      An administrator configures the node insecurely in `node.conf` or related files:
+      1. Disabling or weakening TLS for P2P or RPC communication.
+      2. Using default or weak credentials for RPC or database access.
+      3. Exposing sensitive JMX ports insecurely.
+      4. Setting overly permissive RPC or Shell user permissions.
+      5. Misconfiguring firewall settings assumed by Corda's network setup.
+      6. Incorrectly configuring HA setups leading to split-brain or state issues.
+    threatType: Misconfiguration
+    impactDesc: |
+      Can lead to network eavesdropping, unauthorized RPC/Shell access, node compromise, data leakage, or service disruption depending on the specific misconfiguration.
+    impactedSecObj:
+      - REFID: SECURE_CONFIGURATION
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: NODE_AUTHENTICATION
+      - REFID: RPC_ACCESS_CONTROL
+      - REFID: SHELL_ACCESS_CONTROL
+      - REFID: NODE_PROCESS_INTEGRITY
+    assets:
+      - REFID: NODE_CONFIGURATION_FILES
+      - REFID: RPC_INTERFACE
+      - REFID: NODE_SHELL
+      - REFID: DB_CREDENTIALS
+      - REFID: NODE_TO_NODE_COMM
+    attackers:
+      - REFID: CONFIGURATION_ERROR_ADMIN
+      - REFID: LOCAL_ATTACKER # Modifying config files
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H' # Depends heavily on specific setting, worst case network exposure.
+    fullyMitigated: false # Requires diligence from admin
+    countermeasures:
+      - ID: SECURE_CONFIG_GUIDELINES
+        title: Follow Secure Configuration Documentation
+        description: |
+          Adhere strictly to R3's official documentation and security best practices for node configuration, including TLS, RPC auth/authz, database connections, and firewall rules.
+        inPlace: false # Admin action
+        public: true
+      - ID: CONFIG_AUDIT_TOOLING
+        title: Configuration Auditing/Scanning Tools
+        description: |
+          Utilize tools (if available) or manual checklists to regularly audit node configurations against security benchmarks.
+        inPlace: false
+        public: true
+      - ID: MINIMIZE_EXPOSED_INTERFACES
+        title: Minimize Exposed Interfaces
+        description: |
+          Only enable and expose necessary interfaces (RPC, Shell, JMX) and restrict network access to them (e.g., via firewalls) to trusted sources.
+        inPlace: false # Admin action
+        public: true
+      - ID: ROTATE_DEFAULT_CREDENTIALS
+        title: Change Default Credentials
+        description: |
+          Immediately change any default passwords provided for RPC users or other components upon initial setup. Use strong, unique passwords.
+        inPlace: false # Admin action
+        public: true
+
+  - ID: DEPENDENCY_VULNERABILITY
+    title: Exploitation of Vulnerable Third-Party Libraries
+    attack: |
+      An attacker exploits a known vulnerability (CVE) in a library bundled with Corda 4 (e.g., Netty, Kryo, ArtemisMQ, Jackson, Log4j, database driver, BouncyCastle) or a library included in an installed CorDapp. This could lead to remote code execution, denial of service, information disclosure, etc., depending on the CVE.
+    threatType: Vulnerability Exploitation
+    impactDesc: |
+      Impact varies based on the CVE, potentially ranging from denial of service to full node compromise, data theft, or transaction manipulation.
+    impactedSecObj:
+      - REFID: DEPENDENCY_SECURITY
+      - REFID: NODE_PROCESS_INTEGRITY
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: AVAILABILITY
+      - REFID: LEDGER_INTEGRITY
+    assets:
+      - REFID: DEPENDENCIES
+      - REFID: NODE_PROCESS
+      - REFID: JVM_RUNTIME
+    attackers:
+      # - REFID: DEPENDENCY_VULN_EXPLOITER
+      - REFID: NETWORK_ATTACKER
+      - REFID: MALICIOUS_NODE # Exploiting vuln in peer's node
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H' # Example for a critical RCE vuln in a network lib
+    fullyMitigated: false # Requires ongoing patching
+    countermeasures:
+      - ID: REGULAR_PATCHING_CORDA
+        title: Apply Corda Platform Patches Promptly
+        description: |
+          Regularly update the Corda node software to the latest patch release from R3, which includes fixes for known vulnerabilities in Corda code and bundled dependencies.
+        inPlace: false # Admin action
+        public: true
+      - ID: SOFTWARE_COMPOSITION_ANALYSIS
+        title: Software Composition Analysis (SCA)
+        description: |
+          Use SCA tools to scan the node installation (including CorDapps) to identify known vulnerabilities in all third-party libraries.
+        inPlace: false # Tooling/Process
+        public: true
+      - ID: VULNERABILITY_MANAGEMENT_PROCESS
+        title: Implement Vulnerability Management Process
+        description: |
+          Establish a process to monitor for new CVEs affecting Corda and its dependencies, assess their impact, and plan for mitigation or patching.
+        inPlace: false # Process
+        public: true
+      - ID: CORDAPP_DEPENDENCY_VETTING
+        title: Vet CorDapp Dependencies
+        description: |
+          Before installing CorDapps, scrutinize their included dependencies for known vulnerabilities.
+        inPlace: false # Admin action
+        public: true
+
+  - ID: RESOURCE_EXHAUSTION_MEMORY
+    title: Memory Exhaustion (OutOfMemoryError)
+    attack: |
+      1. Sending malformed or excessively large messages/transactions/attachments over the P2P network or RPC that consume excessive memory during processing or serialization/deserialization.
+      2. Triggering flows (potentially via malicious CorDapp) that leak memory or allocate excessive objects without releasing them.
+      3. Exploiting a memory leak vulnerability in the Corda platform code or a dependency.
+      4. Running too many concurrent flows for the allocated JVM heap size.
+    threatType: Denial of Service
+    impactDesc: |
+      The node's JVM process crashes due to an OutOfMemoryError, leading to service unavailability until restarted. Repeated crashes can indicate a persistent DoS condition.
+    impactedSecObj:
+      - REFID: RESOURCE_MANAGEMENT
+      - REFID: AVAILABILITY
+      - REFID: NODE_PROCESS_INTEGRITY
+    assets:
+      - REFID: NODE_PROCESS
+      - REFID: JVM_RUNTIME
+      - REFID: TRANSACTION # Large attachments/data
+      - REFID: SERIALIZED_DATA
+    attackers:
+      - REFID: MALICIOUS_NODE
+      - REFID: MALICIOUS_RPC_CLIENT
+      - REFID: MALICIOUS_CORDAPP_DEV
+      - REFID: NETWORK_ATTACKER # Sending large P2P messages
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H' # High availability impact
+    fullyMitigated: false # Requires careful tuning and potentially platform fixes
+    countermeasures:
+      - ID: JVM_HEAP_TUNING
+        title: Proper JVM Heap Size Configuration
+        description: |
+          Allocate sufficient JVM heap memory (`-Xmx`) based on expected workload and monitor usage.
+        inPlace: false # Admin action
+        public: true
+      - ID: NODE_RESOURCE_MONITORING
+        title: Node Performance and Resource Monitoring
+        description: |
+          Implement monitoring of the node's memory usage, GC activity, thread count, and flow execution metrics to detect anomalies and potential leaks or exhaustion scenarios.
+        inPlace: false # Tooling/Process
+        public: true
+      - ID: MESSAGE_SIZE_LIMITS
+        title: Configure Network Message Size Limits
+        description: |
+          Configure limits on the maximum size of P2P messages accepted by the node to prevent trivial memory exhaustion from single large messages.
+        inPlace: false # Admin action (config)
+        public: true
+      - ID: FLOW_THROTTLING_LIMITS
+        title: Configure Flow Execution Limits
+        description: |
+          Configure limits on the number of concurrent flows the node will execute to prevent overloading.
+        inPlace: false # Admin action (config)
+        public: true
+      - ID: CORDAPP_RESOURCE_TESTING
+        title: CorDapp Performance and Resource Testing
+        description: |
+          Test CorDapps under load to identify memory leaks or excessive resource consumption before deployment.
+        inPlace: false # Developer/QA process
+        public: true
+
+  - ID: DESERIALIZATION_VULNERABILITY
+    title: Insecure Deserialization
+    attack: |
+      An attacker sends specially crafted serialized data (e.g., via P2P messages, RPC calls, or potentially by manipulating flow checkpoints persisted to the database) that, when deserialized by the node (typically using Kryo or other Java serialization mechanisms), triggers unintended code execution, denial of service, or information disclosure.
+    threatType: Remote Code Execution, Denial of Service, Information Disclosure
+    impactDesc: |
+      Potential for full node compromise (RCE), node crash (DoS), or leakage of sensitive internal data depending on the specific gadget chain exploited.
+    impactedSecObj:
+      - REFID: NODE_PROCESS_INTEGRITY
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: SERIALIZED_DATA
+      - REFID: NODE_PROCESS
+      - REFID: JVM_RUNTIME
+      - REFID: NODE_TO_NODE_COMM
+      - REFID: RPC_INTERFACE
+      - REFID: NODE_DATABASE # Stored checkpoints
+    attackers:
+      - REFID: MALICIOUS_NODE
+      - REFID: NETWORK_ATTACKER
+      - REFID: MALICIOUS_RPC_CLIENT
+      - REFID: LOCAL_ATTACKER # Modifying DB
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H' # High impact if RCE possible, complexity high
+    fullyMitigated: false # Relies on platform hardening and dependency updates
+    countermeasures:
+      - ID: SERIALIZATION_ALLOWLISTING
+        title: Serialization Whitelisting/Allowlisting
+        description: |
+          Corda's serialization framework (AMQP/Kryo) employs allowlisting mechanisms to restrict which classes can be deserialized, mitigating many common gadget chain attacks. Effectiveness depends on the completeness and maintenance of this list.
+        inPlace: true # Core platform feature
+        public: true
+      - REFID: REGULAR_PATCHING_CORDA # Patches may update allowlists or fix bugs
+      - ID: INPUT_VALIDATION_BEFORE_DESERIALIZE
+        title: Input Validation Before Deserialization
+        description: |
+          Where possible, validate incoming data (e.g., size, basic structure) *before* attempting full deserialization to reject obviously malformed inputs early.
+        inPlace: true # Platform/developer practice
+        public: true
+
+  - ID: UNAUTHORIZED_RPC_ACCESS
+    title: Unauthorized RPC Access or Action
+    attack: |
+      1. An attacker bypasses RPC authentication due to weak credentials or misconfiguration (e.g., auth disabled).
+      2. An authenticated but low-privileged RPC user exploits authorization flaws to invoke privileged RPC methods they shouldn't have access to.
+      3. An attacker connects to the RPC port from an untrusted network location due to inadequate firewalling.
+    threatType: Elevation of Privilege, Information Disclosure, Tampering
+    impactDesc: |
+      Attacker could potentially query sensitive vault data, trigger arbitrary flows, drain funds (if RPC allows), manage node configuration/shutdown, or gain information about network participants.
+    impactedSecObj:
+      - REFID: RPC_ACCESS_CONTROL
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: LEDGER_INTEGRITY
+      - REFID: NODE_PROCESS_INTEGRITY
+    assets:
+      - REFID: RPC_INTERFACE
+      - REFID: RPC_CREDENTIALS
+      - REFID: STATE_OBJECT # Via vault queries
+      - REFID: FLOW_STATE # Triggering/querying flows
+    attackers:
+      - REFID: MALICIOUS_RPC_CLIENT
+      - REFID: NETWORK_ATTACKER
+      - REFID: CONFIGURATION_ERROR_ADMIN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:L' # Assuming successful bypass of auth
+    fullyMitigated: false # Requires proper configuration
+    countermeasures:
+      - ID: RPC_AUTHENTICATION_REQUIRED
+        title: Enforce Strong RPC Authentication
+        description: |
+          Ensure RPC authentication is enabled and uses strong, unique credentials for each RPC user. Avoid default passwords.
+        inPlace: false # Admin action (config)
+        public: true
+      - ID: RPC_AUTHORIZATION_RBAC
+        title: Implement Role-Based Access Control (RBAC) for RPC
+        description: |
+          Define granular roles for RPC users and assign permissions strictly based on the principle of least privilege. Regularly audit permissions.
+        inPlace: false # Admin action (config)
+        public: true
+      - ID: FIREWALL_RPC_PORT
+        title: Firewall RPC Port Access
+        description: |
+          Restrict network access to the node's RPC port(s) using firewalls, allowing connections only from trusted client machines or networks.
+        inPlace: false # Infrastructure config
+        public: true
+      - ID: RPC_INPUT_VALIDATION
+        title: RPC Method Input Validation
+        description: |
+          Ensure RPC methods implemented by Corda and CorDapps validate their input parameters to prevent injection or manipulation attempts.
+        inPlace: true # Platform/developer responsibility
+        public: true
+
+  - ID: CORDAPP_SANDBOX_ESCAPE
+    title: CorDapp Sandbox Escape
+    attack: |
+      A maliciously crafted CorDapp exploits a flaw in Corda's sandboxing mechanism (e.g., Java Security Manager implementation, classloader isolation, incorrect permission grants) to perform actions outside its allowed permissions, such as arbitrary file system access, network calls, or direct access to sensitive node internals or keys.
+    threatType: Elevation of Privilege, Tampering, Information Disclosure
+    impactDesc: |
+      Full compromise of the node process, theft of keys and data, ability to sign malicious transactions, or disrupt node operation. Effectively equivalent to compromising the node process itself.
+    impactedSecObj:
+      - REFID: SANDBOX_EFFECTIVENESS
+      - REFID: NODE_PROCESS_INTEGRITY
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: NODE_AUTHENTICATION
+    assets:
+      - REFID: CORDAPP_JAR
+      - REFID: NODE_PROCESS
+      - REFID: JVM_RUNTIME
+      - REFID: NODE_PRIVATE_KEY
+      - REFID: NODE_DATABASE
+      - REFID: NODE_CONFIGURATION_FILES
+    attackers:
+      - REFID: MALICIOUS_CORDAPP_DEV
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H' # Requires installing malicious CorDapp, but impact is critical
+    fullyMitigated: false # Relies on platform sandbox robustness
+    countermeasures:
+      - ID: SANDBOX_IMPLEMENTATION_HARDENING
+        title: Robust Sandbox Implementation
+        description: |
+          Corda platform developers must ensure the sandboxing mechanism (Security Manager policies, classloaders) is correctly and robustly implemented to enforce isolation.
+        inPlace: true # Platform responsibility
+        public: true
+      - REFID: REGULAR_PATCHING_CORDA # Patches may fix sandbox vulnerabilities
+      - ID: CORDAPP_CODE_REVIEW_SIGNING
+        title: Code Review and Signing of CorDapps
+        description: |
+          CorDapps should be signed and undergo code review to ensure they do not contain malicious code or insecure practices that could escape the sandbox.
+        inPlace: true
+        public: true
+      - ID: MINIMAL_CORDAPP_PERMISSIONS
+        title: Grant Minimal Necessary Permissions to CorDapps
+        description: |
+          When configuring CorDapp permissions (if applicable in the specific Corda 4 setup), grant only the absolute minimum permissions required for the CorDapp's legitimate function.
+        inPlace: false # Admin action (config/review)
+        public: true
+
+  - ID: SENSITIVE_DATA_LOGGING
+    title: Sensitive Data Leakage via Logs
+    attack: |
+      Node operational logs (`logs/` directory) inadvertently contain sensitive information such as private keys, passwords, personal data from transactions/states, or detailed internal state that could aid attackers. An attacker with local access or access to log aggregation systems reads this data.
+    threatType: Information Disclosure
+    impactDesc: |
+      Exposure of credentials, private keys, or sensitive business data, facilitating further attacks or violating privacy regulations.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: SECURE_CONFIGURATION # Logging config
+    assets:
+      - REFID: LOG_FILES
+      - REFID: NODE_PRIVATE_KEY # If logged
+      - REFID: RPC_CREDENTIALS # If logged
+      - REFID: DB_CREDENTIALS # If logged
+      - REFID: TRANSACTION # Sensitive payload
+    attackers:
+      - REFID: LOCAL_ATTACKER
+      - REFID: CONFIGURATION_ERROR_ADMIN # Setting excessive log levels
+      # Also consider anyone with access to centralized logging systems
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N' # Local access typically needed, high confidentiality impact
+    fullyMitigated: false # Requires careful configuration and code review
+    countermeasures:
+      - ID: LOG_LEVEL_CONFIGURATION
+        title: Configure Appropriate Log Levels
+        description: |
+          Configure node logging levels (e.g., in `log4j2.xml`) to avoid logging excessive DEBUG or TRACE information in production environments unless necessary for troubleshooting.
+        inPlace: false # Admin action (config)
+        public: true
+      - ID: LOG_SANITIZATION
+        title: Log Sanitization / Masking
+        description: |
+          Ensure Corda platform code and CorDapp code avoids logging sensitive data directly. Implement masking or filtering for known sensitive patterns if logging them is unavoidable at certain levels.
+        inPlace: true # Platform/developer responsibility
+        public: true
+      - ID: SECURE_LOG_STORAGE_ACCESS
+        title: Secure Log File Storage and Access
+        description: |
+          Restrict file system permissions on log directories. Secure access to any centralized log aggregation systems (e.g., ELK, Splunk) using strong authentication and authorization.
+        inPlace: false # Operational security
+        public: true
+      - ID: REGULAR_LOG_REVIEW
+        title: Periodic Log Review for Sensitive Data
+        description: |
+          Periodically review logs (especially at higher verbosity levels in test environments) to check for inadvertent leakage of sensitive information.
+        inPlace: false # Process
+        public: true
+
+  # Add other relevant implementation threats:
+  # - NODE_SHELL_MISUSE (Unauthorized access/privesc via shell)
+  # - DATABASE_INJECTION (If custom CorDapps interact insecurely)
+  # - RESOURCE_EXHAUSTION_DISK (Log flooding, large attachments filling disk)
+  # - RPC_DENIAL_OF_SERVICE (Flooding RPC with expensive calls)
+  # - INSECURE_DB_CREDENTIALS (Hardcoded/weak DB creds in config)

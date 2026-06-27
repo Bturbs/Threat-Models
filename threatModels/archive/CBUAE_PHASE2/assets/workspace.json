@@ -1,0 +1,1684 @@
+{
+  "configuration" : { },
+  "description" : "USE CDBC PHASE 2 RETAIL",
+  "documentation" : { },
+  "id" : 1,
+  "lastModifiedAgent" : "structurizr-ui",
+  "lastModifiedDate" : "2024-10-26T07:18:16Z",
+  "model" : {
+    "deploymentNodes" : [ {
+      "children" : [ {
+        "environment" : "Development",
+        "id" : "78",
+        "instances" : "1",
+        "name" : "Web Browser",
+        "properties" : {
+          "structurizr.dsl.identifier" : "2bf22e4c-80a2-4f46-b7ec-f7aa918973b7"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Chrome, Firefox, Safari, or Edge"
+      }, {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "18",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Development",
+            "id" : "81",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "developerwebapplicationinstance"
+            },
+            "tags" : "Container Instance"
+          }, {
+            "containerId" : "19",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Development",
+            "id" : "82",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "developerwalletapplicationinstance"
+            },
+            "relationships" : [ {
+              "description" : "Reads from and writes to",
+              "destinationId" : "85",
+              "id" : "86",
+              "linkedRelationshipId" : "73",
+              "sourceId" : "82",
+              "technology" : "SQL/TCP"
+            }, {
+              "destinationId" : "89",
+              "id" : "90",
+              "linkedRelationshipId" : "50",
+              "sourceId" : "82"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Development",
+          "id" : "80",
+          "instances" : "1",
+          "name" : "Apache Tomcat",
+          "properties" : {
+            "structurizr.dsl.identifier" : "93a7ee0f-7a8c-4213-ae19-7c7856b99bf6"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Apache Tomcat 8.x"
+        } ],
+        "environment" : "Development",
+        "id" : "79",
+        "instances" : "1",
+        "name" : "Docker Container - Web Server",
+        "properties" : {
+          "structurizr.dsl.identifier" : "0e987d16-9668-40dc-bd42-b4984adfe626"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Docker"
+      }, {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "43",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Development",
+            "id" : "85",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "developerdatabaseinstance"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Development",
+          "id" : "84",
+          "instances" : "1",
+          "name" : "Database Server",
+          "properties" : {
+            "structurizr.dsl.identifier" : "8bb0f607-9107-4ef5-b159-fbeb38efefac"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Oracle 12c"
+        } ],
+        "environment" : "Development",
+        "id" : "83",
+        "instances" : "1",
+        "name" : "Docker Container - Database Server",
+        "properties" : {
+          "structurizr.dsl.identifier" : "f462c212-b2cd-4400-a5f5-55bd048d73d7"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Docker"
+      } ],
+      "environment" : "Development",
+      "id" : "77",
+      "instances" : "1",
+      "name" : "Developer Laptop",
+      "properties" : {
+        "structurizr.dsl.identifier" : "4766d64d-69bb-45e1-bb3c-8a875434a24d"
+      },
+      "tags" : "Element,Deployment Node",
+      "technology" : "Microsoft Windows 10 or Apple macOS"
+    }, {
+      "children" : [ {
+        "environment" : "Development",
+        "id" : "88",
+        "instances" : "1",
+        "name" : "bigbank-dev001",
+        "properties" : {
+          "structurizr.dsl.identifier" : "94478a8b-aea0-4dde-8187-db0334938ca2"
+        },
+        "softwareSystemInstances" : [ {
+          "deploymentGroups" : [ "Default" ],
+          "environment" : "Development",
+          "id" : "89",
+          "instanceId" : 1,
+          "properties" : {
+            "structurizr.dsl.identifier" : "5db01914-f958-421a-b422-95bf580d94ff"
+          },
+          "softwareSystemId" : "15",
+          "tags" : "Software System Instance"
+        } ],
+        "tags" : "Element,Deployment Node,,Amazon Web Services - RDS MySQL instance"
+      } ],
+      "environment" : "Development",
+      "id" : "87",
+      "instances" : "1",
+      "name" : "Retail CDBC",
+      "properties" : {
+        "structurizr.dsl.identifier" : "a5dca212-affc-4dbd-addb-ee87f0f305eb"
+      },
+      "tags" : "Element,Deployment Node",
+      "technology" : "Retail CDBC data center"
+    }, {
+      "environment" : "Live",
+      "id" : "91",
+      "instances" : "1",
+      "name" : "Customer's mobile device",
+      "properties" : {
+        "structurizr.dsl.identifier" : "c9ef19e0-4bb4-4a5f-b2c1-5c1a3bc884f0"
+      },
+      "tags" : "Element,Deployment Node,Amazon Web Services - Mobile client",
+      "technology" : "Apple iOS or Android"
+    }, {
+      "children" : [ {
+        "environment" : "Live",
+        "id" : "93",
+        "instances" : "1",
+        "name" : "Web Browser",
+        "properties" : {
+          "structurizr.dsl.identifier" : "10eae7ef-0de0-4cba-a7d2-7571bd1ddc9c"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Chrome, Firefox, Safari, or Edge"
+      } ],
+      "environment" : "Live",
+      "id" : "92",
+      "instances" : "1",
+      "name" : "Customer's computer",
+      "properties" : {
+        "structurizr.dsl.identifier" : "48ffb26f-45e4-43b7-9ef8-48eb6a021c87"
+      },
+      "tags" : "Element,Deployment Node",
+      "technology" : "Microsoft Windows or Apple macOS"
+    }, {
+      "children" : [ {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "18",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Live",
+            "id" : "97",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "livewebapplicationinstance"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Live",
+          "id" : "96",
+          "instances" : "1",
+          "name" : "Apache Tomcat",
+          "properties" : {
+            "structurizr.dsl.identifier" : "1ce50ede-ed4b-4189-a27b-266aad297b73"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Apache Tomcat 8.x"
+        } ],
+        "environment" : "Live",
+        "id" : "95",
+        "instances" : "4",
+        "name" : "bigbank-web***",
+        "properties" : {
+          "structurizr.dsl.identifier" : "c84c7cb7-917a-47d1-8163-3df25ec0db81"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Ubuntu 16.04 LTS"
+      }, {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "19",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Live",
+            "id" : "100",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "livewalletapplicationinstance"
+            },
+            "relationships" : [ {
+              "description" : "Reads from and writes to",
+              "destinationId" : "103",
+              "id" : "104",
+              "linkedRelationshipId" : "73",
+              "sourceId" : "100",
+              "technology" : "SQL/TCP"
+            }, {
+              "description" : "Reads from and writes to",
+              "destinationId" : "107",
+              "id" : "108",
+              "linkedRelationshipId" : "73",
+              "sourceId" : "100",
+              "technology" : "SQL/TCP"
+            }, {
+              "destinationId" : "110",
+              "id" : "111",
+              "linkedRelationshipId" : "50",
+              "sourceId" : "100"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Live",
+          "id" : "99",
+          "instances" : "1",
+          "name" : "Apache Tomcat",
+          "properties" : {
+            "structurizr.dsl.identifier" : "664d7137-9171-4b19-910c-f3dcb0642789"
+          },
+          "tags" : "Element,Deployment Node,Amazon Web Services - RDS MySQL instance",
+          "technology" : "Apache Tomcat 8.x"
+        } ],
+        "environment" : "Live",
+        "id" : "98",
+        "instances" : "8",
+        "name" : "bigbank-api***",
+        "properties" : {
+          "structurizr.dsl.identifier" : "88d58954-73e5-4136-8df8-b7614ceb2613"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Ubuntu 16.04 LTS"
+      }, {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "43",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Live",
+            "id" : "103",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "liveprimarydatabaseinstance"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Live",
+          "id" : "102",
+          "instances" : "1",
+          "name" : "Oracle - Primary",
+          "properties" : {
+            "structurizr.dsl.identifier" : "primarydatabaseserver"
+          },
+          "relationships" : [ {
+            "description" : "Replicates data to",
+            "destinationId" : "106",
+            "id" : "112",
+            "properties" : {
+              "structurizr.dsl.identifier" : "673af52e-b881-4981-92c0-b625d605d767"
+            },
+            "sourceId" : "102",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Deployment Node",
+          "technology" : "Oracle 12c"
+        } ],
+        "environment" : "Live",
+        "id" : "101",
+        "instances" : "1",
+        "name" : "bigbank-db01",
+        "properties" : {
+          "structurizr.dsl.identifier" : "9c9619a2-f97f-4436-838d-634ae2634af4"
+        },
+        "tags" : "Element,Deployment Node",
+        "technology" : "Ubuntu 16.04 LTS"
+      }, {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "43",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Live",
+            "id" : "107",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "livesecondarydatabaseinstance"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Live",
+          "id" : "106",
+          "instances" : "1",
+          "name" : "Oracle - Secondary",
+          "properties" : {
+            "structurizr.dsl.identifier" : "secondarydatabaseserver"
+          },
+          "tags" : "Element,Deployment Node,Failover",
+          "technology" : "Oracle 12c"
+        } ],
+        "environment" : "Live",
+        "id" : "105",
+        "instances" : "1",
+        "name" : "bigbank-db02",
+        "properties" : {
+          "structurizr.dsl.identifier" : "f4eed296-b99f-4fb4-a985-a6a24f86f132"
+        },
+        "tags" : "Element,Deployment Node,Failover",
+        "technology" : "Ubuntu 16.04 LTS"
+      }, {
+        "environment" : "Live",
+        "id" : "109",
+        "instances" : "1",
+        "name" : "bigbank-prod001",
+        "properties" : {
+          "structurizr.dsl.identifier" : "2e8e286e-3784-4620-b436-cb828ca42059"
+        },
+        "softwareSystemInstances" : [ {
+          "deploymentGroups" : [ "Default" ],
+          "environment" : "Live",
+          "id" : "110",
+          "instanceId" : 1,
+          "properties" : {
+            "structurizr.dsl.identifier" : "5ac159c1-bfcc-4c4e-b569-d5eac17be776"
+          },
+          "softwareSystemId" : "15",
+          "tags" : "Software System Instance"
+        } ],
+        "tags" : "Element,Deployment Node"
+      } ],
+      "environment" : "Live",
+      "id" : "94",
+      "instances" : "1",
+      "name" : "Retail CDBC",
+      "properties" : {
+        "structurizr.dsl.identifier" : "1bb49e10-ad3b-42ea-b3a3-cf93bb9faeee"
+      },
+      "tags" : "Element,Deployment Node",
+      "technology" : "Retail CDBC data center"
+    } ],
+    "people" : [ {
+      "description" : "A customer of the bank, with personal retail wallet.",
+      "id" : "3",
+      "location" : "Unspecified",
+      "name" : "Personal Banking Customer",
+      "properties" : {
+        "structurizr.dsl.identifier" : "customer"
+      },
+      "relationships" : [ {
+        "destinationId" : "1",
+        "id" : "4",
+        "properties" : {
+          "structurizr.dsl.identifier" : "96aa41c9-a8ac-426e-ae85-761ca3af9cf7"
+        },
+        "sourceId" : "3",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Views account balances, and makes payments using",
+        "destinationId" : "17",
+        "id" : "54",
+        "properties" : {
+          "structurizr.dsl.identifier" : "f51d4a9f-6bfd-4fbb-85fd-afacc7287c81"
+        },
+        "sourceId" : "3",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Asks questions to",
+        "destinationId" : "14",
+        "id" : "58",
+        "properties" : {
+          "structurizr.dsl.identifier" : "602db0b0-3341-47c5-a908-6c7d31d852f5"
+        },
+        "sourceId" : "3",
+        "tags" : "Relationship",
+        "technology" : "Telephone"
+      }, {
+        "description" : "Withdraws cash using",
+        "destinationId" : "13",
+        "id" : "60",
+        "properties" : {
+          "structurizr.dsl.identifier" : "4a9d1fef-cda4-458a-a16f-3fb110ee7ae6"
+        },
+        "sourceId" : "3",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Visits bigbank.com/ib using",
+        "destinationId" : "18",
+        "id" : "62",
+        "properties" : {
+          "structurizr.dsl.identifier" : "b9e62787-5bc6-4e0b-b403-0fafe9445246"
+        },
+        "sourceId" : "3",
+        "tags" : "Relationship",
+        "technology" : "HTTPS"
+      }, {
+        "description" : "Views account balances, and makes payments using",
+        "destinationId" : "1",
+        "id" : "63",
+        "properties" : {
+          "structurizr.dsl.identifier" : "8385114a-9c22-4f6a-ba93-200866eed852"
+        },
+        "sourceId" : "3",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Person,Customer"
+    }, {
+      "description" : "A customer of the bank, with personal retail wallet.",
+      "id" : "5",
+      "location" : "Unspecified",
+      "name" : "Payee",
+      "properties" : {
+        "structurizr.dsl.identifier" : "payee"
+      },
+      "relationships" : [ {
+        "destinationId" : "2",
+        "id" : "6",
+        "properties" : {
+          "structurizr.dsl.identifier" : "75e4d5ca-e24d-4b7f-a4f8-cb334b244501"
+        },
+        "sourceId" : "5",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Person,Customer"
+    }, {
+      "description" : "Admin user managing installation",
+      "group" : "LFI Bank",
+      "id" : "14",
+      "location" : "Unspecified",
+      "name" : "Admin Staff",
+      "properties" : {
+        "structurizr.dsl.identifier" : "adminuser"
+      },
+      "relationships" : [ {
+        "description" : "Uses",
+        "destinationId" : "15",
+        "id" : "59",
+        "properties" : {
+          "structurizr.dsl.identifier" : "bbdc3c61-f656-429a-b2b8-f74fffc8d1f1"
+        },
+        "sourceId" : "14",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Person,Bank Staff"
+    } ],
+    "softwareSystems" : [ {
+      "description" : "Provides a limited subset of the retail CDBC functionality to customers via their mobile device.",
+      "documentation" : { },
+      "id" : "1",
+      "location" : "Unspecified",
+      "name" : "Mobile App",
+      "properties" : {
+        "structurizr.dsl.identifier" : "mobileapp"
+      },
+      "relationships" : [ {
+        "destinationId" : "26",
+        "id" : "27",
+        "properties" : {
+          "structurizr.dsl.identifier" : "3480b95d-b99e-402b-af6f-68cd7df1cdac"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship"
+      }, {
+        "destinationId" : "17",
+        "id" : "28",
+        "linkedRelationshipId" : "27",
+        "sourceId" : "1"
+      }, {
+        "description" : "Log in",
+        "destinationId" : "29",
+        "id" : "45",
+        "properties" : {
+          "structurizr.dsl.identifier" : "be80c65c-1a83-4b04-80de-1ad38090939f"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Submit Transfer",
+        "destinationId" : "32",
+        "id" : "46",
+        "properties" : {
+          "structurizr.dsl.identifier" : "caefed00-feca-4784-91dd-0e20d74db060"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Scan QR code",
+        "destinationId" : "2",
+        "id" : "52",
+        "properties" : {
+          "structurizr.dsl.identifier" : "69cf6ac3-b77e-4ea8-a420-66e6655d06e8"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Makes API calls to",
+        "destinationId" : "20",
+        "id" : "64",
+        "properties" : {
+          "structurizr.dsl.identifier" : "b63a971e-58c4-4d61-9c87-54ce305846b8"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship",
+        "technology" : "JSON/HTTPS"
+      }, {
+        "description" : "Makes API calls to",
+        "destinationId" : "19",
+        "id" : "65",
+        "linkedRelationshipId" : "64",
+        "sourceId" : "1",
+        "technology" : "JSON/HTTPS"
+      }, {
+        "description" : "Makes API calls to",
+        "destinationId" : "21",
+        "id" : "66",
+        "properties" : {
+          "structurizr.dsl.identifier" : "f707afc1-a360-4858-9db4-45e950105f4e"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship",
+        "technology" : "JSON/HTTPS"
+      }, {
+        "description" : "Makes API calls to",
+        "destinationId" : "22",
+        "id" : "67",
+        "properties" : {
+          "structurizr.dsl.identifier" : "725c5679-c891-4c27-8976-4f092360b85a"
+        },
+        "sourceId" : "1",
+        "tags" : "Relationship",
+        "technology" : "JSON/HTTPS"
+      } ],
+      "tags" : "Element,Software System,Xamarin,mobileApp"
+    }, {
+      "description" : "Provides a limited subset of the retail CDBC functionality to customers via their mobile device.",
+      "documentation" : { },
+      "id" : "2",
+      "location" : "Unspecified",
+      "name" : "Mobile App Bank2",
+      "properties" : {
+        "structurizr.dsl.identifier" : "mobileapp2"
+      },
+      "tags" : "Element,Software System,Xamarin,mobileApp"
+    }, {
+      "description" : "Distributed Led gersystem for CDBC",
+      "documentation" : { },
+      "group" : "Central Bank",
+      "id" : "7",
+      "location" : "Unspecified",
+      "name" : "Central Bank DLT",
+      "properties" : {
+        "structurizr.dsl.identifier" : "cb_dlt"
+      },
+      "tags" : "Element,Software System,Corda ledger"
+    }, {
+      "description" : "Notarizes and prevents double spending",
+      "documentation" : { },
+      "group" : "Central Bank",
+      "id" : "8",
+      "location" : "Unspecified",
+      "name" : "Notary",
+      "properties" : {
+        "structurizr.dsl.identifier" : "notary"
+      },
+      "tags" : "Element,Software System,Corda"
+    }, {
+      "description" : "Cross border wholesale CDBC system",
+      "documentation" : { },
+      "group" : "Central Bank",
+      "id" : "9",
+      "location" : "Unspecified",
+      "name" : "mBridge blockChain",
+      "properties" : {
+        "structurizr.dsl.identifier" : "mbridge"
+      },
+      "tags" : "Element,Software System,blockchain"
+    }, {
+      "containers" : [ {
+        "components" : [ {
+          "description" : "Registered client Public Key",
+          "documentation" : { },
+          "id" : "12",
+          "name" : "Client Public Key",
+          "properties" : {
+            "structurizr.dsl.identifier" : "registeredclientkey"
+          },
+          "tags" : "Element,Component,publicKey",
+          "technology" : "ECDSA 512"
+        } ],
+        "description" : "Flexcube core banking system",
+        "documentation" : { },
+        "id" : "11",
+        "name" : "Flexcube",
+        "properties" : {
+          "structurizr.dsl.identifier" : "flexcube"
+        },
+        "tags" : "Element,Container",
+        "technology" : "Oracle Flexcube"
+      } ],
+      "description" : "Core Banking system",
+      "documentation" : { },
+      "group" : "Central Bank",
+      "id" : "10",
+      "location" : "Unspecified",
+      "name" : "CB Core Banking",
+      "properties" : {
+        "structurizr.dsl.identifier" : "corebanking"
+      },
+      "tags" : "Element,Software System"
+    }, {
+      "description" : "Point of sale",
+      "documentation" : { },
+      "group" : "merchant",
+      "id" : "13",
+      "location" : "Unspecified",
+      "name" : "POS",
+      "properties" : {
+        "structurizr.dsl.identifier" : "pos"
+      },
+      "relationships" : [ {
+        "description" : "Uses",
+        "destinationId" : "15",
+        "id" : "61",
+        "properties" : {
+          "structurizr.dsl.identifier" : "04621bf0-a4f1-4ff7-a834-3d1c86730a6f"
+        },
+        "sourceId" : "13",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Software System,Existing System"
+    }, {
+      "description" : "Distributed Led gersystem for CDBC",
+      "documentation" : { },
+      "group" : "LFI Bank",
+      "id" : "15",
+      "location" : "Unspecified",
+      "name" : "DLT Banking System",
+      "properties" : {
+        "structurizr.dsl.identifier" : "dlt"
+      },
+      "relationships" : [ {
+        "description" : "settle transfer",
+        "destinationId" : "7",
+        "id" : "53",
+        "properties" : {
+          "structurizr.dsl.identifier" : "1d95a764-fe33-49f1-af96-86f437398d1e"
+        },
+        "sourceId" : "15",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Software System,Corda ledger"
+    }, {
+      "description" : "Notification Notification system.",
+      "documentation" : { },
+      "group" : "LFI Bank",
+      "id" : "16",
+      "location" : "Unspecified",
+      "name" : "Notification System",
+      "properties" : {
+        "structurizr.dsl.identifier" : "notification"
+      },
+      "relationships" : [ {
+        "description" : "Sends Notifications to",
+        "destinationId" : "3",
+        "id" : "57",
+        "properties" : {
+          "structurizr.dsl.identifier" : "b64adcdf-86ce-41d1-8d56-4533298824e1"
+        },
+        "sourceId" : "16",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Software System,Notification System"
+    }, {
+      "containers" : [ {
+        "description" : "Delivers the static content and the retail CDBC single page application.",
+        "documentation" : { },
+        "id" : "18",
+        "name" : "Web Application",
+        "properties" : {
+          "structurizr.dsl.identifier" : "webapplication"
+        },
+        "tags" : "Element,Container",
+        "technology" : "Java and Spring MVC"
+      }, {
+        "components" : [ {
+          "description" : "Allows users to sign in to the Retail CDBC System.",
+          "documentation" : { },
+          "id" : "20",
+          "name" : "Sign In Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "signincontroller"
+          },
+          "relationships" : [ {
+            "description" : "Uses",
+            "destinationId" : "23",
+            "id" : "68",
+            "properties" : {
+              "structurizr.dsl.identifier" : "5970bcb9-2332-476e-9ac4-19ed3f8a7b65"
+            },
+            "sourceId" : "20",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Spring MVC Rest Controller"
+        }, {
+          "description" : "Provides customers with a summary of their retail wallet.",
+          "documentation" : { },
+          "id" : "21",
+          "name" : "Accounts Summary Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "accountssummarycontroller"
+          },
+          "relationships" : [ {
+            "description" : "Uses",
+            "destinationId" : "24",
+            "id" : "69",
+            "properties" : {
+              "structurizr.dsl.identifier" : "cc5ec01e-7b58-4928-ae54-75d1cc7ca7d4"
+            },
+            "sourceId" : "21",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Spring MVC Rest Controller"
+        }, {
+          "description" : "Allows users to reset their passwords with a single use URL.",
+          "documentation" : { },
+          "id" : "22",
+          "name" : "Reset Password Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "resetpasswordcontroller"
+          },
+          "relationships" : [ {
+            "description" : "Uses",
+            "destinationId" : "23",
+            "id" : "70",
+            "properties" : {
+              "structurizr.dsl.identifier" : "297269f0-ffcf-4d75-aea7-a58a440ab7e3"
+            },
+            "sourceId" : "22",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "25",
+            "id" : "71",
+            "properties" : {
+              "structurizr.dsl.identifier" : "3ba8e1ce-d837-446e-a187-07a7d0588181"
+            },
+            "sourceId" : "22",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Spring MVC Rest Controller"
+        }, {
+          "description" : "Provides functionality related to signing in, changing passwords, etc.",
+          "documentation" : { },
+          "id" : "23",
+          "name" : "Security Component",
+          "properties" : {
+            "structurizr.dsl.identifier" : "securitycomponent"
+          },
+          "relationships" : [ {
+            "description" : "Reads from and writes to",
+            "destinationId" : "43",
+            "id" : "72",
+            "properties" : {
+              "structurizr.dsl.identifier" : "76f0a0c2-d2ea-465b-a81c-360025b659fa"
+            },
+            "sourceId" : "23",
+            "tags" : "Relationship",
+            "technology" : "SQL/TCP"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Spring Bean"
+        }, {
+          "description" : "A facade onto the DLT banking system.",
+          "documentation" : { },
+          "id" : "24",
+          "name" : "DLT Banking System Facade",
+          "properties" : {
+            "structurizr.dsl.identifier" : "dltbankingsystemfacade"
+          },
+          "relationships" : [ {
+            "description" : "Makes API calls to",
+            "destinationId" : "15",
+            "id" : "74",
+            "properties" : {
+              "structurizr.dsl.identifier" : "9d608bf3-8c03-426a-bf2a-bb4638000388"
+            },
+            "sourceId" : "24",
+            "tags" : "Relationship",
+            "technology" : "XML/HTTPS"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Spring Bean"
+        }, {
+          "description" : "Sends Notifications to users.",
+          "documentation" : { },
+          "id" : "25",
+          "name" : "Notification Component",
+          "properties" : {
+            "structurizr.dsl.identifier" : "notificationcomponent"
+          },
+          "relationships" : [ {
+            "description" : "Sends Notification using",
+            "destinationId" : "16",
+            "id" : "75",
+            "properties" : {
+              "structurizr.dsl.identifier" : "7087a5b8-ee68-4fcc-9e61-d01cc72071b2"
+            },
+            "sourceId" : "25",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Spring Bean"
+        } ],
+        "description" : "Provides retail CDBC functionality via a JSON/HTTPS API.",
+        "documentation" : { },
+        "id" : "19",
+        "name" : "WalletAPI Application",
+        "properties" : {
+          "structurizr.dsl.identifier" : "walletapplication"
+        },
+        "relationships" : [ {
+          "destinationId" : "15",
+          "id" : "50",
+          "properties" : {
+            "structurizr.dsl.identifier" : "9cbbcc97-b92c-435c-9e79-4f7caf469a4d"
+          },
+          "sourceId" : "19",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Reads from and writes to",
+          "destinationId" : "43",
+          "id" : "73",
+          "linkedRelationshipId" : "72",
+          "sourceId" : "19",
+          "technology" : "SQL/TCP"
+        }, {
+          "description" : "Sends Notification using",
+          "destinationId" : "16",
+          "id" : "76",
+          "linkedRelationshipId" : "75",
+          "sourceId" : "19"
+        } ],
+        "tags" : "Element,Container",
+        "technology" : "Java and Spring MVC"
+      }, {
+        "description" : "API GW: Enforces Authentication and security checks",
+        "documentation" : { },
+        "id" : "26",
+        "name" : "API Gateway",
+        "properties" : {
+          "structurizr.dsl.identifier" : "apigateway"
+        },
+        "relationships" : [ {
+          "destinationId" : "29",
+          "id" : "31",
+          "properties" : {
+            "structurizr.dsl.identifier" : "bc75d385-d158-4bbd-a941-0e54b859904b"
+          },
+          "sourceId" : "26",
+          "tags" : "Relationship"
+        }, {
+          "description" : "forward",
+          "destinationId" : "32",
+          "id" : "33",
+          "properties" : {
+            "structurizr.dsl.identifier" : "36b1e537-add9-4526-a068-15f6c50f2f8c"
+          },
+          "sourceId" : "26",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container"
+      }, {
+        "components" : [ {
+          "description" : "Keycloack DB",
+          "documentation" : { },
+          "id" : "30",
+          "name" : "User Directory",
+          "properties" : {
+            "structurizr.dsl.identifier" : "userdirectory"
+          },
+          "tags" : "Element,Component"
+        } ],
+        "description" : "Authentication system",
+        "documentation" : { },
+        "id" : "29",
+        "name" : "Authentication Bank1",
+        "properties" : {
+          "structurizr.dsl.identifier" : "authenticationlfi"
+        },
+        "tags" : "Element,Container",
+        "technology" : "OpenID Connect IDS"
+      }, {
+        "description" : "orchestrate request and enforces authorization (PEP)",
+        "documentation" : { },
+        "id" : "32",
+        "name" : "BFF \n Banckend for Frontend",
+        "properties" : {
+          "structurizr.dsl.identifier" : "bff"
+        },
+        "relationships" : [ {
+          "description" : "invoke",
+          "destinationId" : "19",
+          "id" : "34",
+          "properties" : {
+            "structurizr.dsl.identifier" : "c05b1b3e-a245-4c72-8670-dd03c64f26ae"
+          },
+          "sourceId" : "32",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Transfer Notification",
+          "destinationId" : "1",
+          "id" : "47",
+          "properties" : {
+            "structurizr.dsl.identifier" : "d15be80b-5729-41f3-8c8f-9c34cffa2d8f"
+          },
+          "sourceId" : "32",
+          "tags" : "Relationship"
+        }, {
+          "description" : "enforce authorizatino",
+          "destinationId" : "35",
+          "id" : "49",
+          "properties" : {
+            "structurizr.dsl.identifier" : "1595575f-2698-4424-a200-9540e383fd2f"
+          },
+          "sourceId" : "32",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container",
+        "technology" : "Typescrip Server"
+      }, {
+        "components" : [ {
+          "description" : "Open Policy Agent graphql TODO",
+          "documentation" : { },
+          "id" : "36",
+          "name" : "Policy decision service",
+          "properties" : {
+            "structurizr.dsl.identifier" : "policydecisionservice"
+          },
+          "relationships" : [ {
+            "description" : "Read",
+            "destinationId" : "38",
+            "id" : "41",
+            "properties" : {
+              "structurizr.dsl.identifier" : "a438326f-976c-4e49-b5cc-1bdd327205dd"
+            },
+            "sourceId" : "36",
+            "tags" : "Relationship"
+          }, {
+            "description" : "refers to",
+            "destinationId" : "39",
+            "id" : "42",
+            "properties" : {
+              "structurizr.dsl.identifier" : "7d5f38bd-78c6-4351-879e-c0d0a770ed77"
+            },
+            "sourceId" : "36",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "open policy agent OPA"
+        }, {
+          "description" : "Open Policy Agent resoruce serverO",
+          "documentation" : { },
+          "id" : "37",
+          "name" : "Policy decision resource server",
+          "properties" : {
+            "structurizr.dsl.identifier" : "oparesourceserver"
+          },
+          "relationships" : [ {
+            "description" : "Read/Write",
+            "destinationId" : "38",
+            "id" : "40",
+            "properties" : {
+              "structurizr.dsl.identifier" : "7fea2dbc-5532-4858-aa0f-96891fc0a5f7"
+            },
+            "sourceId" : "37",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "policy information point PIP"
+        }, {
+          "description" : "policy data storage",
+          "documentation" : { },
+          "id" : "38",
+          "name" : "Policy Database",
+          "properties" : {
+            "structurizr.dsl.identifier" : "opa_database"
+          },
+          "tags" : "Element,Component,Database",
+          "technology" : "Sync with user directory and Policy Bundles (schema) TBC"
+        }, {
+          "description" : "Policy Bundles (policy data schema TBC)",
+          "documentation" : { },
+          "id" : "39",
+          "name" : "Policy Bundle",
+          "properties" : {
+            "structurizr.dsl.identifier" : "opa_policybundle"
+          },
+          "tags" : "Element,Component"
+        } ],
+        "description" : "Authorization system (OPA: open policy agent, claim based)",
+        "documentation" : { },
+        "id" : "35",
+        "name" : "Authorization Bank1",
+        "properties" : {
+          "structurizr.dsl.identifier" : "authorizationlfi"
+        },
+        "tags" : "Element,Container",
+        "url" : "https://engineering.r3.com/architecture-and-design/IAM/HLD/v1/README.html"
+      }, {
+        "description" : "Stores user registration TODO",
+        "documentation" : { },
+        "id" : "43",
+        "name" : "Database",
+        "properties" : {
+          "structurizr.dsl.identifier" : "database"
+        },
+        "tags" : "Element,Container,Database",
+        "technology" : "Postgres Database Schema"
+      } ],
+      "description" : "Allows customers to view information about their retail wallet, and make payments.",
+      "documentation" : { },
+      "group" : "LFI Bank",
+      "id" : "17",
+      "location" : "Unspecified",
+      "name" : "Retail CDBC System",
+      "properties" : {
+        "structurizr.dsl.identifier" : "walletbankingsystem"
+      },
+      "relationships" : [ {
+        "description" : "Transfer Notification",
+        "destinationId" : "1",
+        "id" : "48",
+        "linkedRelationshipId" : "47",
+        "sourceId" : "17"
+      }, {
+        "destinationId" : "15",
+        "id" : "51",
+        "linkedRelationshipId" : "50",
+        "sourceId" : "17"
+      }, {
+        "description" : "Gets accounts and makes payments using",
+        "destinationId" : "15",
+        "id" : "55",
+        "properties" : {
+          "structurizr.dsl.identifier" : "30836c9d-da43-4e9d-a94d-a2f90ccaee92"
+        },
+        "sourceId" : "17",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Sends Notification using",
+        "destinationId" : "16",
+        "id" : "56",
+        "properties" : {
+          "structurizr.dsl.identifier" : "c24dad99-0425-49cb-8076-086c0e9fa8f3"
+        },
+        "sourceId" : "17",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Software System"
+    }, {
+      "description" : "Allows customers to view information about their retail wallet, and make payments.",
+      "documentation" : { },
+      "group" : "LFI Bank 2",
+      "id" : "44",
+      "location" : "Unspecified",
+      "name" : "Retail CDBC System Bank 2",
+      "properties" : {
+        "structurizr.dsl.identifier" : "walletbankingsystem2"
+      },
+      "tags" : "Element,Software System"
+    } ]
+  },
+  "name" : "Retail CDBC",
+  "properties" : {
+    "structurizr.dsl" : "LyoKICogVGhpcyBpcyBhIGNvbWJpbmVkIHZlcnNpb24gb2YgdGhlIGZvbGxvd2luZyB3b3Jrc3BhY2VzLCB3aXRoIGF1dG9tYXRpYyBsYXlvdXQgZW5hYmxlZDoKICoKICogLSAiUmV0YWlsIENEQkMgLSBTeXN0ZW0gTGFuZHNjYXBlIiAoaHR0cHM6Ly9zdHJ1Y3R1cml6ci5jb20vc2hhcmUvMjgyMDEvKQogKiAtICJSZXRhaWwgQ0RCQyAtIFJldGFpbCBDREJDIFN5c3RlbSIgKGh0dHBzOi8vc3RydWN0dXJpenIuY29tL3NoYXJlLzM2MTQxLykKKi8Kd29ya3NwYWNlICJSZXRhaWwgQ0RCQyIgIlVTRSBDREJDIFBIQVNFIDIgUkVUQUlMIiB7CiAgICAvLyAhaWRlbnRpZmllcnMgaGllcmFyY2hpY2FsCiAgICBtb2RlbCB7CgogICAgICAgIAoKICAgICAgICBtb2JpbGVBcHAgPSBzb2Z0d2FyZXN5c3RlbSAiTW9iaWxlIEFwcCIgIlByb3ZpZGVzIGEgbGltaXRlZCBzdWJzZXQgb2YgdGhlIHJldGFpbCBDREJDIGZ1bmN0aW9uYWxpdHkgdG8gY3VzdG9tZXJzIHZpYSB0aGVpciBtb2JpbGUgZGV2aWNlLiIgIlhhbWFyaW4iIHsKICAgICAgICAgICAgdGFncyBtb2JpbGVBcHAKICAgICAgICB9CgogICAgICAgIG1vYmlsZUFwcDIgPSBzb2Z0d2FyZXN5c3RlbSAiTW9iaWxlIEFwcCBCYW5rMiIgIlByb3ZpZGVzIGEgbGltaXRlZCBzdWJzZXQgb2YgdGhlIHJldGFpbCBDREJDIGZ1bmN0aW9uYWxpdHkgdG8gY3VzdG9tZXJzIHZpYSB0aGVpciBtb2JpbGUgZGV2aWNlLiIgIlhhbWFyaW4iIHsKICAgICAgICAgICAgdGFncyBtb2JpbGVBcHAKICAgICAgICB9CiAgICAgICAgY3VzdG9tZXIgPSBwZXJzb24gIlBlcnNvbmFsIEJhbmtpbmcgQ3VzdG9tZXIiICJBIGN1c3RvbWVyIG9mIHRoZSBiYW5rLCB3aXRoIHBlcnNvbmFsIHJldGFpbCB3YWxsZXQuIiAiQ3VzdG9tZXIiIHsKICAgICAgICAgICAgLT4gbW9iaWxlQXBwCiAgICAgICAgfQoKICAgICAgICBwYXllZSA9IHBlcnNvbiAiUGF5ZWUiICJBIGN1c3RvbWVyIG9mIHRoZSBiYW5rLCB3aXRoIHBlcnNvbmFsIHJldGFpbCB3YWxsZXQuIiAiQ3VzdG9tZXIiIHsKICAgICAgICAgICAgLT4gbW9iaWxlQXBwMgogICAgICAgIH0KCiAgICAgICAgZ3JvdXAgIkNlbnRyYWwgQmFuayIgewogICAgICAgICAgICBDQl9ETFQgPSBzb2Z0d2FyZXN5c3RlbSAiQ2VudHJhbCBCYW5rIERMVCIgIkRpc3RyaWJ1dGVkIExlZCBnZXJzeXN0ZW0gZm9yIENEQkMiICJDb3JkYSBsZWRnZXIiCiAgICAgICAgICAgIG5vdGFyeSA9IHNvZnR3YXJlc3lzdGVtICJOb3RhcnkiICJOb3Rhcml6ZXMgYW5kIHByZXZlbnRzIGRvdWJsZSBzcGVuZGluZyIgIkNvcmRhIgogICAgICAgICAgICBtQnJpZGdlID0gc29mdHdhcmVzeXN0ZW0gIm1CcmlkZ2UgYmxvY2tDaGFpbiIgIkNyb3NzIGJvcmRlciB3aG9sZXNhbGUgQ0RCQyBzeXN0ZW0iICJibG9ja2NoYWluIgogICAgICAgICAgICBjb3JlQmFua2luZyA9IHNvZnR3YXJlc3lzdGVtICJDQiBDb3JlIEJhbmtpbmciICJDb3JlIEJhbmtpbmcgc3lzdGVtIiB7CiAgICAgICAgICAgIGZsZXhDdWJlID0gY29udGFpbmVyICJGbGV4Y3ViZSIgIkZsZXhjdWJlIGNvcmUgYmFua2luZyBzeXN0ZW0iICJPcmFjbGUgRmxleGN1YmUiIHsKICAgICAgICAgICAgICAgIHJlZ2lzdGVyZWRDbGllbnRLZXkgPSBjb21wb25lbnQgIkNsaWVudCBQdWJsaWMgS2V5IiAiUmVnaXN0ZXJlZCBjbGllbnQgUHVibGljIEtleSIgIkVDRFNBIDUxMiIgewogICAgICAgICAgICAgICAgICAgIHRhZ3MgcHVibGljS2V5CiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CiAgICAgICAgfQoKICAgICAgICBncm91cCAibWVyY2hhbnQiIHsKICAgICAgICAgICAgUE9TID0gc29mdHdhcmVzeXN0ZW0gIlBPUyIgIlBvaW50IG9mIHNhbGUiICJFeGlzdGluZyBTeXN0ZW0iCiAgICAgICAgfQoKICAgICAgICBncm91cCAiTEZJIEJhbmsiIHsKICAgICAgICAgICAgYWRtaW5Vc2VyID0gcGVyc29uICJBZG1pbiBTdGFmZiIgIkFkbWluIHVzZXIgbWFuYWdpbmcgaW5zdGFsbGF0aW9uIiAiQmFuayBTdGFmZiIKCiAgICAgICAgICAgIERMVCA9IHNvZnR3YXJlc3lzdGVtICJETFQgQmFua2luZyBTeXN0ZW0iICJEaXN0cmlidXRlZCBMZWQgZ2Vyc3lzdGVtIGZvciBDREJDIiAiQ29yZGEgbGVkZ2VyIgogICAgICAgICAgICBub3RpZmljYXRpb24gPSBzb2Z0d2FyZXN5c3RlbSAiTm90aWZpY2F0aW9uIFN5c3RlbSIgIk5vdGlmaWNhdGlvbiBOb3RpZmljYXRpb24gc3lzdGVtLiIgIk5vdGlmaWNhdGlvbiBTeXN0ZW0iCgogICAgICAgICAgICB3YWxsZXRCYW5raW5nU3lzdGVtID0gc29mdHdhcmVzeXN0ZW0gIlJldGFpbCBDREJDIFN5c3RlbSIgIkFsbG93cyBjdXN0b21lcnMgdG8gdmlldyBpbmZvcm1hdGlvbiBhYm91dCB0aGVpciByZXRhaWwgd2FsbGV0LCBhbmQgbWFrZSBwYXltZW50cy4iIHsKICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgd2ViQXBwbGljYXRpb24gPSBjb250YWluZXIgIldlYiBBcHBsaWNhdGlvbiIgIkRlbGl2ZXJzIHRoZSBzdGF0aWMgY29udGVudCBhbmQgdGhlIHJldGFpbCBDREJDIHNpbmdsZSBwYWdlIGFwcGxpY2F0aW9uLiIgIkphdmEgYW5kIFNwcmluZyBNVkMiCiAgICAgICAgICAgICAgICB3YWxsZXRBcHBsaWNhdGlvbiA9IGNvbnRhaW5lciAiV2FsbGV0QVBJIEFwcGxpY2F0aW9uIiAiUHJvdmlkZXMgcmV0YWlsIENEQkMgZnVuY3Rpb25hbGl0eSB2aWEgYSBKU09OL0hUVFBTIEFQSS4iICJKYXZhIGFuZCBTcHJpbmcgTVZDIiB7CiAgICAgICAgICAgICAgICAgICAgc2lnbmluQ29udHJvbGxlciA9IGNvbXBvbmVudCAiU2lnbiBJbiBDb250cm9sbGVyIiAiQWxsb3dzIHVzZXJzIHRvIHNpZ24gaW4gdG8gdGhlIFJldGFpbCBDREJDIFN5c3RlbS4iICJTcHJpbmcgTVZDIFJlc3QgQ29udHJvbGxlciIKICAgICAgICAgICAgICAgICAgICBhY2NvdW50c1N1bW1hcnlDb250cm9sbGVyID0gY29tcG9uZW50ICJBY2NvdW50cyBTdW1tYXJ5IENvbnRyb2xsZXIiICJQcm92aWRlcyBjdXN0b21lcnMgd2l0aCBhIHN1bW1hcnkgb2YgdGhlaXIgcmV0YWlsIHdhbGxldC4iICJTcHJpbmcgTVZDIFJlc3QgQ29udHJvbGxlciIKICAgICAgICAgICAgICAgICAgICByZXNldFBhc3N3b3JkQ29udHJvbGxlciA9IGNvbXBvbmVudCAiUmVzZXQgUGFzc3dvcmQgQ29udHJvbGxlciIgIkFsbG93cyB1c2VycyB0byByZXNldCB0aGVpciBwYXNzd29yZHMgd2l0aCBhIHNpbmdsZSB1c2UgVVJMLiIgIlNwcmluZyBNVkMgUmVzdCBDb250cm9sbGVyIgogICAgICAgICAgICAgICAgICAgIHNlY3VyaXR5Q29tcG9uZW50ID0gY29tcG9uZW50ICJTZWN1cml0eSBDb21wb25lbnQiICJQcm92aWRlcyBmdW5jdGlvbmFsaXR5IHJlbGF0ZWQgdG8gc2lnbmluZyBpbiwgY2hhbmdpbmcgcGFzc3dvcmRzLCBldGMuIiAiU3ByaW5nIEJlYW4iCiAgICAgICAgICAgICAgICAgICAgRExUQmFua2luZ1N5c3RlbUZhY2FkZSA9IGNvbXBvbmVudCAiRExUIEJhbmtpbmcgU3lzdGVtIEZhY2FkZSIgIkEgZmFjYWRlIG9udG8gdGhlIERMVCBiYW5raW5nIHN5c3RlbS4iICJTcHJpbmcgQmVhbiIKICAgICAgICAgICAgICAgICAgICBub3RpZmljYXRpb25Db21wb25lbnQgPSBjb21wb25lbnQgIk5vdGlmaWNhdGlvbiBDb21wb25lbnQiICJTZW5kcyBOb3RpZmljYXRpb25zIHRvIHVzZXJzLiIgIlNwcmluZyBCZWFuIgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgYXBpR2F0ZXdheSA9IGNvbnRhaW5lciAiQVBJIEdhdGV3YXkiICJBUEkgR1c6IEVuZm9yY2VzIEF1dGhlbnRpY2F0aW9uIGFuZCBzZWN1cml0eSBjaGVja3MiewogICAgICAgICAgICAgICAgICAgIG1vYmlsZUFwcCAtPiBhcGlHYXRld2F5CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBhdXRoZW50aWNhdGlvbkxGSSA9IGNvbnRhaW5lciAiQXV0aGVudGljYXRpb24gQmFuazEiICJBdXRoZW50aWNhdGlvbiBzeXN0ZW0iICJPcGVuSUQgQ29ubmVjdCBJRFMiewogICAgICAgICAgICAgICAgICAgIHVzZXJEaXJlY3RvcnkgPSBjb21wb25lbnQgIlVzZXIgRGlyZWN0b3J5IiAiS2V5Y2xvYWNrIERCIgogICAgICAgICAgICAgICAgICAgIGFwaUdhdGV3YXkgLT4gYXV0aGVudGljYXRpb25MRkkKICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIEJGRiA9IGNvbnRhaW5lciAiQkZGIFxuIEJhbmNrZW5kIGZvciBGcm9udGVuZCIgIm9yY2hlc3RyYXRlIHJlcXVlc3QgYW5kIGVuZm9yY2VzIGF1dGhvcml6YXRpb24gKFBFUCkiICJUeXBlc2NyaXAgU2VydmVyInsKICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICBhcGlHYXRld2F5IC0+IHRoaXMgImZvcndhcmQiCiAgICAgICAgICAgICAgICAgICAgdGhpcyAtPiB3YWxsZXRBcHBsaWNhdGlvbiAiaW52b2tlIgogICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgYXV0aG9yaXphdGlvbkxGSSA9IGNvbnRhaW5lciAiQXV0aG9yaXphdGlvbiBCYW5rMSIgIkF1dGhvcml6YXRpb24gc3lzdGVtIChPUEE6IG9wZW4gcG9saWN5IGFnZW50LCBjbGFpbSBiYXNlZCkiewogICAgICAgICAgICAgICAgICAgIHVybCAiaHR0cHM6Ly9lbmdpbmVlcmluZy5yMy5jb20vYXJjaGl0ZWN0dXJlLWFuZC1kZXNpZ24vSUFNL0hMRC92MS9SRUFETUUuaHRtbCIKICAgICAgICAgICAgICAgICAgICBwb2xpY3lEZWNpc2lvblNlcnZpY2UgPSAgY29tcG9uZW50ICJQb2xpY3kgZGVjaXNpb24gc2VydmljZSIgICJPcGVuIFBvbGljeSBBZ2VudCBncmFwaHFsIFRPRE8iICJvcGVuIHBvbGljeSBhZ2VudCBPUEEiCiAgICAgICAgICAgICAgICAgICAgT1BBcmVzb3VyY2VTZXJ2ZXIgPSAgY29tcG9uZW50ICJQb2xpY3kgZGVjaXNpb24gcmVzb3VyY2Ugc2VydmVyIiAgIk9wZW4gUG9saWN5IEFnZW50IHJlc29ydWNlIHNlcnZlck8iICJwb2xpY3kgaW5mb3JtYXRpb24gcG9pbnQgUElQIgogICAgICAgICAgICAgICAgICAgIE9QQV9EYXRhYmFzZSA9IGNvbXBvbmVudCAiUG9saWN5IERhdGFiYXNlIiAicG9saWN5IGRhdGEgc3RvcmFnZSIgIlN5bmMgd2l0aCB1c2VyIGRpcmVjdG9yeSBhbmQgUG9saWN5IEJ1bmRsZXMgKHNjaGVtYSkgVEJDIiAiRGF0YWJhc2UiCiAgICAgICAgICAgICAgICAgICAgT1BBX3BvbGljeUJ1bmRsZSA9IGNvbXBvbmVudCAiUG9saWN5IEJ1bmRsZSIgIlBvbGljeSBCdW5kbGVzIChwb2xpY3kgZGF0YSBzY2hlbWEgVEJDKSIKICAgICAgICAgICAgICAgICAgICBPUEFyZXNvdXJjZVNlcnZlciAtPiBPUEFfRGF0YWJhc2UgIlJlYWQvV3JpdGUiCiAgICAgICAgICAgICAgICAgICAgcG9saWN5RGVjaXNpb25TZXJ2aWNlIC0+IE9QQV9EYXRhYmFzZSAiUmVhZCIKICAgICAgICAgICAgICAgICAgICBwb2xpY3lEZWNpc2lvblNlcnZpY2UgLT4gT1BBX3BvbGljeUJ1bmRsZSAicmVmZXJzIHRvIgogICAgICAgICAgICAgICAgfQoKCiAgICAgICAgICAgICAgICBkYXRhYmFzZSA9IGNvbnRhaW5lciAiRGF0YWJhc2UiICJTdG9yZXMgdXNlciByZWdpc3RyYXRpb24gVE9ETyIgIlBvc3RncmVzIERhdGFiYXNlIFNjaGVtYSIgIkRhdGFiYXNlIgogICAgICAgICAgICB9CiAgICAgICAgfQoKICAgICAgICBncm91cCAiTEZJIEJhbmsgMiIgewogICAgICAgICAgIAogICAgICAgICAgICB3YWxsZXRCYW5raW5nU3lzdGVtMiA9IHNvZnR3YXJlc3lzdGVtICJSZXRhaWwgQ0RCQyBTeXN0ZW0gQmFuayAyIiAiQWxsb3dzIGN1c3RvbWVycyB0byB2aWV3IGluZm9ybWF0aW9uIGFib3V0IHRoZWlyIHJldGFpbCB3YWxsZXQsIGFuZCBtYWtlIHBheW1lbnRzLiIgICAgIAogICAgICAgIH0KICAgICAgICAKCgogICAgICAgICMgcmVsYXRpb25zaGlwcyBiZXR3ZWVuIHBlb3BsZSBhbmQgc29mdHdhcmUgc3lzdGVtcwoKICAgICAgICBtb2JpbGVBcHAgLT4gYXV0aGVudGljYXRpb25MRkkgIkxvZyBpbiIKICAgICAgICBtb2JpbGVBcHAgLT4gQkZGICJTdWJtaXQgVHJhbnNmZXIiCiAgICAgICAgQkZGIC0+IG1vYmlsZUFwcCAiVHJhbnNmZXIgTm90aWZpY2F0aW9uIgogICAgICAgIEJGRiAtPiBhdXRob3JpemF0aW9uTEZJICJlbmZvcmNlIGF1dGhvcml6YXRpbm8iCiAgICAgICAgd2FsbGV0QXBwbGljYXRpb24gLT4gRExUCgogICAgICAgIG1vYmlsZUFwcCAtPiBtb2JpbGVBcHAyICJTY2FuIFFSIGNvZGUiCgogICAgICAgIERMVCAtPiBDQl9ETFQgInNldHRsZSB0cmFuc2ZlciIKCiAgICAgICAgY3VzdG9tZXIgLT4gd2FsbGV0QmFua2luZ1N5c3RlbSAiVmlld3MgYWNjb3VudCBiYWxhbmNlcywgYW5kIG1ha2VzIHBheW1lbnRzIHVzaW5nIgogICAgICAgIHdhbGxldEJhbmtpbmdTeXN0ZW0gLT4gRExUICJHZXRzIGFjY291bnRzIGFuZCBtYWtlcyBwYXltZW50cyB1c2luZyIKICAgICAgICB3YWxsZXRCYW5raW5nU3lzdGVtIC0+IG5vdGlmaWNhdGlvbiAiU2VuZHMgTm90aWZpY2F0aW9uIHVzaW5nIgogICAgICAgIG5vdGlmaWNhdGlvbiAtPiBjdXN0b21lciAiU2VuZHMgTm90aWZpY2F0aW9ucyB0byIKICAgICAgICBjdXN0b21lciAtPiBhZG1pblVzZXIgIkFza3MgcXVlc3Rpb25zIHRvIiAiVGVsZXBob25lIgogICAgICAgIGFkbWluVXNlciAtPiBETFQgIlVzZXMiCiAgICAgICAgY3VzdG9tZXIgLT4gUE9TICJXaXRoZHJhd3MgY2FzaCB1c2luZyIKICAgICAgICBQT1MgLT4gRExUICJVc2VzIgoKICAgICAgICAjIHJlbGF0aW9uc2hpcHMgdG8vZnJvbSBjb250YWluZXJzCiAgICAgICAgY3VzdG9tZXIgLT4gd2ViQXBwbGljYXRpb24gIlZpc2l0cyBiaWdiYW5rLmNvbS9pYiB1c2luZyIgIkhUVFBTIgogICAgICAgIGN1c3RvbWVyIC0+IG1vYmlsZUFwcCAiVmlld3MgYWNjb3VudCBiYWxhbmNlcywgYW5kIG1ha2VzIHBheW1lbnRzIHVzaW5nIgoKICAgICAgICAjIHJlbGF0aW9uc2hpcHMgdG8vZnJvbSBjb21wb25lbnRzCiAgICAgIAogICAgICAgIG1vYmlsZUFwcCAtPiBzaWduaW5Db250cm9sbGVyICJNYWtlcyBBUEkgY2FsbHMgdG8iICJKU09OL0hUVFBTIgogICAgICAgIG1vYmlsZUFwcCAtPiBhY2NvdW50c1N1bW1hcnlDb250cm9sbGVyICJNYWtlcyBBUEkgY2FsbHMgdG8iICJKU09OL0hUVFBTIgogICAgICAgIG1vYmlsZUFwcCAtPiByZXNldFBhc3N3b3JkQ29udHJvbGxlciAiTWFrZXMgQVBJIGNhbGxzIHRvIiAiSlNPTi9IVFRQUyIKICAgICAgICBzaWduaW5Db250cm9sbGVyIC0+IHNlY3VyaXR5Q29tcG9uZW50ICJVc2VzIgogICAgICAgIGFjY291bnRzU3VtbWFyeUNvbnRyb2xsZXIgLT4gRExUQmFua2luZ1N5c3RlbUZhY2FkZSAiVXNlcyIKICAgICAgICByZXNldFBhc3N3b3JkQ29udHJvbGxlciAtPiBzZWN1cml0eUNvbXBvbmVudCAiVXNlcyIKICAgICAgICByZXNldFBhc3N3b3JkQ29udHJvbGxlciAtPiBub3RpZmljYXRpb25Db21wb25lbnQgIlVzZXMiCiAgICAgICAgc2VjdXJpdHlDb21wb25lbnQgLT4gZGF0YWJhc2UgIlJlYWRzIGZyb20gYW5kIHdyaXRlcyB0byIgIlNRTC9UQ1AiCiAgICAgICAgRExUQmFua2luZ1N5c3RlbUZhY2FkZSAtPiBETFQgIk1ha2VzIEFQSSBjYWxscyB0byIgIlhNTC9IVFRQUyIKICAgICAgICBub3RpZmljYXRpb25Db21wb25lbnQgLT4gbm90aWZpY2F0aW9uICJTZW5kcyBOb3RpZmljYXRpb24gdXNpbmciCgogICAgICAgIGRlcGxveW1lbnRFbnZpcm9ubWVudCAiRGV2ZWxvcG1lbnQiIHsKICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkRldmVsb3BlciBMYXB0b3AiICIiICJNaWNyb3NvZnQgV2luZG93cyAxMCBvciBBcHBsZSBtYWNPUyIgewogICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIldlYiBCcm93c2VyIiAiIiAiQ2hyb21lLCBGaXJlZm94LCBTYWZhcmksIG9yIEVkZ2UiIHsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJEb2NrZXIgQ29udGFpbmVyIC0gV2ViIFNlcnZlciIgIiIgIkRvY2tlciIgewogICAgICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJBcGFjaGUgVG9tY2F0IiAiIiAiQXBhY2hlIFRvbWNhdCA4LngiIHsKICAgICAgICAgICAgICAgICAgICAgICAgZGV2ZWxvcGVyV2ViQXBwbGljYXRpb25JbnN0YW5jZSA9IGNvbnRhaW5lckluc3RhbmNlIHdlYkFwcGxpY2F0aW9uCiAgICAgICAgICAgICAgICAgICAgICAgIGRldmVsb3BlcndhbGxldEFwcGxpY2F0aW9uSW5zdGFuY2UgPSBjb250YWluZXJJbnN0YW5jZSB3YWxsZXRBcHBsaWNhdGlvbgogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJEb2NrZXIgQ29udGFpbmVyIC0gRGF0YWJhc2UgU2VydmVyIiAiIiAiRG9ja2VyIiB7CiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkRhdGFiYXNlIFNlcnZlciIgIiIgIk9yYWNsZSAxMmMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgZGV2ZWxvcGVyRGF0YWJhc2VJbnN0YW5jZSA9IGNvbnRhaW5lckluc3RhbmNlIGRhdGFiYXNlCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJSZXRhaWwgQ0RCQyIgIiIgIlJldGFpbCBDREJDIGRhdGEgY2VudGVyIiAiIiB7CiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiYmlnYmFuay1kZXYwMDEiICIiICIiICIiIHsKICAgICAgICAgICAgICAgICAgICBzb2Z0d2FyZVN5c3RlbUluc3RhbmNlIERMVAogICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBSRFMgTXlTUUwgaW5zdGFuY2UiCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgfQoKICAgICAgICBkZXBsb3ltZW50RW52aXJvbm1lbnQgIkxpdmUiIHsKICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkN1c3RvbWVyJ3MgbW9iaWxlIGRldmljZSIgIiIgIkFwcGxlIGlPUyBvciBBbmRyb2lkIiB7CiAgICAgICAgICAgICAgICAvLyBsaXZlTW9iaWxlQXBwSW5zdGFuY2UgPSBjb250YWluZXJJbnN0YW5jZSBtb2JpbGVBcHAKICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBNb2JpbGUgY2xpZW50IgogICAgICAgICAgICB9CiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJDdXN0b21lcidzIGNvbXB1dGVyIiAiIiAiTWljcm9zb2Z0IFdpbmRvd3Mgb3IgQXBwbGUgbWFjT1MiIHsKICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJXZWIgQnJvd3NlciIgIiIgIkNocm9tZSwgRmlyZWZveCwgU2FmYXJpLCBvciBFZGdlIiB7CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJSZXRhaWwgQ0RCQyIgIiIgIlJldGFpbCBDREJDIGRhdGEgY2VudGVyIiB7CiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiYmlnYmFuay13ZWIqKioiICIiICJVYnVudHUgMTYuMDQgTFRTIiAiIiA0IHsKICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQXBhY2hlIFRvbWNhdCIgIiIgIkFwYWNoZSBUb21jYXQgOC54IiB7CiAgICAgICAgICAgICAgICAgICAgICAgIGxpdmVXZWJBcHBsaWNhdGlvbkluc3RhbmNlID0gY29udGFpbmVySW5zdGFuY2Ugd2ViQXBwbGljYXRpb24KICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiYmlnYmFuay1hcGkqKioiICIiICJVYnVudHUgMTYuMDQgTFRTIiAiIiA4IHsKICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQXBhY2hlIFRvbWNhdCIgIiIgIkFwYWNoZSBUb21jYXQgOC54IiB7CiAgICAgICAgICAgICAgICAgICAgICAgIGxpdmV3YWxsZXRBcHBsaWNhdGlvbkluc3RhbmNlID0gY29udGFpbmVySW5zdGFuY2Ugd2FsbGV0QXBwbGljYXRpb24KICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIFJEUyBNeVNRTCBpbnN0YW5jZSIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgImJpZ2JhbmstZGIwMSIgIiIgIlVidW50dSAxNi4wNCBMVFMiIHsKICAgICAgICAgICAgICAgICAgICBwcmltYXJ5RGF0YWJhc2VTZXJ2ZXIgPSBkZXBsb3ltZW50Tm9kZSAiT3JhY2xlIC0gUHJpbWFyeSIgIiIgIk9yYWNsZSAxMmMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgbGl2ZVByaW1hcnlEYXRhYmFzZUluc3RhbmNlID0gY29udGFpbmVySW5zdGFuY2UgZGF0YWJhc2UKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiYmlnYmFuay1kYjAyIiAiIiAiVWJ1bnR1IDE2LjA0IExUUyIgIkZhaWxvdmVyIiB7CiAgICAgICAgICAgICAgICAgICAgc2Vjb25kYXJ5RGF0YWJhc2VTZXJ2ZXIgPSBkZXBsb3ltZW50Tm9kZSAiT3JhY2xlIC0gU2Vjb25kYXJ5IiAiIiAiT3JhY2xlIDEyYyIgIkZhaWxvdmVyIiB7CiAgICAgICAgICAgICAgICAgICAgICAgIGxpdmVTZWNvbmRhcnlEYXRhYmFzZUluc3RhbmNlID0gY29udGFpbmVySW5zdGFuY2UgZGF0YWJhc2UgIkZhaWxvdmVyIgogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJiaWdiYW5rLXByb2QwMDEiICIiICIiICIiIHsKICAgICAgICAgICAgICAgICAgICBzb2Z0d2FyZVN5c3RlbUluc3RhbmNlIERMVAogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICBwcmltYXJ5RGF0YWJhc2VTZXJ2ZXIgLT4gc2Vjb25kYXJ5RGF0YWJhc2VTZXJ2ZXIgIlJlcGxpY2F0ZXMgZGF0YSB0byIKICAgICAgICB9CiAgICB9CgogICAgdmlld3MgewogICAgICAgIHRoZW1lIGRpYWdyYW1UaGVtZS5qc29uCiAgICAgICAgc3lzdGVtbGFuZHNjYXBlICJTeXN0ZW1MYW5kc2NhcGUiIHsKICAgICAgICAgICAgCiAgICAgICAgICAgIAogICAgICAgICAgICAKICAgICAgICAgICAgaW5jbHVkZSAqCgogICAgICAgICAgICBhdXRvTGF5b3V0CiAgICAgICAgfQoKICAgICAgICAvLyBzeXN0ZW1jb250ZXh0IHdhbGxldEJhbmtpbmdTeXN0ZW0gIlN5c3RlbUNvbnRleHQiIHsKICAgICAgICAvLyAgICAgaW5jbHVkZSAqCgogICAgICAgIC8vICAgICBhdXRvTGF5b3V0CiAgICAgICAgLy8gICAgIGRlc2NyaXB0aW9uICJUaGUgc3lzdGVtIGNvbnRleHQgZGlhZ3JhbSBmb3IgdGhlIFJldGFpbCBDREJDIFN5c3RlbS4iCiAgICAgICAgLy8gICAgIHByb3BlcnRpZXMgewogICAgICAgIC8vICAgICAgICAgc3RydWN0dXJpenIuZ3JvdXBzIGZhbHNlCiAgICAgICAgLy8gICAgIH0KICAgICAgICAvLyB9CgogICAgICAgIGNvbXBvbmVudCBhdXRob3JpemF0aW9uTEZJICJhdXRob3JpemF0aW9uTEZJIiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICAKICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgIH0KCgoKCiAgICAgICAgY29udGFpbmVyIHdhbGxldEJhbmtpbmdTeXN0ZW0gIndhbGxldHNDb250YWluZXJzIiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICAKICAgICAgICAgICAgLy8gYW5pbWF0aW9uIHsKICAgICAgICAgICAgLy8gICAgIGN1c3RvbWVyIERMVCBub3RpZmljYXRpb24KICAgICAgICAgICAgLy8gICAgIHdlYkFwcGxpY2F0aW9uCiAgICAgICAgICAgIC8vICAgICBzaW5nbGVQYWdlQXBwbGljYXRpb24KICAgICAgICAgICAgLy8gICAgIG1vYmlsZUFwcAogICAgICAgICAgICAvLyAgICAgd2FsbGV0QXBwbGljYXRpb24KICAgICAgICAgICAgLy8gICAgIGRhdGFiYXNlCiAgICAgICAgICAgIC8vIH0KICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgICAgICBkZXNjcmlwdGlvbiAiVGhlIGNvbnRhaW5lciBkaWFncmFtIGZvciB0aGUgUmV0YWlsIENEQkMgU3lzdGVtLiIKICAgICAgICB9CgogICAgICAgIGNvbnRhaW5lciBjb3JlQmFua2luZyAiY29yZUJhbmtpbmciIHsKICAgICAgICAgICAgaW5jbHVkZSAqCiAgICAgICAgICAgIGF1dG9MYXlvdXQKICAgICAgICB9IAogICAgICAgIGNvbXBvbmVudCBmbGV4Q3ViZSAiZmxleEN1YmUiICJmbGV4Q3ViZSBBcHBsaWNhdGlvbiJ7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICBhdXRvTGF5b3V0CiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgd2FsbGV0QXBwbGljYXRpb24gIldhbGxldEFQSUNvbXBvbmVudHMiIHsKICAgICAgICAgICAgaW5jbHVkZSAqCiAgICAgICAgICAgIC8vIGFuaW1hdGlvbiB7CiAgICAgICAgICAgIC8vICAgICBzaW5nbGVQYWdlQXBwbGljYXRpb24gbW9iaWxlQXBwIGRhdGFiYXNlIG5vdGlmaWNhdGlvbiBETFQKICAgICAgICAgICAgLy8gICAgIHNpZ25pbkNvbnRyb2xsZXIgc2VjdXJpdHlDb21wb25lbnQKICAgICAgICAgICAgLy8gICAgIGFjY291bnRzU3VtbWFyeUNvbnRyb2xsZXIgRExUQmFua2luZ1N5c3RlbUZhY2FkZQogICAgICAgICAgICAvLyAgICAgcmVzZXRQYXNzd29yZENvbnRyb2xsZXIgbm90aWZpY2F0aW9uQ29tcG9uZW50CiAgICAgICAgICAgIC8vIH0KICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgICAgICBkZXNjcmlwdGlvbiAiVGhlIGNvbXBvbmVudCBkaWFncmFtIGZvciB0aGUgV2FsbGV0QVBJIEFwcGxpY2F0aW9uLiIKICAgICAgICB9CgogICAgICAgIGltYWdlIERMVEJhbmtpbmdTeXN0ZW1GYWNhZGUgIkRMVEJhbmtpbmdTeXN0ZW1GYWNhZGUiIHsKICAgICAgICAgICAgaW1hZ2UgaHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3N0cnVjdHVyaXpyL2V4YW1wbGVzL21haW4vZHNsL2JpZy1iYW5rLXBsYy9pbnRlcm5ldC1iYW5raW5nLXN5c3RlbS9ETFQtYmFua2luZy1zeXN0ZW0tZmFjYWRlLnBuZwogICAgICAgICAgICB0aXRsZSAiW0NvZGVdIERMVCBCYW5raW5nIFN5c3RlbSBGYWNhZGUiCiAgICAgICAgfQoKICAgICAgICAvLyBkeW5hbWljIHdhbGxldEFwcGxpY2F0aW9uICJTaWduSW4iICJTdW1tYXJpc2VzIGhvdyB0aGUgc2lnbiBpbiBmZWF0dXJlIHdvcmtzIGluIHRoZSBzaW5nbGUtcGFnZSBhcHBsaWNhdGlvbi4iIHsKICAgICAgICAvLyAgICAgc2luZ2xlUGFnZUFwcGxpY2F0aW9uIC0+IHNpZ25pbkNvbnRyb2xsZXIgIlN1Ym1pdHMgY3JlZGVudGlhbHMgdG8iCiAgICAgICAgLy8gICAgIHNpZ25pbkNvbnRyb2xsZXIgLT4gc2VjdXJpdHlDb21wb25lbnQgIlZhbGlkYXRlcyBjcmVkZW50aWFscyB1c2luZyIKICAgICAgICAvLyAgICAgc2VjdXJpdHlDb21wb25lbnQgLT4gZGF0YWJhc2UgInNlbGVjdCAqIGZyb20gdXNlcnMgd2hlcmUgdXNlcm5hbWUgPSA/IgogICAgICAgIC8vICAgICBkYXRhYmFzZSAtPiBzZWN1cml0eUNvbXBvbmVudCAiUmV0dXJucyB1c2VyIGRhdGEgdG8iCiAgICAgICAgLy8gICAgIHNlY3VyaXR5Q29tcG9uZW50IC0+IHNpZ25pbkNvbnRyb2xsZXIgIlJldHVybnMgdHJ1ZSBpZiB0aGUgaGFzaGVkIHBhc3N3b3JkIG1hdGNoZXMiCiAgICAgICAgLy8gICAgIHNpZ25pbkNvbnRyb2xsZXIgLT4gc2luZ2xlUGFnZUFwcGxpY2F0aW9uICJTZW5kcyBiYWNrIGFuIGF1dGhlbnRpY2F0aW9uIHRva2VuIHRvIgogICAgICAgIC8vICAgICBhdXRvTGF5b3V0CiAgICAgICAgLy8gICAgIGRlc2NyaXB0aW9uICJTdW1tYXJpc2VzIGhvdyB0aGUgc2lnbiBpbiBmZWF0dXJlIHdvcmtzIGluIHRoZSBzaW5nbGUtcGFnZSBhcHBsaWNhdGlvbi4iCiAgICAgICAgLy8gfQoKICAgICAgICBkZXBsb3ltZW50IHdhbGxldEJhbmtpbmdTeXN0ZW0gIkRldmVsb3BtZW50IiAiRGV2ZWxvcG1lbnREZXBsb3ltZW50IiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICAvLyBhbmltYXRpb24gewogICAgICAgICAgICAvLyAgICAgZGV2ZWxvcGVyU2luZ2xlUGFnZUFwcGxpY2F0aW9uSW5zdGFuY2UKICAgICAgICAgICAgLy8gICAgIGRldmVsb3BlcldlYkFwcGxpY2F0aW9uSW5zdGFuY2UgZGV2ZWxvcGVyd2FsbGV0QXBwbGljYXRpb25JbnN0YW5jZQogICAgICAgICAgICAvLyAgICAgZGV2ZWxvcGVyRGF0YWJhc2VJbnN0YW5jZQogICAgICAgICAgICAvLyB9CiAgICAgICAgICAgIGF1dG9MYXlvdXQKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkFuIGV4YW1wbGUgZGV2ZWxvcG1lbnQgZGVwbG95bWVudCBzY2VuYXJpbyBmb3IgdGhlIFJldGFpbCBDREJDIFN5c3RlbS4iCiAgICAgICAgfQoKICAgICAgICBkZXBsb3ltZW50IHdhbGxldEJhbmtpbmdTeXN0ZW0gIkxpdmUiICJMaXZlRGVwbG95bWVudCIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgLy8gYW5pbWF0aW9uIHsKICAgICAgICAgICAgLy8gICAgIGxpdmVTaW5nbGVQYWdlQXBwbGljYXRpb25JbnN0YW5jZQogICAgICAgICAgICAvLyAgICAgbGl2ZU1vYmlsZUFwcEluc3RhbmNlCiAgICAgICAgICAgIC8vICAgICBsaXZlV2ViQXBwbGljYXRpb25JbnN0YW5jZSBsaXZld2FsbGV0QXBwbGljYXRpb25JbnN0YW5jZQogICAgICAgICAgICAvLyAgICAgbGl2ZVByaW1hcnlEYXRhYmFzZUluc3RhbmNlCiAgICAgICAgICAgIC8vICAgICBsaXZlU2Vjb25kYXJ5RGF0YWJhc2VJbnN0YW5jZQogICAgICAgICAgICAvLyB9CiAgICAgICAgICAgIGF1dG9MYXlvdXQKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkFuIGV4YW1wbGUgbGl2ZSBkZXBsb3ltZW50IHNjZW5hcmlvIGZvciB0aGUgUmV0YWlsIENEQkMgU3lzdGVtLiIKICAgICAgICB9CgogICAgICAgIHN0eWxlcyB7CiAgICAgICAgICAgIGVsZW1lbnQgIlBlcnNvbiIgewogICAgICAgICAgICAgICAgY29sb3IgI2ZmZmZmZgogICAgICAgICAgICAgICAgZm9udFNpemUgMjIKICAgICAgICAgICAgICAgIHNoYXBlIFBlcnNvbgogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIkN1c3RvbWVyIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICMwODQyN2IKICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJCYW5rIFN0YWZmIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM5OTk5OTkKICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJTb2Z0d2FyZSBTeXN0ZW0iIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzExNjhiZAogICAgICAgICAgICAgICAgY29sb3IgI2ZmZmZmZgogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIkV4aXN0aW5nIFN5c3RlbSIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjOTk5OTk5CiAgICAgICAgICAgICAgICBjb2xvciAjZmZmZmZmCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiQ29udGFpbmVyIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM0MzhkZDUKICAgICAgICAgICAgICAgIGNvbG9yICNmZmZmZmYKICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJXZWIgQnJvd3NlciIgewogICAgICAgICAgICAgICAgc2hhcGUgV2ViQnJvd3NlcgogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIk1vYmlsZSBBcHAiIHsKICAgICAgICAgICAgICAgIHNoYXBlIE1vYmlsZURldmljZUxhbmRzY2FwZQogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIkRhdGFiYXNlIiB7CiAgICAgICAgICAgICAgICBzaGFwZSBDeWxpbmRlcgogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIkNvbXBvbmVudCIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjODViYmYwCiAgICAgICAgICAgICAgICBjb2xvciAjMDAwMDAwCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiRmFpbG92ZXIiIHsKICAgICAgICAgICAgICAgIG9wYWNpdHkgMjUKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KfQ=="
+  },
+  "views" : {
+    "componentViews" : [ {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "35",
+      "dimensions" : {
+        "height" : 1411,
+        "width" : 1640
+      },
+      "elements" : [ {
+        "id" : "36",
+        "x" : 969,
+        "y" : 219
+      }, {
+        "id" : "37",
+        "x" : 219,
+        "y" : 219
+      }, {
+        "id" : "38",
+        "x" : 219,
+        "y" : 819
+      }, {
+        "id" : "39",
+        "x" : 969,
+        "y" : 819
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "authorizationLFI",
+      "order" : 2,
+      "relationships" : [ {
+        "id" : "40"
+      }, {
+        "id" : "41"
+      }, {
+        "id" : "42"
+      } ]
+    }, {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "11",
+      "description" : "flexCube Application",
+      "elements" : [ {
+        "id" : "12",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "flexCube",
+      "order" : 5
+    }, {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "19",
+      "description" : "The component diagram for the WalletAPI Application.",
+      "elements" : [ {
+        "id" : "1",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "15",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "16",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "20",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "21",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "22",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "23",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "24",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "25",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "43",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "WalletAPIComponents",
+      "order" : 6,
+      "relationships" : [ {
+        "id" : "64"
+      }, {
+        "id" : "66"
+      }, {
+        "id" : "67"
+      }, {
+        "id" : "68"
+      }, {
+        "id" : "69"
+      }, {
+        "id" : "70"
+      }, {
+        "id" : "71"
+      }, {
+        "id" : "72"
+      }, {
+        "id" : "74"
+      }, {
+        "id" : "75"
+      } ]
+    } ],
+    "configuration" : {
+      "branding" : { },
+      "lastSavedView" : "authorizationLFI",
+      "metadataSymbols" : "SquareBrackets",
+      "styles" : {
+        "elements" : [ {
+          "background" : "#cccccc",
+          "color" : "#000000",
+          "icon" : "https://static.structurizr.com/themes/amazon-web-services-2023.01.31/Res_AWS-IoT_Certificate_48_Light.png",
+          "stroke" : "#3d6fdd",
+          "tag" : "publicKey"
+        }, {
+          "background" : "#438dd5",
+          "color" : "#ffffff",
+          "fontSize" : 22,
+          "shape" : "MobileDevicePortrait",
+          "tag" : "mobileApp"
+        }, {
+          "color" : "#ffffff",
+          "fontSize" : 22,
+          "shape" : "Person",
+          "tag" : "Person"
+        }, {
+          "background" : "#08427b",
+          "tag" : "Customer"
+        }, {
+          "background" : "#999999",
+          "tag" : "Bank Staff"
+        }, {
+          "background" : "#1168bd",
+          "color" : "#ffffff",
+          "tag" : "Software System"
+        }, {
+          "background" : "#999999",
+          "color" : "#ffffff",
+          "tag" : "Existing System"
+        }, {
+          "background" : "#438dd5",
+          "color" : "#ffffff",
+          "tag" : "Container"
+        }, {
+          "shape" : "WebBrowser",
+          "tag" : "Web Browser"
+        }, {
+          "shape" : "MobileDeviceLandscape",
+          "tag" : "Mobile App"
+        }, {
+          "shape" : "Cylinder",
+          "tag" : "Database"
+        }, {
+          "background" : "#85bbf0",
+          "color" : "#000000",
+          "tag" : "Component"
+        }, {
+          "opacity" : 25,
+          "tag" : "Failover"
+        } ]
+      },
+      "terminology" : { }
+    },
+    "containerViews" : [ {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "The container diagram for the Retail CDBC System.",
+      "elements" : [ {
+        "id" : "1",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "3",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "15",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "16",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "18",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "19",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "26",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "29",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "32",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "35",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "43",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "externalSoftwareSystemBoundariesVisible" : false,
+      "key" : "walletsContainers",
+      "order" : 3,
+      "relationships" : [ {
+        "id" : "27"
+      }, {
+        "id" : "31"
+      }, {
+        "id" : "33"
+      }, {
+        "id" : "34"
+      }, {
+        "id" : "4"
+      }, {
+        "id" : "45"
+      }, {
+        "id" : "46"
+      }, {
+        "id" : "47"
+      }, {
+        "id" : "49"
+      }, {
+        "id" : "50"
+      }, {
+        "id" : "57"
+      }, {
+        "id" : "62"
+      }, {
+        "id" : "63"
+      }, {
+        "id" : "65"
+      }, {
+        "id" : "73"
+      }, {
+        "id" : "76"
+      } ],
+      "softwareSystemId" : "17"
+    }, {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "elements" : [ {
+        "id" : "11",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "externalSoftwareSystemBoundariesVisible" : false,
+      "key" : "coreBanking",
+      "order" : 4,
+      "softwareSystemId" : "10"
+    } ],
+    "deploymentViews" : [ {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "An example development deployment scenario for the Retail CDBC System.",
+      "elements" : [ {
+        "id" : "77",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "79",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "80",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "81",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "82",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "83",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "84",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "85",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "87",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "88",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "89",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "environment" : "Development",
+      "key" : "DevelopmentDeployment",
+      "order" : 8,
+      "relationships" : [ {
+        "id" : "86"
+      }, {
+        "id" : "90"
+      } ],
+      "softwareSystemId" : "17"
+    }, {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "An example live deployment scenario for the Retail CDBC System.",
+      "elements" : [ {
+        "id" : "94",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "95",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "96",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "97",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "98",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "99",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "100",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "101",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "102",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "103",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "105",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "106",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "107",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "109",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "110",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "environment" : "Live",
+      "key" : "LiveDeployment",
+      "order" : 9,
+      "relationships" : [ {
+        "id" : "104"
+      }, {
+        "id" : "108"
+      }, {
+        "id" : "111"
+      }, {
+        "id" : "112"
+      } ],
+      "softwareSystemId" : "17"
+    } ],
+    "imageViews" : [ {
+      "content" : "https://raw.githubusercontent.com/structurizr/examples/main/dsl/big-bank-plc/internet-banking-system/DLT-banking-system-facade.png",
+      "elementId" : "24",
+      "key" : "DLTBankingSystemFacade",
+      "order" : 7,
+      "title" : "[Code] DLT Banking System Facade"
+    } ],
+    "systemLandscapeViews" : [ {
+      "automaticLayout" : {
+        "applied" : false,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "2",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "3",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "5",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "7",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "8",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "9",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "10",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "13",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "14",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "15",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "16",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "17",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "44",
+        "x" : 0,
+        "y" : 0
+      } ],
+      "enterpriseBoundaryVisible" : true,
+      "key" : "SystemLandscape",
+      "order" : 1,
+      "relationships" : [ {
+        "id" : "28"
+      }, {
+        "id" : "4"
+      }, {
+        "id" : "48"
+      }, {
+        "id" : "51"
+      }, {
+        "id" : "52"
+      }, {
+        "id" : "53"
+      }, {
+        "id" : "54"
+      }, {
+        "id" : "55"
+      }, {
+        "id" : "56"
+      }, {
+        "id" : "57"
+      }, {
+        "id" : "58"
+      }, {
+        "id" : "59"
+      }, {
+        "id" : "6"
+      }, {
+        "id" : "60"
+      }, {
+        "id" : "61"
+      }, {
+        "id" : "63"
+      } ]
+    } ]
+  }
+}

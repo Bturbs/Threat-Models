@@ -1,0 +1,96 @@
+@startuml liquidityLayerFlowSeq1
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+actor Investor as I
+actor "Pool Manager" as M
+Box "Liquidity Program (on-chain)"
+participant "LiquidityPool\n(PDA)" as LP
+participant "Pool USDC\n(ATA)" as PUSDC
+participant "Pool vToken\n(ATA)" as PVT
+end box
+Box "Vault Program (on-chain)"
+participant "Vault" as V
+participant "USDC Vault\n(ATA)" as UVAULT
+participant "vToken Mint" as VTMINT
+end box
+
+autonumber
+
+== Sync Investment (Instant Swap: USDC → vTokens) ==
+I -> LP: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/investor/invest_sync.rs invest_sync(usdc_amount)]]
+activate LP
+note over LP
+  Validates:
+  - !pool.is_paused
+  - pool.vault == vault
+  - usdc_amount <= sync_invest_limit
+  - investor whitelisted (vault whitelist PDA)
+end note
+LP -> V: Read live price via vault.get_vtoken_price(...)
+note over LP
+  vtoken_out = usdc × 1e6 × BPS / (live_price × (BPS + markup_bps))
+  Require: pool_vtoken.amount >= vtoken_out
+end note
+I --> PUSDC: transfer_checked: USDC from investor → pool
+LP -> LP: Thaw investor vToken account (if frozen)
+PVT --> I: transfer_checked: vTokens from pool → investor
+deactivate LP
+
+== Sync Redemption (Instant Swap: vTokens → USDC) ==
+I -> LP: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/investor/redeem_sync.rs redeem_sync(vtoken_amount)]]
+activate LP
+note over LP
+  base_usdc = vtoken_amount × live_price / 1e6
+  usdc_out = base_usdc × (BPS - spread_bps) / BPS
+  Require: pool_usdc.amount >= usdc_out
+end note
+I --> PVT: transfer_checked: vTokens from investor → pool
+PUSDC --> I: transfer_checked: USDC from pool → investor
+deactivate LP
+
+== Async Investment (CPI to Vault) ==
+I -> LP: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/investor/invest_async.rs invest_async(usdc_amount, proposal_id)]]
+activate LP
+LP -> V: CPI: create_investment_proposal\n(investor as signer, USDC → vault)
+deactivate LP
+note over V
+  InvestmentProposal PDA created
+  USDC transferred to vault
+  Settled later by curator
+end note
+
+== Async Redemption (CPI to Vault) ==
+I -> LP: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/investor/redeem_async.rs redeem_async(vtoken_amount, proposal_id)]]
+activate LP
+LP -> V: CPI: create_redemption_proposal\n(investor as signer, vTokens → vault escrow)
+deactivate LP
+
+== Manager: Rebalance (USDC → vTokens via Vault) ==
+M -> LP: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/manager/rebalance_invest_async.rs rebalance_invest_async(usdc_amount, proposal_id)]]
+activate LP
+note over LP
+  Pool PDA signs as investor
+  Manager pays rent for proposal PDA
+end note
+LP -> V: CPI: create_investment_proposal\n(pool PDA as investor, pool USDC → vault)
+deactivate LP
+note over V #LightCoral
+  Pool must be whitelisted in vault
+  for settlement to succeed
+end note
+
+== Manager: Rebalance (vTokens → USDC via Vault) ==
+M -> LP: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/manager/rebalance_redeem_async.rs rebalance_redeem_async(vtoken_amount, proposal_id)]]
+activate LP
+LP -> V: CPI: create_redemption_proposal\n(pool PDA as investor, pool vTokens → vault escrow)
+deactivate LP
+
+== Manager: Inventory Management ==
+M -> PUSDC: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/manager/deposit_usdc.rs deposit_usdc(amount)]] /\n[[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/manager/withdraw_usdc.rs withdraw_usdc(amount)]]
+M -> PVT: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/manager/deposit_vtokens.rs deposit_vtokens(amount)]] /\n[[https://github.com/corda/corda-protocol-mvp/blob/main/programs/liquidity/src/instructions/manager/withdraw_vtokens.rs withdraw_vtokens(amount)]]
+note over M, PVT #pink
+**No limits, timelocks, or multi-sig**
+Manager has unrestricted access to
+all pool funds.
+end note
+
+@enduml

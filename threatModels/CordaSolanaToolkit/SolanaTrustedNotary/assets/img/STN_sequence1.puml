@@ -1,0 +1,92 @@
+@startuml
+
+title Solana Trusted Notary Sequence Diagram
+
+== Initialization Phase ==
+autonumber “<b>(I##)”
+box "Program Maintainer" 
+actor "R3 Maintainer" as R3
+end box
+box "Solana Cluster" #lightblue
+participant "Solana Notary Program" as SNP
+database "Solana Cluster (PDA Storage)" as SC
+end box
+
+note over R3,SNP
+Program deployed and initialized by R3 (single admin).
+end note
+R3 -> SNP: <color brown>**DF_STN_INIT_PROGRAM**</color> \n Initialize Notary Program
+note right of SNP
+Initialization steps:
+- Set initial parameters.
+- Register administrator accounts as
+ PDA (caller public key).
+- Authorize a Notary Pubkey
+end note
+
+== Notarisation Phase ==
+autonumber “<b>(N##)”
+box "Corda Participant" #pink 
+actor CordaParticipant as CP
+end box
+
+box "Corda Notary Node" #LightGreen
+participant "Corda Notary Node (Solana Integrated)" as CNN
+end box
+
+box "Solana Cluster" #lightblue
+participant "Solana Notary Program" as SNP
+database "Solana Cluster (PDA Storage)" as SC
+end box
+
+CP -> CNN: <color green>**DF_STN_SUBMIT_REQUEST**</color> \n Submit notarisation request (Corda transaction parameters)
+CNN -> CNN: <color green>**DF_STN_VALIDATE_REQUEST**</color> \n Validate notarisation request (TimeWindow, Transaction ID, etc.)
+
+alt REQUEST NOT VALID
+    CNN -> CP: <color brown>**DF_STN_RETURN_FAILURE**</color> \n Return failure (invalid request)
+else REQUEST SYNTAX VALID
+    CNN -> SNP: <color green>**DF_STN_INVOKE_COMMIT**</color> \n Invoke `commit` instruction with parameters
+    note right of SNP
+      See: [[https://github.com/corda/enterprise/blob/e8b0346eae512a178c5316bfab74efdfe28ee645/solana-aggregator/notary-program/programs/corda-notary/src/commit.rs commit.rs]]
+    end note
+    note right of SNP
+      RFI: what is remaining_accounts?
+    end note
+    SNP -> SNP: <color green>**DF_STN_VERIFY_ACCOUNT_COUNT**</color> \n Verify number of accounts passed in
+    SNP -> SC: <color green>**DF_STN_CHECK_OUTPUT_ACCOUNT**</color> \n Retrieve output account and check if unused
+
+    alt Output Account Already Used
+        SNP -> CNN: <color brown>**DF_STN_RETURN_FAILURE**</color> \n Return failure (resubmission detected)
+        CNN -> CP: <color brown>**DF_STN_NOTIFY_RESULT**</color> \n Notify notarisation result (Resubmission failure)
+        break
+        end
+    else Output Account New
+        SNP -> SC: <color green>**DF_STN_CREATE_OUTPUT_ACCOUNT**</color> \n Create and initialize output account with transaction data
+        SNP -> SNP: <color green>**DF_STN_PROCESS_INPUTS_REFERENCES**</color> \n Process inputs and references
+
+        loop For each group in inputs and references
+            SNP -> SC: <color green>**DF_STN_RETRIEVE_STATE_ACCOUNT**</color> \n Retrieve or create state account
+            loop For each input index
+                SNP -> SC: <color green>**DF_STN_CHECK_UNSPENT_BIT**</color> \n Verify bit is set (unspent)
+                alt Unspent Bit is not set (DOUBLE SPEND)
+                    SNP -> CNN: <color brown>**DF_STN_RETURN_FAILURE**</color> \n Return failure (Already consumed)
+                    CNN -> CP: <color brown>**DF_STN_NOTIFY_RESULT**</color> \n Notify notarisation result (Already consumed)
+                    break
+                    end
+                else Unspent Bit is set (FIRST SPEND)
+                    SNP -> SC: <color green>**DF_STN_CLEAR_UNSPENT_BIT**</color> \n Clear bit (mark as spent)
+                 
+                end
+            loop For each reference index
+                SNP -> SC: <color green>**DF_STN_VERIFY_REFERENCE_BIT**</color> \n Verify bit is set (valid reference)
+     
+            end
+        end
+
+        SNP -> SC: <color green>**DF_STN_UPDATE_SOL_STATES**</color> \n Update stateRefs (Mark input states as spent, output states as unspent)
+        SNP -> CNN: <color green>**DF_STN_RETURN_SUCCESS**</color> \n Return TX SUCCESS
+        CNN -> CP: <color green>**DF_STN_NOTIFY_RESULT**</color> \n Notify notarisation result (SUCCESS)
+    end
+end
+
+@enduml

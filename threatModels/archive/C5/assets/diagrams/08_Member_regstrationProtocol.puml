@@ -1,0 +1,57 @@
+@startuml
+
+title Membership registration protocol
+actor "Application Publisher/\nLibrary Developer" as APP_PUB order 10 #LightGreen 
+actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 30 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+actor "VNode\n Operator" as VNODE_OP order 3 #LightPink 
+actor "Cluster\n Operator" as CLUSTER_OP order 2 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 4 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "\n<size:14> **CertAuth** </size> \n <size: 11>Cordapp Network CA/OSCP \n from GroupPolicy.json" as CA1 order 100
+participant "\n<size:14> **CertAuth** </size>\n <size: 11> TLS CA/OSCP\nfrom GroupPolicy.json" as CA2 order 200
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+' actor "Cluster Operator" as CLUSTER_OP
+' actor "VNode Operator" as VNODE_OP
+' actor "NETWORK OPERATOR" as NET_OP
+' participant "MGM Cluster" as MGM
+' participant "Corda Member Cluster" as MEMBER
+' participant "Certificate Authority \n +OSCP" as CA
+
+skinparam sequenceMessageAlign center
+hide unlinked
+autonumber 1
+
+VNODE_OP -> MEMBER ++ : Register members POST /membership/$HOLDING_ID \n ({"memberRegistrationRequest":\n {"action": "requestJoin", "context": '$REGISTRATION_CONTEXT'}})
+MEMBER --> VNODE_OP --: return SUBMITTED
+
+MEMBER -> MEMBER ++-- : Create ephemeral ec EPHE_KEY_PAIR
+MEMBER -> CA2 ++ : REPEATED FOR EVERY \nFOLLOWING HTTP CONNECTION!!!\n Verify cert status\n (PKI policy: standard TLS | EV3 | Corda4)
+CA2 --> MEMBER -- : return: valid
+|||
+MEMBER -> MGM ++ : Registration request: encrypt with MGM PUB SESSION_KEY:\n ECIES, pub EPHEM_KEY (member info, SESSION_KEY)
+MGM --> MEMBER -- : return
+MGM -> MEMBER ++ : P2P session init(ECDH + SESSION_KEY CERT)
+note right: Is the direction of 8 correct?
+MGM -> CA1 ++ : Verify SESSION_KEY Cert \n PKI Identity policy: standard
+CA1 --> MGM --: return: valid
+MEMBER -> MGM -- : result: shared EPHEMERAL_SESSION_KEY 
+|||
+MGM -> MEMBER ++ : p2p session message ping
+MEMBER --> MGM -- : return: pong
+|||
+VNODE_OP -> MGM ++ : Out of band verification
+MGM -> MGM : Manual approval (optional)
+MGM --> VNODE_OP  : return (some valid credentials)
+MGM --> MGM -- : member added to the dynamic network
+VNODE_OP -> MEMBER ++ : Check registration status GET / membership/$HOLDING_ID/$REGISTRATION_ID
+MEMBER --> VNODE_OP -- : return APPROVED 
+@enduml

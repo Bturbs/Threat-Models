@@ -1,0 +1,207 @@
+@startuml 
+' REVIEWED_MAIN_2026_05_18: RBAC proxy pattern — permission-holder calls routed through RBAC Program (CPI into Vault).
+title Async Investment Flows - Solana Vault Program
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam wrapWidth 260
+
+actor Investor as I
+actor "Permission Holder\n<<RBAC-gated role>>" as C
+actor "Off-chain Fund / Tokenizer\n<<Trusted counterparty>>" as T
+Box "Solana on-chain"
+participant "RBAC Program\n<<proxy>>" as RBAC
+participant "Vault Program" as V
+participant "USDC Vault\n(ATA)" as USDC
+participant "InvestmentProposal\n(PDA)" as PROP
+participant "Deposit Snapshot\n(PDA)" as DS
+participant "RedemptionProposal\n(PDA)" as RPROP
+participant "Investor vToken\n(ATA)" as IVT
+participant "Fee Recipient\n(ATA)" as FEE
+end box
+
+autonumber
+
+== Solana Tx 1 — Investor creates investment proposal ==
+I -> V: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/investments/create_investment_proposal.rs create_investment_proposal(usdc_amount, proposal_id)]]
+activate V
+note over V
+  Validates:
+  - deposits_open()
+  - amount >= min_investment
+  - whitelist entry exists for investor
+  - compliance attestation verifies
+end note
+V -> USDC: Transfer USDC from investor to vault
+V -> PROP: Init InvestmentProposal\nstatus = Pending
+V -> V: pending_deposit_usdc += usdc_amount
+V -> V: record_last_inbound(now, usdc_amount)
+V -> V: open_outstanding_inbound(usdc_amount)
+note right of V
+  No price computed here.
+  vToken amount determined
+  only at settlement time.
+end note
+deactivate V
+
+== Optional path A — Permission holder offboards capital ==
+C -> RBAC: transfer_to_tokenizer(proposal)
+activate RBAC
+note over RBAC
+  RBAC pattern (all subsequent
+  permission-holder calls):
+  1. Check permissions[disc] == signer
+  2. CPI into Vault Program
+end note
+RBAC -> V: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/investments/transfer_to_tokenizer.rs CPI: transfer_to_tokenizer]]
+deactivate RBAC
+activate V
+note over V
+  Transfers remaining proposal USDC to
+  pinned offboard_destination.
+  Idempotent if already Accepted.
+end note
+V -> USDC: Withdraw remaining proposal USDC
+V -> T: USDC transferred to pinned destination
+V -> PROP: status = Accepted
+V -> V: pending_deposit_usdc -= remaining_usdc
+V -> V: pending_offboarded_usdc += remaining_usdc
+deactivate V
+
+== Off-chain step — capital deployment ==
+note over C,T #pink
+Capital deployment and pricing happen off-chain.
+The vault relies on later operational pricing inputs
+and curator settlement to complete the lifecycle.
+end note
+
+== Optional path B — Permission holder batch-settles deposits ==
+C -> RBAC: create_deposit_snapshot(snapshot_id)
+RBAC -> V: CPI: create_deposit_snapshot
+activate V
+V -> DS: Create DepositSnapshot PDA
+deactivate V
+
+C -> RBAC: add_to_deposit_snapshot(...)
+RBAC -> V: CPI: add_to_deposit_snapshot
+activate V
+V -> DS: Accumulate pending proposals
+V -> PROP: Read Pending and un-netted proposal amounts
+deactivate V
+
+note over C,DS #pink
+  THREAT: IP_DEPOSIT_SNAPSHOT_ADMISSION_RACE
+
+  A proposal admitted with netted_usdc == 0 can be matched later
+  before settle_from_deposit_snapshot runs.
+  Without re-validation at settle time, snapshot assumptions can drift.
+end note
+
+C -> RBAC: seal_deposit_snapshot(...)
+RBAC -> V: CPI: seal_deposit_snapshot
+activate V
+note over V
+  Freezes proposal membership only.
+  No price/totals frozen at seal time.
+  sealed = true
+end note
+V -> DS: sealed = true
+deactivate V
+
+C -> RBAC: set_deposit_snapshot_totals(total_vtokens_to_mint)
+RBAC -> V: CPI: set_deposit_snapshot_totals
+activate V
+note over V
+  Derives implied_price from:
+    (snapshot.total_usdc - total_entry_fee)
+    and caller input total_vtokens_to_mint.
+  Calls oracle-wrapper now and enforces
+  check_price_tolerance(implied_price, oracle_price).
+  On success: freezes vtoken_price, total_vtokens_to_mint,
+  total_entry_fee and marks snapshot priced = true.
+end note
+V -> DS: priced totals frozen, priced = true
+deactivate V
+
+note over C,DS #lightyellow
+  One tx per proposal — called N times.
+  settle_from_deposit_snapshot requires snapshot.priced == true
+  and reads frozen totals set in set_deposit_snapshot_totals.
+end note
+C -> RBAC: settle_from_deposit_snapshot(proposal_X)
+RBAC -> V: CPI: settle_from_deposit_snapshot
+activate V
+note over V
+  Proportional share =
+    proposal.usdc_amount / snapshot.total_usdc
+  investor_vtokens = total_vtokens × share
+  entry_fee_share  = total_entry_fee × share
+end note
+V -> IVT: Mint proportional investor vTokens
+V -> FEE: Transfer proportional entry fee
+V -> DS: settled_count++, settled_usdc += usdc_amount
+V -> PROP: status = Settled
+deactivate V
+
+== Optional path C — Permission holder nets against async redemption ==
+C -> RBAC: match_deposit_redemption(usdc_amount)
+RBAC -> V: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/investments/match_deposit_redemption.rs CPI: match_deposit_redemption]]
+activate V
+note over V
+  Uses live oracle price OR sealed snapshot price.
+  **Fee model (same as normal settlement):**
+  - Depositor receives post-entry-fee vTokens from escrow
+  - Entry-fee vToken amount is burned from escrow
+  - Redeemer receives post-exit-fee USDC from usdc_vault
+  - Fee recipient receives entry + exit fees in USDC
+  USDC bounded by deposit remaining (usdc_amount - netted_usdc).
+  vTokens bounded by redemption remaining.
+end note
+V -> PROP: netted_usdc += matched_usdc
+V -> RPROP: matched_vtokens += derived_vtokens
+note over V #pink
+  THREAT LINK: IP_DEPOSIT_SNAPSHOT_ADMISSION_RACE
+
+  Matching after snapshot admission is the race window.
+  Snapshot settle should re-check proposal.netted_usdc == 0.
+end note
+note right of V
+  Remaining unmatched balances
+  can still be batch-settled
+  or individually settled.
+end note
+deactivate V
+
+== Solana Tx N — Permission holder settles or rejects individually ==
+alt Settle proposal
+  C -> RBAC: settle_investment(investor_vtokens)
+  RBAC -> V: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/investments/settle_investment.rs CPI: settle_investment]]
+  activate V
+  note over V
+    remaining_usdc = proposal.usdc_amount - proposal.netted_usdc
+    Caller supplies investor_vtokens.
+    Program derives implied_price from
+    (remaining_usdc - entry_fee) and investor_vtokens,
+    then enforces check_price_tolerance against
+    live oracle-wrapper price.
+  end note
+  V -> IVT: Mint investor_vtokens
+  V -> FEE: Transfer entry_fee (if distributable)
+  V -> V: sub_pending_deposit or sub_pending_offboarded
+  V -> V: close_outstanding_inbound(remaining_usdc)
+  V -> PROP: status = Settled
+  deactivate V
+else Reject still-pending proposal
+  C -> RBAC: reject_investment()
+  RBAC -> V: [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/investments/reject_investment.rs CPI: reject_investment]]
+  activate V
+  note over V
+    Only allowed while proposal remains Pending
+    and not netted.
+  end note
+  V -> USDC: Refund USDC from vault to investor
+  V -> PROP: status = Rejected
+  deactivate V
+end
+
+@enduml

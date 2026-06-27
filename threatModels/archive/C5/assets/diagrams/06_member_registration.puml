@@ -1,0 +1,172 @@
+@startuml
+
+
+actor "Application Publisher/\nLibrary Developer" as APP_PUB order 10 #LightGreen 
+actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 30 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+actor "VNode\n Operator" as VNODE_OP order 1 #LightPink 
+actor "Cluster\n Operator" as CLUSTER_OP order 2 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 2 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "Certificate Authority \n +OSCP" as CA order 100
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+' actor "Cluster Operator" as CLUSTER_OP
+' actor "VNode Operator" as VNODE_OP
+' actor "NETWORK OPERATOR" as NET_OP
+' participant "MGM Cluster" as MGM
+' participant "Corda Member Cluster" as MEMBER
+' participant "Certificate Authority \n +OSCP" as CA
+
+skinparam sequenceMessageAlign center
+hide unlinked
+
+
+group Member registeration
+NET_OP -> CLUSTER_OP : Acquires CPI (TBD, out of band)
+CLUSTER_OP ->  MEMBER: Upload the CPI (/CPI endpoint)
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return CPI ID: "f0a0f381-e0d6-49d2-abba-6094992cef02"
+deactivate MEMBER
+
+CLUSTER_OP -> MEMBER : Get STATUS: $API_URL/cpi/status/$CPI_ID
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return cpiFileChecksum
+deactivate MEMBER
+
+
+CLUSTER_OP -> MEMBER: Create a virtual node:  /virtualnode(cpiFileChecksum, x500Name) 
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return: HoldingIdentity(e.g. 58B6030FABDD)
+deactivate MEMBER
+
+
+CLUSTER_OP -> MEMBER: Crete VNode RPC User and associate it with the VNode HoldingIdentity
+note left: Cannot find the API that associates the user with the specific X500/VNodeIdentityID
+note over MEMBER: what's the nature of the *Connection parameters?
+
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return: VNode user ID
+deactivate MEMBER
+
+alt Cluster managed credentials
+CLUSTER_OP -> VNODE_OP: Send Credentials (Out of band TBC)
+note right : Non OAuth/SSO 
+end
+
+
+group Assign HSM and generate ledger key pairs
+VNODE_OP -> MEMBER: $API_URL/hsm/soft/$HOLDING_ID/SESSION_INIT
+activate MEMBER 
+MEMBER --> VNODE_OP: return: HSM association details 
+deactivate MEMBER
+|||
+VNODE_OP -> MEMBER: /keys/'$HOLDING_ID'/alias/'$HOLDING_ID'-session/\ncategory/SESSION_INIT/scheme/CORDA.ECDSA.SECP256R1
+activate MEMBER 
+MEMBER --> VNODE_OP: return: ledger key ID (e.g. 3B9A266F96E2) 
+deactivate MEMBER
+end
+|||
+group Set up cluster's TLS key pair and certificate 
+CLUSTER_OP -> MEMBER: POSY: keys/p2p/alias/p2p-TLS/category/TLS/scheme/CORDA.RSA
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return: TLS Key ID 
+deactivate MEMBER
+end
+
+group Certificate for PKI enforced network participation 
+CLUSTER_OP -> MEMBER:  create a certificate for the TLS key pair \n/certificates/p2p/$TLS_KEY_ID ({"x500Name": "CN=CordaOperator, C=GB L=London",\n"subjectAlternativeNames": ["'$P2P_GATEWAY_HOST'"]})
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return: certificate sign request1.csr 
+deactivate MEMBER
+|||
+CLUSTER_OP -> CA: sign certificate
+CA --> CLUSTER_OP: return: signed certificate.pem
+|||
+CLUSTER_OP -> MEMBER: upload the certificate chain to the Corda cluster \nPUT /certificates/p2p (certificate.pem, alias=p2p-tls-cert)
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return 
+deactivate MEMBER
+
+end
+CLUSTER_OP -> MEMBER: get current config version: /config/corda.p2p.gateway
+activate MEMBER 
+MEMBER --> VNODE_OP: return TBC(Version) 
+deactivate MEMBER
+
+VNODE_OP -> MEMBER: **disable cert revocation checks (optional)**\n""/config ({"section":"corda.p2p.gateway", "version":"'$CONFIG_VERSION'", "config":\n"{ \"sslConfig\": { \"revocationCheck\": { \"mode\": \"OFF\" }  }  }",\n"schemaVersion": {"major": 1, "minor": 0}}) TODO dangerous API""
+activate MEMBER 
+MEMBER --> VNODE_OP: return TBC 
+deactivate MEMBER
+group SESSION_KEY certificate signing (Optional)
+VNODE_OP -> MEMBER:  Configure virtual node as network participant\n""PUT /network/setup/$HOLDING_ID ({"p2pTlsCertificateChainAlias": "p2p-tls-cert",\n"p2pTlsTenantId": "p2p" TODO can be other values, "sessionKeyId": "'$SESSION_KEY_ID'"})""
+activate MEMBER 
+MEMBER --> CLUSTER_OP: return 200
+deactivate MEMBER
+
+end
+group PRE_AUTH_TOKEN
+CLUSTER_OP -> VNODE_OP:  Check identity + Send preAuth Token (Out of Band)
+activate VNODE_OP 
+VNODE_OP --> CLUSTER_OP: return
+' note over CLUSTER_OP , NET_OP : Check with David the correctness of this sequence
+deactivate VNODE_OP
+
+end
+VNODE_OP -> VNODE_OP: Build registration context \nexport REGISTRATION_CONTEXT='{\n"corda.session.key.id": "'$SESSION_KEY_ID'", "corda.ledger.keys.0.id": "'$LEDGER_KEY_ID'",
+VNODE_OP -> MEMBER: Register members GET POST /membership/$HOLDING_ID\n({ "memberRegistrationRequest":\n{ "action": "requestJoin", "context": '$REGISTRATION_CONTEXT' } })
+ activate MEMBER
+MEMBER --> VNODE_OP: return SUBMITTED
+deactivate MEMBER
+
+group Registration protocol execution (p2p gateways)
+MEMBER -> MEMBER:  Create ephemeral ec  EPHE_KEY_PAIR
+MEMBER -> MGM: Key exchange (EPH DH) //few steps
+activate MGM
+MGM --> MEMBER: return: shared symmetric key 1
+deactivate MGM
+
+MEMBER -> MGM: Registration request (member info + public SESSION_KEY)
+
+activate MGM
+MGM -> CA : Verify cert status (OCSP) 
+activate CA
+CA --> MGM: return
+deactivate CA
+
+MGM --> MEMBER: return
+deactivate MGM
+
+MGM -> MEMBER: P2P session init (ECDH) 
+activate MEMBER
+MEMBER --> MGM: return: shared symmetric key 2
+deactivate MGM
+MGM -> MEMBER: session message ping 
+activate MEMBER
+MGM --> MEMBER: return: pong
+deactivate MEMBER
+MGM -> MGM :  
+note over MGM : **Ask David?** 
+end
+
+
+VNODE_OP -> MEMBER :Check registration status GET /membership/$HOLDING_ID/$REGISTRATION_ID
+activate MEMBER
+MEMBER --> VNODE_OP : return APPROVED
+deactivate MEMBER
+end
+
+VNODE_OP -> MEMBER : Optional, check other members (MemberLookupRpcOps)\nGET /members/$HOLDING_ID
+
+activate MEMBER
+MEMBER --> VNODE_OP : return members[memberContext mgmContext] 
+deactivate MEMBER
+
+@enduml

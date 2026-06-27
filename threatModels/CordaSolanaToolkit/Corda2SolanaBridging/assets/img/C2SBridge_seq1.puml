@@ -1,0 +1,277 @@
+@startuml
+title Corda to Solana Bridge Sequence Diagram
+
+box "Corda (+bridge) Users" #pink
+actor "Alice\n<Corda Account>\n<Solana Account>" as Alice
+actor "Charlie\n<Corda Account>" as Charlie
+end box
+
+box "Solana User" #pink
+actor "Bob (Solana trader)\n<Solana Account>" as Bob
+end box
+
+box "Trusted Corda Nodes" #LightGreen
+participant "Legacy Corda Notary" as LN
+participant "Bridging Authority\n<Corda participant>" as BA
+participant "Solana Trusted Notary\n<Corda Node>\n<Solana Account>" as SN
+end box
+
+
+box "Solana Infrastructure" #lightblue
+participant "RPC Provider\n(e.g., Helius, Infura)" as RPC
+participant "Solana Network" as SOL
+end box
+
+
+' == Phase 0: Transfer assets ==
+' Charlie -> Alice: Propose Corda asset transfer\n(e.g., cash, bond)
+' Alice -> Charlie: Sign transaction
+' Charlie -> LN: Send transaction for notarization
+' LN -> LN: Verify uniqueness,\nadd new TXID to DB
+' LN -> Charlie: Notarize and confirm transaction
+' Charlie -> Alice: Notify transfer complete
+
+== Phase 0: Prepare for Bridging ==
+
+Alice -> BA: Communicate own Solana PubKey for ATA
+
+== Phase 1: Bridging Corda Asset to Solana ==
+autonumber "<b>(B##)"
+
+Alice -> BA: <color brown>**DFC2S_TRANSFER_STATE**</color>\nTransfer Corda state to\nbridging authority (Tx A)
+note right of BA
+	<color red>**🔒 LOCK PHASE:**</color>
+	Original Corda tokens are held by
+	Bridge Authority's Locking Identity
+	(remain locked while liquid on Solana)
+	
+	Triggered by: [[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt#L286 BridgingService.callBridgeFlow()]]
+end note
+
+opt Optional: Notary change
+BA->Alice: Gather signature for notary change
+Alice -> BA: Send signature
+BA -> Charlie: Gather signature for notary change
+note right of Charlie: <b>Threat:</b> Non-collaboration from Charlie\n(Charlie may refuse to send signature,\npreventing notary change and bridging)
+Charlie -> BA: Send signature
+
+
+BA -> LN: Request notarisation of notary-change tx\n(move state to Solana notary)
+LN -> BA: Return notary signature (finalised tx)
+BA -> SN: Record/inform new notary\n(notary-change tx)
+end
+
+BA -> BA: Lookup/create confidential\nidentity for sender
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgeFungibleTokenFlow.kt#L52 BridgeFungibleTokenFlow.call()]]
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/ConfigHandler.kt#L77 ConfigHandler.getLockingIdentity()]]
+end note
+BA -> BA: <color purple>**Create BridgedFungibleTokenProxy**</color>\n(mirrors Corda token + Solana mint metadata)
+note right of BA
+	<color purple>**Proxy State Created:**</color>
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/BridgedFungibleTokenProxy.kt BridgedFungibleTokenProxy]]
+	• amount: token quantity
+	• bridgeTokenAccount: destination on Solana
+	• mintAccount: Solana mint pubkey
+	• mintAuthority: bridge's mint authority
+	
+	Flow: [[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/MoveAndLockFungibleTokenFlow.kt MoveAndLockFungibleTokenFlow]]
+	Contracts:
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt FungibleTokenBridgeContract.LockToken]]
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt FungibleTokenRedemptionContract]]
+end note
+BA -> SN: <color brown>**DFC2S_NOTARISE_REQUEST**</color>\nSend <color purple>**proxy state**</color> transaction for\nnotarisation and bridging
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgeFungibleTokenFlow.kt#L93 BridgeFungibleTokenFlow.createMintTransaction()]]
+end note
+SN -> SN: Build Solana transaction\n(commit + mint_to)
+note right of SN
+	<color purple>**Proxy Consumed:**</color>
+	BridgedFungibleTokenProxy consumed
+	(no outputs - tokens minted on Solana)
+	
+	Contract Validation:
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt#L35 FungibleTokenBridgeContract.verifyMintToSolana()]]
+end note
+SN -> SN: Sign with notary key (commit)\n and mint authority (mint_to)
+SN -> RPC: <color brown>**DFC2S_SEND_SOLANA_TX**</color>\nSubmit Solana transaction
+RPC -> SOL: Forward transaction
+SOL -> RPC: Transaction result
+RPC -> SN: <color brown>**DFC2S_CONF_SOLANA_TX**</color>\nConfirm transaction
+note right of RPC
+	<color orange>**⚠️ TRUST ASSUMPTION:**</color>
+	RPC Provider is trusted to:
+	• Accurately relay blockchain state
+	• Not suppress/fabricate events
+	• Maintain availability
+end note
+SN -> BA: <color brown>**DFC2S_NOTIF_BRIDGE_OK**</color>\nNotify bridging complete
+BA -> Alice: <color brown>**DFC2S_NOTIF_USER_BRIDGE_OK**</color>\nNotify bridging complete
+SOL -> Alice: <color brown>**DFC2S_MINT_TOKEN**</color>\nMinted Solana token credited\nto Alice' (STH)
+note over Alice, SOL
+	<color green>**✓ 1:1 Peg Maintained:**</color>
+	• Original Corda tokens: LOCKED by BA
+	• Reference Solana tokens: LIQUID (tradeable)
+	• Equal amounts on both chains
+end note
+
+== Phase 2: Solana Token Transfer/Swap (Optional) ==
+autonumber "<b>(T##)"
+
+Alice -> Bob: <color brown>**DFC2S_TRANSFER_SOLANA_TOKEN**</color>\nTransfer/SWAP Solana token\n(e.g., for stablecoin)
+note over Bob: Now Bob' (Bob) is the\nSolana token holder
+note right of Bob #LightCoral
+	**Bridge Design Constraint:**
+	Bob cannot redeem to his own Corda identity.
+	Redemption unlocks tokens to the ORIGINAL
+	Corda holder (Alice's locking identity).
+	
+	Bob must coordinate with Alice off-chain
+	to obtain redemption address and agree
+	on settlement terms.
+end note
+
+== Phase 2A: Redemption Wallet Setup (One-Time Configuration) ==
+autonumber "<b>(S##)"
+
+note over BA, Alice #Wheat
+	**Pre-requisite for Redemption**
+	Redemption wallet addresses must be created
+	and mapped to Corda holders before redemption
+end note
+
+BA -> BA: Create Solana redemption wallet(s)
+note right of BA
+	Bridge Authority generates/provisions
+	dedicated Solana wallet keypairs:
+	• redemptionWalletAccount (Pubkey)
+	• One per holder or shared pool
+	• Owned by Bridge Authority
+	
+	**⚠️ MANUAL PROCESS - NOT AUTOMATED**
+	Keypairs created externally, not by code
+end note
+
+BA -> SOL: Create Associated Token Account (ATA)
+note right of BA
+	Token2022.createAssociatedTokenAccount(
+	  redemptionWalletAccount,
+	  mintAccount
+	) → redemptionTokenAccount
+	
+	Implementation:
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/TokenAccountService.kt#L47 TokenAccountService.createAta()]]
+	
+	**⚠️ MANUAL EXECUTION REQUIRED**
+end note
+SOL -> BA: redemptionTokenAccount created
+
+BA -> BA: Configure holder mappings
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/ConfigHandler.kt#L44 ConfigHandler.redemptionWalletAccountToHolder]]
+	
+	redemptionWalletAccountToHolder = {
+	  "AliceRedemptionPubkey": "O=Alice,L=London,C=GB"
+	}
+	
+	Maps Solana addresses → Corda X500 names
+	**Manual configuration in CorDapp config**
+end note
+
+BA -> BA: Start WebSocket subscription
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt#L102 BridgingService.onStartup()]]
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt#L130 socket.onToken2022ByOwner()]]
+	
+	Subscribe to Token2022 program accounts
+	for each redemptionWalletAccount
+	
+	WebSocket Implementation:
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/SavaFactory.kt#L30 SavaFactory.WebSocketWrapper.onToken2022ByOwner()]]
+end note
+
+BA -> Alice: Communicate redemption address
+note right of Alice
+	<color blue>**Out-of-band communication:**</color>
+	Bridge Authority provides:
+	• redemptionWalletAccount (Pubkey)
+	• Redemption process instructions
+	
+	Alice must send tokens to THIS address
+	to initiate redemption
+end note
+
+note over BA, Alice #LightGreen
+	**Setup Complete**
+	Users know where to send tokens
+	Bridge Authority monitors addresses
+end note
+
+== Phase 3: Redemption (Solana Asset Back to Corda) ==
+
+autonumber "<b>(R##)"
+
+note across
+	**Redemption Address Communication** DFC2S_SEND_REDEEM_ADDR
+	**OUT-OF-BAND COMMUNICATION REQUIRED**
+	Bob needs Alice's redemption address to initiate redemption. This information is NOT available on-chain or deterministic.
+	**Threat:** Stale, incorrect, or unavailable redemption address causes DoS or loss of funds.
+end note
+
+
+
+BA -> RPC: <color brown>**DFC2S_POLL_REDEMPTION**</color>\nWebSocket subscription +\nperiodic RPC polling
+note right of RPC
+	<color orange>**⚠️ NOT CRYPTOGRAPHICALLY SIGNED:**</color>
+	WebSocket events are JSON-RPC responses,
+	not blockchain-signed data.
+	Must verify state independently.
+end note
+note right of BA
+	Monitoring:
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt BridgingService]]
+end note
+RPC -> BA: <color brown>**DFC2S_NOTIF_BALANCE**</color>\nNotify non-zero balance\n(WebSocket event)
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt#L175 BridgingService.processRedemptionEvent()]]
+end note
+BA -> BA: Vault query for bridged\nstates (for Alice)
+BA -> BA: Create Corda transaction\n(un-bridge state + Solana burn instruction)
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt#L223 BridgingService.callRedemptionFlow()]]
+	Initiates: [[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/RedeemFungibleTokenFlow.kt RedeemFungibleTokenFlow]]
+end note
+BA -> SN: <color brown>**DFC2S_REDEEM_REQUEST**</color>\nSend transaction for\natomic redemption
+note right of BA
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/RedeemFungibleTokenFlow.kt RedeemFungibleTokenFlow]]
+	Creates burn receipt and unlock transaction
+end note
+SN -> SN: Build Solana transaction\n(commit + burn)
+note right of SN
+	Contract Validation:
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt#L32 FungibleTokenRedemptionContract.verifyBurnOnSolana()]]
+	[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt#L25 FungibleTokenRedemptionContract.verifyUnlockToken()]]
+end note
+SN -> SN: Sign with notary key (commit) \nand redemption owner key (burn)
+SN -> RPC: <color brown>**DFC2S_SEND_BURN_TX**</color>\nSubmit Solana transaction
+RPC -> SOL: Forward burn transaction
+SOL -> RPC: Burn result
+RPC -> SN: <color brown>**DFC2S_CONF_BURN_TX**</color>\nConfirm transaction
+SN -> BA: <color brown>**DFC2S_NOTIF_REDEMPTION_OK**</color>\nNotify redemption complete
+BA -> Bob: <color brown>**DFC2S_NOTIF_USER_RED_OK**</color>\nNotify redemption complete\n(Bob' redeemed)
+note over BA, Bob
+	<color red>**🔓 UNLOCK PHASE:**</color>
+	• Solana tokens: BURNED
+	• Original Corda tokens: UNLOCKED
+	• Transferred to redemption holder
+end note
+
+BA -> Alice: <color brown>**DFC2S_FINALITY_REDEEM**</color>\nFinalityFlow notification\n(tokens received)
+note right of Alice
+	<color green>**Token SDK FinalityFlow:**</color>
+	MoveFungibleTokens includes FinalityFlow
+	which notifies the receiver (Alice) and
+	stores the new token states in her vault.
+	Alice does NOT need to sign.
+end note
+@enduml

@@ -1,0 +1,72 @@
+name: Generate Security Site (Node)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+    - master
+    - main
+    paths:
+    - '**.yaml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  BASE_MODEL_DIR: threatModels
+  MKDOC_ASSET_DIR: security_site/mkdocs
+  BUILD_DIR: build
+  SITE_NAME: R3 Threat Models
+  TOOL_DEP: git+https://github.com/corda/threat-model-tool
+
+jobs:
+  buildAndDeploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out threat-modeling repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MkDocs dependencies
+        run: |
+          pip install mkdocs mkdocs-material
+
+      - name: Prepare tool CLI
+        run: |
+          rm -rf tm-cli
+          mkdir -p tm-cli
+          cd tm-cli
+          npm init -y
+          npm install --no-save tsx "${TOOL_DEP}"
+
+      - name: Build MkDocs site + PDFs using tool
+        run: |
+          make build-mkdocs \
+            BASE_MODEL_DIR="${BASE_MODEL_DIR}" \
+            MKDOC_ASSET_DIR="${MKDOC_ASSET_DIR}" \
+            BUILD_DIR="${BUILD_DIR}" \
+            SITE_NAME="${SITE_NAME}"
+
+      - name: Upload generated site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.BUILD_DIR }}/site-mkdocs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

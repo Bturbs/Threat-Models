@@ -1,0 +1,125 @@
+@startuml KaminoSEQ1
+title Kamino Lending Market on Solana — Main Actors and Core Flows
+
+skinparam shadowing false
+
+skinparam BoxPadding 10
+hide footbox
+
+legend left
+	<b>Terminology</b>
+	----
+	* <b><i>Borrow Capacity</i></b>: Max borrowable amount vs collateral.
+	* <b><i>LTV (Loan-to-Value)</i></b>: Borrowed value / collateral value.
+	* <b><i>Max LTV (Maximum Loan-to-Value)</i></b>: Protocol borrowing cap.
+	* <b><i>Health Factor</i></b>: Distance to liquidation.
+	* <b><i>Liquidation Threshold</i></b>: Point where liquidation is allowed.
+	* <b><i>Available Liquidity</i></b>: Unborrowed stable in pool.
+	* <b><i>Utilization</i></b>: Borrowed / supplied liquidity.
+	* <b><i>TVL (Total Value Locked)</i></b>: Total value locked in protocol.
+	* <b><i>Bad Debt</i></b>: Unrecovered debt after liquidation.
+	* <b><i>Slippage</i></b>: Price impact during swaps.
+endlegend
+
+actor "**Issuer / Asset Sponsor**\n//Asset issuer//\n//or sponsor listing//\n//tokenized collateral//\n//**Wants:** Market access//\n//favorable params//" as ISS
+actor "**Borrower**\n//End user or//\n//desk posting//\n//collateral//\n//**Wants:** Liquidity//\n//and leverage//" as BOR
+actor "**Lender**\n//Stablecoin//\n//supplier to Kamino//\n//pools//\n//**Wants:** Reliable//\n//yield, low bad debt//" as LND
+actor "**LP / Market Maker**\n//External DEX//\n//liquidity depth//\n//for swaps/liquidations//\n//**Wants:** Fees and//\n//incentives, tight//\n//markets under stress//" as LP
+actor "**Vault Manager**\n//Strategy op//\n//(Kamino or//\n//delegated)//\n//**Wants:** Risk-adjusted//\n//allocation//" as VLT
+
+box "Kamino Company"
+    participant "Kamino App / UI" as UI
+	actor "**Risk Team**\n//Kamino//\n//internal risk and//\n//listings team//\n//**Wants:** Lender//\n//solvency first//" as RISK
+	actor "**Governance / Admin**\n//Kamino param//\n//and policy owner//\n//**Wants:** Safe growth//\n//controlled changes//" as GOV
+	actor "**Liquidator Bot**\n//Automated//\n//liquidation actor//\n//in Kamino markets//\n//**Wants:** Capture//\n//liquidation reward//" as LIQ
+end box
+
+box "Solana Blockchain" #LightYellow
+	participant "Borrower Stablecoin Token Account\n(ATA; SPL Token / Token-2022 mint)" as BTA
+	participant "Oracle Program(s)\n(Chainlink / Pyth / Redstone)" as ORCL
+	participant "DEX Program(s)\n(Jupiter / Raydium routes)" as DEX
+end box
+
+box "Kamino related Solana Blockchain" #LightBlue
+	participant "Kamino Lending Program" as KLP
+	participant "Kamino Vault Program" as KVP
+	participant "Looping Logic" as LOOP
+	participant "SPL Token Program" as SPL
+end box
+
+== 0) Market Setup ==
+autonumber 1
+ISS -> RISK: Request market onboarding
+RISK -> ORCL: Validate oracle coverage and freshness
+RISK -> LP: Require baseline DEX liquidity depth
+LP -> DEX: Seed liquidity for collateral-stable routes
+RISK -> GOV: Recommend initial conservative risk params
+group Atomic Solana transaction (market config instruction)
+GOV -> KLP: Configure isolated market and limits
+end
+
+== 1) Lend and Borrow ==
+autonumber 1
+LND -> UI: Supply stablecoin
+group Atomic Solana transaction (lender supply instruction + CPI)
+UI -> KLP: Deposit request
+KLP -> SPL: Transfer stable into pool
+KLP --> LND: Credit lender position
+end
+
+BOR -> UI: Deposit collateral
+group Atomic Solana transaction (collateral deposit instruction + CPI)
+UI -> KLP: Collateral deposit request
+KLP -> SPL: Transfer collateral into pool
+KLP -> ORCL: Fetch collateral price
+end
+BOR -> UI: Borrow stablecoin
+UI -> KLP: Borrow request
+group Atomic Solana transaction (borrow instruction + CPI)
+KLP -> ORCL: Re-check health factor
+KLP -> KLP: Update obligation/reserve state (PDAs)
+KLP -> SPL: CPI transfer stable to borrower token account
+SPL -> BTA: Credit stablecoin balance
+end
+KLP --> BOR: Borrow committed (state + transfer)
+
+== 2) Liquidation ==
+autonumber 1
+KLP -> ORCL: Continuous price checks
+alt Position below threshold
+	LIQ -> KLP: Liquidation transaction
+	group Atomic Solana transaction (liquidation instruction + CPI)
+	KLP -> SPL: Seize collateral
+	KLP -> DEX: Swap collateral to stable
+	KLP -> SPL: Repay debt / protect lenders
+	KLP --> LIQ: Liquidation incentive
+	end
+else Position healthy
+	KLP --> LIQ: Reject liquidation
+end
+
+== 3) Looping / Multiply ==
+autonumber 1
+BOR -> UI: Request leverage loop
+UI -> LOOP: Build atomic transaction
+group Atomic Solana transaction (loop/flash sequence + CPI)
+LOOP -> KLP: Borrow or flash step
+LOOP -> DEX: Swap stable to collateral
+LOOP -> KLP: Deposit collateral and re-borrow
+KLP -> ORCL: Validate each step health
+LOOP --> BOR: Leveraged position established
+end
+
+== 4) Vault Allocation ==
+autonumber 1
+LND -> KVP: Deposit stable into vault
+group Atomic Solana transaction (vault deposit instruction + CPI)
+KVP -> SPL: Transfer stable to vault custody
+end
+VLT -> KVP: Allocate capital strategy
+group Atomic Solana transaction (vault allocation instruction)
+KVP -> KLP: Deploy liquidity to isolated markets
+KLP --> KVP: Yield and position state updates
+end
+
+@enduml

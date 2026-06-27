@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    box Member Info data distribtion
+    actor networkOperator
+    participant MGM
+    participant Member1 as Changed Member 
+    participant Member2 as Other active Members
+    
+    end
+    Member1->>+MGM: re-registration(member info)
+ 
+    alt
+     networkOperator->>+MGM: activate changed member
+    else
+    networkOperator->>+MGM: suspend changed member
+    end
+    par MGM to Member1
+        MGM->>+Member1: update: member1 new status active
+    and MGM to Member2
+        MGM->>+Member2: update: member1 new status active
+   Note over MGM,Member1: data package includes <br/> memberInfo, memberInfo hash, GroupParameters, CPIWhitelist
+    end
+     loop
+     Member2->>+Member2: check memberInfo hash?
+    Note over MGM,Member2: If member's calculated hash does not match with the MGM's, then start sync
+     Member2->>+MGM: start Sync
+     MGM->>+Member2: send list of missing MemberInfos
+   end

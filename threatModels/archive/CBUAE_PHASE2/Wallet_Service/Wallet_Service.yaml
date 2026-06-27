@@ -1,0 +1,305 @@
+ID: Wallet_Service
+schemaVersion: 2
+parent: CBUAE_PHASE2
+scope:
+  description: |
+    The Wallet Service manages wallet creation, updates, deactivation, transfers, 
+    add/deduct flows, and enforces contract logic through the Corda Contract Engine. 
+    It stores wallet details, balances, transactions, hierarchy, and contract metadata 
+    in a secure database. The service integrates with the Corda Settlement Layer to 
+    finalize transactions and ensure ledger accuracy. It also supports shared wallets 
+    and wallet hierarchies across multiple financial institutions.
+
+    **Refs:** [LLD - 1 Wallet Services](#LLD), [LLD - 1.1 Wallet Services/Overview](#LLD), [HLD - 4.4 Solution Design/Wallet Services](#HLD)
+
+    <img src="img/wallet_service1.png"/>
+
+  assets:
+
+    - ID: WALLET_DB
+      type: database
+      title: Wallet and Transaction Database
+      description: |
+        Stores wallet details, balances, transactions, hierarchy, and contract metadata. 
+        Ensures data consistency and persistence for the Wallet Service.
+
+        **Refs:** [LLD - 1.4.2.5 Wallet Services/Wallet Service implementation/Wallet Service data models/Database tables and ERD](#LLD)
+      inScope: true
+
+    - ID: DF_WALLET_TO_DB
+      type: dataflow
+      title: Wallet to Database connection
+      description: |
+        Flow for storing wallet details, balances, transactions, and hierarchy in the database.
+
+        **Refs:** [LLD - 1.4.2.5 Wallet Services/Wallet Service implementation/Wallet Service data models/Database tables and ERD](#LLD)
+      inScope: true
+
+    - ID: WALLET_DB_CREDENTIALS
+      type: credential
+      title: Wallet Database Credentials
+      description: |
+        Database credentials for the Wallet Service to access the wallet database.
+
+        **Refs:** [LLD - 11 Secrets Management](#LLD)
+      inScope: true
+      properties:
+        type: username/password
+
+    - ID: WALLET_ID
+      type: identifier
+      title: Wallet Identifier
+      description: |
+        The Wallet ID is sufficient to infer where a Wallet resides because the Wallet ID 
+        consists of two parts: 
+
+        1- the institution identifier (indicates where the wallet resides)
+        2- unique identifier (UUID). 
+
+        **Refs:** [LLD - 1.4.2.1 Wallet Services/Wallet Service implementation/Wallet Service data models/Wallet data model](#LLD)
+      inScope: true
+
+analysis: |
+  The service must securely handle wallet operations, maintain data consistency across 
+  concurrent transactions, and apply custom contract rules on top of a hierarchy of wallets. 
+  Sensitive operations (create, update, deactivate, transfer, add, deduct) require strict 
+  authorization and robust error handling.
+  Wallet balances are part of every LFI's database ledger, 
+  as there is no functionality designed for a third LFI to verify the funds
+  for example in on the CB/Notary Ledger. Or for the notary to maintain retail wallet balances for what matters.
+  So the need to prevent retail wallet double spending for every LFI is crucial. The are many 
+  classic solutions that rely on atomic transaction and locking. The DLT 
+  settlement layer would still prevent LFI clearance, the plausible attacks
+   and failure to prevent double spending are in the retail wallet to LFI relationships.
+  Additional documentation is needed to analyse external `shared wallet` and `sponsors`.
+
+  **Refs:** [LLD - 1.5 Wallet Services/Non-functional considerations](#LLD), [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD)
+
+threats:
+
+  - ID: UNAUTHORIZED_WALLET_ACCESS
+    title: Unauthorized Access or Modification of Wallet Data
+    attack: |
+      Attackers compromise user credentials or exploit insufficient authorization checks 
+      to modify balances, update wallet details, or view confidential transaction data.
+
+      **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+    impactDesc: |
+      Could lead to financial fraud, leakage of sensitive information, and reputational harm.
+
+      **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: INTEGRITY
+    threatType: Elevation of Privilege, Information Disclosure
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L
+    fullyMitigated: true
+    countermeasures:
+      - ID: FINE_GRAINED_AUTHORIZATION_ENFORCEMENT
+        title: Fine-Grained Authorization Enforcement
+        description: |
+          Implement role-based access control (RBAC) with granular permissions 
+          to restrict wallet operations based on user roles and privileges.
+
+          **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD), [LLD - 12.11 Identity and Access Management (IAM)/Authorization services](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: INCONSISTENT_BALANCE_UPDATES
+    title: Concurrency Issues Leading to Inconsistent Balances
+    attack: |
+      Concurrency or race conditions in add, deduct, or transfer flows might allow multiple 
+      simultaneous updates, leading to incorrect final balances.
+
+      **Refs:** [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD)
+    impactDesc: |
+      Possible fraudulent transactions or negative balances, causing financial and reputational damage.
+
+      **Refs:** [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD)
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: AVAILABILITY
+    threatType: Tampering
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:L
+    fullyMitigated: true
+    countermeasures:
+      - ID: ROW_LOCKING
+        title: Atomic Balance Updates with Row Locking
+        description: |
+          Use transaction-safe row-locking to ensure a wallet's balance 
+          is updated consistently even under concurrent requests.
+
+          **Refs:** [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD), [LLD - 1.4.6.2 Wallet Services/Wallet Service implementation/Transfer workflow/Wallet balance updates](#LLD)
+        inPlace: true
+        public: true
+        toReview: true
+
+  - ID: INSECURE_WALLET_CONTRACT_EXECUTION
+    title: Unverified or Malicious Contracts Executed
+    attack: |
+      Attackers upload or reference malicious contract code, or intercept contract metadata, 
+      causing unauthorized rules or modifications during wallet operations.
+
+      **Refs:** [LLD - 1.4.7 Wallet Services/Wallet Service implementation/Programmable wallets](#LLD), [LLD - 6.3.2.2 Corda Contracts/Solution design/Detail design/Access controls and security](#LLD)
+    impactDesc: |
+      Potential for unauthorized transactions, bypassed constraints, or logic manipulation 
+      in the wallet service execution flow.
+
+      **Refs:** [LLD - 1.4.7.3 Wallet Services/Wallet Service implementation/Programmable wallets/Contract execution](#LLD)
+    impactedSecObj:
+      - REFID: INTEGRITY
+    threatType: Tampering
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: SECURE_CONTRACT_REGISTRY
+        title: Contract Validation & Registry
+        description: |
+          Use a trusted registry to verify contract code signatures and enforce 
+          contract data integrity before allowing execution in the workflow.
+
+          **Refs:** [LLD - 1.4.7.2 Wallet Services/Wallet Service implementation/Programmable wallets/Managing contracts](#LLD), [LLD - 6.3.2.2 Corda Contracts/Solution design/Detail design/Access controls and security](#LLD)
+        inPlace: true
+        public: true
+        toReview: true
+
+
+  - ID: LACK_MONITORING_ALERTING
+    title: Insufficient Monitoring & Alerting of Wallet Transactions
+    attack: |
+      Without adequate observability, suspicious activity (e.g. high-volume repeated adds or deducts) 
+      may go undetected, enabling fraudulent or malicious behavior.
+
+      **Refs:** [LLD - 1.5.5 Wallet Services/Non-functional considerations/Monitoring and alarms](#LLD)
+    impactDesc: |
+      Damage escalates if issues remain unnoticed, leading to significant financial loss or system compromise.
+
+      **Refs:** [LLD - 1.5.5 Wallet Services/Non-functional considerations/Monitoring and alarms](#LLD)
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: INTEGRITY
+    threatType: Denial of Service, Tampering
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: OBSERVABILITY_STACK
+        title: Centralized Monitoring & Alert Configuration
+        description: |
+          Leverage metrics, logs, and traces (via OpenTelemetry) 
+          to identify anomalies and trigger real-time alerts for suspicious activities.
+
+          **Refs:** [LLD - 1.5.5 Wallet Services/Non-functional considerations/Monitoring and alarms](#LLD), [LLD - 5.5 Corda Networks/Observability](#LLD)
+        inPlace: true
+        public: true
+        toReview: true
+
+  - ID: BALANCE_TRANSACTION_INCONSISTENCY
+    title: Inconsistent Wallet Balance and Transaction Records
+    attack: |
+      Discrepancies between the wallet balance field and the recorded transactions 
+      can arise due to improper database synchronization, leading to incorrect balance representation.
+
+      **Refs:** [LLD - 1.4.2.1 Wallet Services/Wallet Service implementation/Wallet Service data models/Wallet data model](#LLD), [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD)
+    impactDesc: |
+      Financial discrepancies, potential fraud, and loss of trust in the system's accuracy.
+
+      **Refs:** [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD)
+    impactedSecObj:
+      - REFID: INTEGRITY
+    threatType: Tampering
+    pentestTestable: false
+    public: false
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4251
+    countermeasures:
+      - ID: TRANSACTION_POINTER
+        title: Maintain Pointer to Last Transaction
+        description: |
+          Ensure each wallet record maintains a pointer to the last transaction, 
+          enabling quick verification and synchronization of the balance field with transaction history.
+
+          **Refs:** [LLD - 1.4.2.4 Wallet Services/Wallet Service implementation/Wallet Service data models/Transaction data model](#LLD)
+        inPlace: false
+        public: true
+
+      - ID: ORDERED_TRANSACTIONS
+        title: Enforce Ordered Transaction Records
+        description: |
+          Store transactions in a sequential order and ensure atomic updates to both 
+          the balance field and transaction records to maintain consistency.
+
+          **Refs:** [LLD - 1.4.2.4 Wallet Services/Wallet Service implementation/Wallet Service data models/Transaction data model](#LLD), [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD)
+        inPlace: false
+        public: true
+
+      - ID: PERIODIC_RECONCILIATION
+        title: Periodic Balance and Transaction Reconciliation
+        description: |
+          Implement periodic reconciliation processes to verify that the wallet balance 
+          accurately reflects the sum of all transactions, identifying and correcting discrepancies.
+
+          **Refs:** [LLD - 1.5.5 Wallet Services/Non-functional considerations/Monitoring and alarms](#LLD)
+        inPlace: false
+        public: true
+      - ID: SETTLEMENT_LAYER_BALANCE_DERIVATION
+        title: Derive Balance from Settlement Layer Ledger
+        description: |
+          Derive the wallet balance directly from the settlement layer ledger to ensure 
+          consistency and accuracy, bypassing potential discrepancies in the wallet service database.
+
+          **Refs:** [LLD - 7.3 Corda Distributed Ledger Technology/Solution design](#LLD), [HLD - 4.5 Solution Design/Corda DLT](#HLD)
+        inPlace: false
+        public: true
+
+  - ID: RETAIL_WALLET_DOUBLE_SPEND1
+    title: Retail wallet Double Spending While DLT TX is Unconfirmed
+    attack: |
+      Attackers, malicious users or race conditions exploit
+       the window between initiating a wallet transaction 
+      and awaiting settlement finality to
+       repeat spend requests, exceeding the actual balance 
+      during batched block confirmations.
+
+      **Refs:** [LLD - 1.4.6 Wallet Services/Wallet Service implementation/Transfer workflow](#LLD), [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+    impactDesc: |
+      Leads to unauthorized clearing of wallet balances and potential financial loss, 
+      undermining trust in the Wallet Service's integrity.
+
+      **Refs:** [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD), [HLD - 4.4 Solution Design/Wallet Services](#HLD)
+    impactedSecObj:
+      - REFID: INTEGRITY
+    threatType: Tampering
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L
+    fullyMitigated: true
+    countermeasures:
+      - ID: ATOMIC_FUNDS_BLOCK
+        title: ACID Locking of Pending Funds
+        description: |
+          Use transactional (ACID) operations to lock or reserve the funds 
+          in the Wallet Service database until settlement is confirmed, preventing 
+          additional spend attempts on the same balance.
+          The ACID properties should extend to the current DB instance and any other instance user for High Availability.
+
+          **Refs:** [LLD - 1.4.6.2 Wallet Services/Wallet Service implementation/Transfer workflow/Wallet balance updates](#LLD), [LLD - 1.5.2 Wallet Services/Non-functional considerations/Data consistency](#LLD), [LLD - 1.5.1 Wallet Services/Non-functional considerations/Resiliency](#LLD)
+        inPlace: true
+        public: true
+        toReview: true
+
+title: Wallet Service

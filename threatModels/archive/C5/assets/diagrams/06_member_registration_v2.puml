@@ -1,0 +1,193 @@
+@startuml
+
+
+actor "Application Publisher/\nLibrary Developer" as APP_PUB order 10 #LightGreen 
+actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 30 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+actor "VNode\n Operator" as VNODE_OP order 3 #LightPink 
+actor "Cluster\n Operator" as CLUSTER_OP order 2 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 4 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "Certificate Authority \n +OSCP" as CA order 100
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+' actor "Cluster Operator" as CLUSTER_OP
+' actor "VNode Operator" as VNODE_OP
+' actor "NETWORK OPERATOR" as NET_OP
+' participant "MGM Cluster" as MGM
+' participant "Corda Member Cluster" as MEMBER
+' participant "Certificate Authority \n +OSCP" as CA
+
+skinparam sequenceMessageAlign center
+hide unlinked
+autonumber 1
+hnote over VNODE_OP, MEMBER  #LightGray: \n<size:14> ** Startup and Configuration Member cluster (RPC TLS...) ** </size> \n
+group Member \nregisteration
+?-> CLUSTER_OP : Acquires CPI (TBD, out of band)
+CLUSTER_OP ->  MEMBER ++: Upload the CPI (/CPI endpoint)
+
+MEMBER --> CLUSTER_OP --: return CPI ID: "f0a0f381-e0d6-49d2-abba-6094992cef02"
+
+CLUSTER_OP -> MEMBER ++: Get STATUS: $API_URL/cpi/status/$CPI_ID
+
+MEMBER --> CLUSTER_OP --: return cpiFileChecksum
+
+
+
+VNODE_OP -> MEMBER ++: Create a virtual node:  /virtualnode(cpiFileChecksum, x500Name) 
+MEMBER -> MEMBER ++:
+?-> MEMBER : TBD\n network cache looks usable \n only on static networks (TEST) 
+deactivate MEMBER 
+MEMBER --> VNODE_OP --: return: holdingIdentity(e.g. 58B6030FABDD)
+
+'group Assign HSM and generate ledger key pairs
+'VNODE_OP -> MEMBER ++: $API_URL/hsm/soft/$HOLDING_ID/SESSION_INIT
+'MEMBER --> VNODE_OP -- : return TBD ???
+'|||
+'VNODE_OP -> MEMBER ++: /keys/$HOLDING_ID'/alias/$HOLDING_ID'-session/\ncategory/SESSION_INIT/schema/CORDA.ECDSA.SECP256R1
+'MEMBER --> VNODE_OP -- : return: ledger key ID (e.g. 3B9A266F96E2)
+
+'end
+
+'VNODE_OP -> MEMBER ++ :  
+CLUSTER_OP -> MEMBER ++: Create VNode RPC User and associate it with the VNode HoldingIdentity
+note right: Cannot find the API that associates\n the user with the specific X500/VNodeIdentityID
+note over MEMBER: what's the nature of the\n *Connection parameters?
+
+MEMBER --> CLUSTER_OP --: return: VNode user ID
+
+
+alt Cluster managed credentials
+CLUSTER_OP -> VNODE_OP: Send Credentials (Out of band TBC)
+note right : Non OAuth/SSO 
+end
+
+
+group Assign HSM and generate ledger key pairs
+VNODE_OP -> MEMBER ++ : $API_URL/hsm/soft/$HOLDING_ID/SESSION_INIT
+
+MEMBER --> VNODE_OP --: return: HSM association details 
+
+|||
+VNODE_OP -> MEMBER ++ : /keys/'$HOLDING_ID'/alias/'$HOLDING_ID'-session/\ncategory/SESSION_INIT/scheme/CORDA.ECDSA.SECP256R1
+
+MEMBER --> VNODE_OP --: return: ledger key ID (e.g. 3B9A266F96E2) 
+
+end
+|||
+
+'group Setup cluster's TLS key pair and certificate
+'CLUSTER_OP -> MEMBER++: POST: keys/p2p/alias/p2p-TLS/category/TLS/scheme/CORDA.RSA
+'MEMBER --> CLUSTER_OP -- :return: TLS key ID 
+'|||
+'CLUSTER_OP -> MEMBER++: create a certificate for the TLS key pair\n /certificates/p2p/$TLS_KEY_ID({"x500Name":"CN=CordaOperator, C=GB, L=London", \n"subjectAlternativeNames":["'$P2P_GATEWAY_HOST'"]})
+'MEMBER --> CLUSTER_OP -- :return: certificate sign request1.csr
+
+'CLUSTER_OP -> CA ++ : sign certificate
+'CA --> CLUSTER_OP -- : return: signed certificate.pem
+
+'CLUSTER_OP -> MEMBER++: upload the certificate chain to the Corda cluster \n PUT /certificates/p2p (certificate.pem, alias=p2p-tls-cert)
+'MEMBER --> CLUSTER_OP -- :return
+
+'CLUSTER_OP -> MEMBER++: get current config version: /config/corda.p2p.gateway
+'MEMBER --> VNODE_OP -- :return TBC (Version)
+'note over VNODE_OP : ask David about the above return 
+
+'VNODE_OP -> MEMBER ++ : disable cert revocation checks (optional)\n /config ({"section":"corda.p2p.gateway", "version":"'$CONFIG_VERSION'", "config":\n"{\"sslConfig\":{\"revocationCheck\":{\"mode\":\"OFF\"}}}",\n"schemaVersion":{"major":1,"minor":0}}}) TODO dagerous API
+'MEMBER --> VNODE_OP -- : return TBC  
+'end
+
+group Set up cluster's TLS key pair and certificate 
+CLUSTER_OP -> MEMBER ++: POST: keys/p2p/alias/p2p-TLS/category/TLS/scheme/CORDA.RSA
+
+MEMBER --> CLUSTER_OP -- : return: TLS Key ID 
+
+end
+
+group Certificate for PKI enforced network participation 
+CLUSTER_OP -> MEMBER ++ :  create a certificate for the TLS key pair \n/certificates/p2p/$TLS_KEY_ID ({"x500Name": "CN=CordaOperator, C=GB L=London",\n"subjectAlternativeNames": ["'$P2P_GATEWAY_HOST'"]})
+
+MEMBER --> CLUSTER_OP -- : return: certificate sign request1.csr 
+
+|||
+CLUSTER_OP -> CA ++ : sign certificate
+CA --> CLUSTER_OP -- : return: signed certificate.pem
+|||
+CLUSTER_OP -> MEMBER ++ : upload the certificate chain to the Corda cluster \nPUT /certificates/p2p (certificate.pem, alias=p2p-tls-cert)
+
+MEMBER --> CLUSTER_OP -- : return 
+deactivate MEMBER
+
+end
+CLUSTER_OP -> MEMBER ++: get current config version: /config/corda.p2p.gateway
+
+MEMBER --> VNODE_OP --: return TBC(Version) 
+
+
+VNODE_OP -> MEMBER ++ : **disable cert revocation checks (optional)**\n""/config ({"section":"corda.p2p.gateway", "version":"'$CONFIG_VERSION'", "config":\n"{ \"sslConfig\": { \"revocationCheck\": { \"mode\": \"OFF\" }  }  }",\n"schemaVersion": {"major": 1, "minor": 0}}) TODO dangerous API""
+
+MEMBER --> VNODE_OP -- : return TBC 
+
+group SESSION_KEY certificate signing (Optional)
+VNODE_OP -> MEMBER ++ :  Configure virtual node as network participant\n""PUT /network/setup/$HOLDING_ID ({"p2pTlsCertificateChainAlias": "p2p-tls-cert",\n"p2pTlsTenantId": "p2p" TODO can be other values, "sessionKeyId": "'$SESSION_KEY_ID'"})""
+
+MEMBER --> CLUSTER_OP --: return 200
+
+end
+group PRE_AUTH_TOKEN
+CLUSTER_OP -> VNODE_OP ++:  Check identity + Send preAuth Token (Out of Band)
+
+VNODE_OP --> CLUSTER_OP --: return
+' note over CLUSTER_OP , NET_OP : Check with David the correctness of this sequence
+
+
+end
+VNODE_OP -> VNODE_OP: Build registration context \nexport REGISTRATION_CONTEXT='{\n"corda.session.key.id": "'$SESSION_KEY_ID'", "corda.ledger.keys.0.id": "'$LEDGER_KEY_ID'",
+VNODE_OP -> MEMBER ++: Register members GET POST /membership/$HOLDING_ID\n({ "memberRegistrationRequest":\n{ "action": "requestJoin", "context": '$REGISTRATION_CONTEXT' } })
+
+MEMBER --> VNODE_OP --: return SUBMITTED
+ 
+
+group Registration protocol execution (p2p gateways)
+MEMBER -> MEMBER:  Create ephemeral ec  EPHE_KEY_PAIR
+MEMBER -> MGM ++: Key exchange (EPH DH) //few steps
+MGM --> MEMBER --: return: shared symmetric key 1
+
+MEMBER -> MGM ++: Registration request (member info + public SESSION_KEY)
+
+MGM -> CA ++ : Verify cert status (OCSP) 
+
+CA --> MGM --: return
+
+MGM --> MEMBER --: return
+
+
+MGM -> MEMBER ++: P2P session init (ECDH) 
+MEMBER --> MGM --: return: shared symmetric key 2
+
+MGM -> MEMBER ++: session message ping 
+
+MEMBER --> MGM --: return: pong
+
+MGM -> MGM :  
+note over MGM : **Ask David?** 
+end
+
+
+VNODE_OP -> MEMBER ++:Check registration status GET /membership/$HOLDING_ID/$REGISTRATION_ID
+MEMBER --> VNODE_OP -- : return APPROVED
+
+end
+
+VNODE_OP -> MEMBER ++ : Optional, check other members (MemberLookupRpcOps)\nGET /members/$HOLDING_ID
+
+MEMBER --> VNODE_OP -- : return members[memberContext mgmContext] 
+
+@enduml

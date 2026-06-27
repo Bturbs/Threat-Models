@@ -1,0 +1,1149 @@
+ID: SolanaProgramsLifecycle
+schemaVersion: 2
+title: Solana Programs Lifecycle
+version: '0.1'
+status: Draft
+parent: CordaProtocolV1
+
+scope:
+  description: |
+    Threat model for the deployment, initialization, and admin key governance
+    of the Corda Protocol V1 Solana programs on mainnet.
+
+    **Programs in scope:**
+
+    | Program | Admin/Authority Pattern |
+    |---|---|
+    | Vault | Admin key set at `initialize_vault`, **non-rotatable** |
+
+    **Key governance model:**
+
+    Squads v4 multisig (2-of-4 threshold) governs program upgrade authority.
+    Admin keys for on-chain operations are currently single-key and non-rotatable.
+
+    **Lifecycle flows covered:**
+
+    - Program deployment and ID generation
+    - Authority handover to Squads multisig
+    - Program initialization (vault)
+    - Upgrade governance
+    - Optional immutable lock finalization
+
+    **Lifecycle Sequence Diagram:**
+
+    <img src="img/SolanaProgramsLifecycleSeq1.svg"/>
+
+  securityObjectives:
+    - ID: KEY_GOVERNANCE_INTEGRITY
+      title: Key Governance Integrity
+      description: |
+        Ensure deployment keys, admin keys, and upgrade authority are governed with
+        segregation of duties, auditable approvals, and succession planning.
+      group: Key Management
+      contributesTo:
+        - REFID: PROGRAM_INTEGRITY
+
+  assets:
+    - ID: VAULT_PROGRAM_DEPLOYMENT
+      type: system
+      title: Vault Program Deployment
+      description: |
+        On-chain vault program managing investments, settlements, NAV updates, and whitelist.
+      inScope: true
+
+    - ID: LIQUIDITY_PROGRAM_DEPLOYMENT
+      type: system
+      title: Liquidity Program Deployment (Removed)
+      description: |
+        Historical deployment artifact for the removed Liquidity Program
+        (deleted in commit `a85d60c5`).
+      inScope: false
+
+    - ID: DEPLOY_KEYPAIRS
+      type: credential
+      title: Program Deployment Keypairs
+      description: |
+        Anchor-generated keypairs (`target/deploy/*-keypair.json`) that determine program IDs.
+        These are the seeds for the BPF loader authority and program address derivation.
+      inScope: true
+      properties:
+        location: Developer machines, target/deploy/ directory
+        format: Solana keypair JSON (Ed25519)
+        risk: Leak from dev PCs grants ability to deploy or claim program IDs
+
+    - ID: VAULT_ADMIN_KEY
+      type: credential
+      title: Vault Admin Signing Key
+      description: |
+        Key that becomes `Vault.admin` at `initialize_vault`. Controls whitelist management,
+        vault configuration, pause/resume, emergency-stop lift, and fee/offboard
+        destination updates. It also fixes the oracle-wrapper binding at vault
+        initialization. Non-rotatable after initialization.
+      inScope: true
+      properties:
+        format: Ed25519 keypair
+        rotatable: false
+        privilegedInstructions: initialize_vault, update_vault_config, pause, resume, lift_emergency_stop, whitelist ops
+
+    - ID: LIQUIDITY_MANAGER_KEY
+      type: credential
+      title: Liquidity Manager Signing Key (Legacy)
+      description: |
+        Legacy key for the removed Liquidity Program (`LiquidityPool.manager`).
+        Retained for historical threat traceability.
+      inScope: false
+      properties:
+        format: Ed25519 keypair
+        rotatable: false
+        privilegedInstructions: n/a (program removed in a85d60c5)
+
+    - ID: SQUADS_MULTISIG
+      type: system
+      title: Squads v4 Multisig (Upgrade Authority)
+      description: |
+        Solana Squads v4 multisig governing upgrade authority for the vault program.
+        Planned threshold: 2-of-4.
+      inScope: true
+
+    - ID: UPGRADE_AUTHORITY_PDA
+      type: credential
+      title: Upgrade Authority (Multisig PDA)
+      description: |
+        PDA controlled by Squads multisig, set as upgrade authority for deployed programs
+        after authority handover from deployer.
+      inScope: true
+      properties:
+        keyType: PDA (Program Derived Address)
+        storage: On-chain (Squads Multisig)
+        threshold: 2-of-4
+
+    - ID: DF_DEPLOY_PROGRAMS
+      type: dataflow
+      title: Program Deployment Flow
+      description: |
+        Build, deploy, and verify the vault program to Solana mainnet.
+        Includes keypair generation, `anchor deploy`, and on-chain verification.
+      inScope: true
+
+    - ID: DF_AUTHORITY_HANDOVER
+      type: dataflow
+      title: Upgrade Authority Handover Flow
+      description: |
+        Transfer upgrade authority from deployer keypair to Squads multisig PDA
+        for each program after deployment.
+      inScope: true
+
+    - ID: DF_INITIALIZE_PROGRAMS
+      type: dataflow
+      title: Program Initialization Flow
+      description: |
+        Initialize on-chain state: `initialize_vault`.
+        Sets the vault admin key permanently.
+      inScope: true
+
+    - ID: DF_UPGRADE_PROGRAMS
+      type: dataflow
+      title: Governed Program Upgrade Flow
+      description: |
+        Multisig-governed upgrade flow: proposal creation, voting, buffer deployment,
+        and upgrade execution through Squads.
+      inScope: true
+
+    - ID: DF_IMMUTABLE_LOCK
+      type: dataflow
+      title: Immutable Lock Finalization Flow
+      description: |
+        Optional: revoke upgrade authority to make programs permanently immutable.
+        Irreversible action.
+      inScope: true
+
+  assumptions:
+    - ID: SQUADS_V4_IMMUTABLE
+      description: |
+        Squads v4 program instance is immutable and formally verified.
+        Attacks on Squads protocol internals are out of scope.
+
+    - ID: HARDWARE_WALLETS_FOR_SIGNERS
+      description: |
+        Multisig signers and vault admin key holders use hardware-backed wallets
+        or hardened signing environments.
+
+    - ID: SEPARATE_MAINNET_KEYPAIRS
+      description: |
+        Mainnet deployment keypairs are generated separately from devnet/localnet
+        and never stored on developer laptops used for daily development.
+
+  attackers:
+    - ID: EXTERNAL_ATTACKER
+      title: External Attacker
+      description: |
+        Adversary without legitimate privileges attempting to compromise signer endpoints,
+        approval workflows, or exploit governance misconfigurations.
+      inScope: true
+
+    - ID: MALICIOUS_SIGNER
+      title: Malicious Multisig Signer
+      description: |
+        Legitimate Squads multisig member who abuses signing authority or
+        colludes with another signer to approve unauthorized upgrades.
+      inScope: true
+
+    - ID: COMPROMISED_DEVELOPER
+      title: Compromised Developer
+      description: |
+        Developer whose machine is compromised, exposing deploy keypairs,
+        program IDs, `.keys/` folder contents, or CI/CD credentials.
+      inScope: true
+
+    - ID: COMPROMISED_OPERATOR
+      title: Compromised Operator
+      description: |
+        Operator or deployment engineer whose CI/CD context or deployment ceremony is compromised,
+        allowing manipulation of what gets deployed or how the deployment is executed.
+        Unlike COMPROMISED_DEVELOPER (key material leak), this attacker controls the execution
+        channel itself and can tamper with deployment artifacts, scripts, or ceremony steps.
+      inScope: true
+
+    - ID: SOLANA_CORE_COMPROMISE
+      title: Solana Core Compromise
+      description: |
+        Catastrophic compromise of Solana core protocol or validator majority.
+      inScope: false
+
+analysis: |
+  This threat model covers the deployment and administration lifecycle for the
+  Corda Protocol V1 Solana programs. It focuses on key governance, deployment security,
+  and the non-rotatability of on-chain admin keys.
+
+  **Program Dependency and Authority Map**
+
+  | Program | Admin Key | Upgrade Authority | Cross-References |
+  |---|---|---|---|
+  | Vault | `Vault.admin` (non-rotatable) | Squads multisig PDA | Oracle wrapper + ACL gate |
+
+  **Key Risk Areas**
+
+  1. **Deploy keypair exfiltration** from developer machines or CI/CD to claim program IDs
+  2. **Non-rotatable admin keys** create permanent compromise if leaked
+  3. **Cross-program boundary correctness** (vault with ACL gate/oracle-wrapper) during upgrades
+  4. **Bootstrap window** between deployment and multisig handover
+  5. **Key owner succession** and governance liveness
+  6. **Multisig governance misconfiguration** (threshold, members, role assignments)
+  7. **Squads role permission drift** collapsing separation of duties
+
+threats:
+
+  - ID: DEPLOY_KEYPAIR_EXFILTRATION
+    title: Deployment Keypair Exfiltration from Developer Machines
+    attack: |
+      An attacker compromises a developer's machine and exfiltrates Anchor deployment
+      keypairs from `target/deploy/*-keypair.json` or the `.keys/` directory.
+
+      With these keypairs the attacker can:
+
+      - Deploy a malicious program to the same program ID on mainnet before the legitimate deployment
+      - Claim program IDs to front-run or squat on the intended addresses
+      - Extract private key material for use in impersonation or signing attacks
+
+    threatType: Information Disclosure, Elevation of Privilege
+    impactDesc: |
+      Exfiltrated deploy keypairs allow the attacker to control program addresses.
+
+      - Front-run mainnet deployment with backdoored code
+      - Permanently claim program IDs (if deployed first, legitimate team loses the address)
+      - Undermine all downstream trust assumptions tied to program identity
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: COMPROMISED_DEVELOPER
+      - REFID: COMPROMISED_OPERATOR
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DEPLOY_KEYPAIRS
+      - REFID: DF_DEPLOY_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:N/I:N/A:L'
+    pentestTestable: false
+    fullyMitigated: true
+    countermeasures:
+      - ID: DEDICATED_DEPLOY_ENVIRONMENT
+        title: Use Dedicated Secure Environment for Mainnet Deployment
+        description: |
+          Generate and store mainnet deployment keypairs only on a dedicated hardened machine
+          or CI/CD runner that is not used for daily development.
+
+          - Never store mainnet keypairs on developer laptops
+          - Use ephemeral CI environments that destroy keys after deployment
+          - Enforce disk encryption and access controls on deploy machines
+
+        inPlace: false
+        public: true
+        operational: true
+
+      - ID: GITIGNORE_KEY_MATERIAL
+        title: Enforce .gitignore for All Key Material
+        description: |
+          Ensure `target/deploy/`, `.keys/`, and `*-keypair.json` patterns are in `.gitignore`
+          and enforced via pre-commit hooks. Audit git history for accidental commits.
+
+        inPlace: true
+        public: true
+        operational: false
+
+      # - ID: SEPARATE_MAINNET_KEYPAIR_GENERATION
+      #   title: Generate Mainnet Keypairs Separately from Dev/Localnet
+      #   description: |
+      #     Use distinct keypair generation ceremonies for mainnet vs. localnet/devnet.
+      #     Mainnet keypairs must never appear in `Anchor.toml` localnet configuration
+      #     or developer environments.
+
+      #   inPlace: false
+      #   public: true
+      #   operational: true
+
+      - REFID: SECURE_UPGRADE_AUTH_BEFORE_PROD
+
+  - ID: ADMIN_KEY_PERMANENT_COMPROMISE
+    title: Permanent Compromise Due to Non-Rotatable Admin Keys
+    attack: |
+      The vault `admin` key is set at initialization and cannot be rotated via
+      any existing instruction.
+
+      If the key is compromised through phishing, malware, or insider abuse,
+      the attacker gains permanent administrative control for the lifetime of the
+      program instance.
+
+      Unlike upgrade authority (governed by multisig), these on-chain admin keys
+      have no recovery path.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Permanent loss of administrative control over the vault:
+
+      - Vault: attacker controls whitelist (KYC bypass), pause/resume, emergency-stop recovery, fee and offboard destinations, and general config
+      - No on-chain recovery mechanism exists; only full redeployment and state migration
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+    assets:
+      - REFID: VAULT_ADMIN_KEY
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-861'
+    countermeasures:
+      - ID: IMPLEMENT_ADMIN_ROTATION
+        title: Implement Vault Admin Key Rotation Instructions
+        description: |
+          Add an `update_admin` instruction that allows the current admin
+          to transfer authority to a new key.
+
+          Include safeguards:
+
+          - Two-step transfer (propose + accept) to prevent accidental lockout
+          - Optional timelock for delayed execution
+          - Event emission for off-chain monitoring
+
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: MULTISIG_ADMIN_AUTHORITY
+        title: Use Squads Multisig as Vault Admin Authority
+        description: |
+          Set the Squads multisig PDA as the vault admin at initialization time,
+          rather than a single keypair.
+
+          This provides:
+
+          - Threshold approval for all admin actions
+          - Key rotation via multisig member changes
+          - Auditability through Squads proposal history
+
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: HARDWARE_ADMIN_KEY_CUSTODY
+        title: Hardware Wallet Custody for Vault Admin Keys
+        description: |
+          Until rotation is implemented, store vault admin private keys
+          exclusively in hardware wallets (e.g., Ledger) with no software export.
+
+        inPlace: false
+        public: true
+        operational: true
+
+      - ID: VAULT_CONFIG_TIMELOCK
+        title: 24h timelock on update_vault_config
+        description: |
+          `update_vault_config` can change potentially dangerous parameters
+          (offboard destination, fee recipient). A 24h timelock is applied so
+          the support team can review and cancel malicious changes.
+
+          **Exempt from timelock:**
+
+          - initialize_vault — callable only once per instance
+          - engage_emergency_stop — must execute immediately
+
+          **Requires timelock:**
+
+          - update_vault_config — 24h
+          - lift_emergency_stop — 30 min (short circuit breaker)
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+      - ID: SET_AUTHORITY_ONCE_LOCK
+        title: Lock set_authority to single use after initial setup
+        description: |
+          `set_authority` should not be callable again after the RBAC
+          VaultAuthority has been set. It is only relevant if the RBAC
+          program's vault_authority key has been compromised. Consider
+          locking this instruction to be callable only once, or requiring
+          an exceptional governance ceremony for subsequent calls.
+
+          No timelock on the initial call during setup. Subsequent calls
+          (if permitted) should require the highest governance threshold.
+        inPlace: false
+        public: true
+
+  - ID: DEPLOYMENT_BOOTSTRAP_ABUSE
+    title: Deployment Bootstrap Key Abuse Before Authority Handover
+    attack: |
+      A temporary deployer key is used for `anchor deploy` before upgrade authority
+      is transferred to the Squads multisig. During this bootstrap window:
+
+      - The deployer key has unilateral upgrade authority
+      - Initialization transactions (`initialize_vault`) set permanent admin keys
+      - No governance controls are active yet
+
+      If the deployer key is compromised or misused during this window, the attacker
+      can deploy malicious code, set attacker-controlled admin keys, or upgrade the
+      program before handover.
+
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      The attacker subverts the initial trust state before multisig governance activates:
+
+      - Deploy backdoored program code
+      - Set attacker-controlled admin keys (permanently, since non-rotatable)
+      - Upgrade program with malicious logic before handover
+      - All downstream governance assumptions become invalid
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: COMPROMISED_OPERATOR
+      - REFID: COMPROMISED_DEVELOPER
+    assets:
+      - REFID: DEPLOY_KEYPAIRS
+      - REFID: DF_DEPLOY_PROGRAMS
+      - REFID: DF_AUTHORITY_HANDOVER
+      - REFID: DF_INITIALIZE_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-848'
+    countermeasures:
+      - ID: DETERMINISTIC_VERIFIABLE_BUILD
+        title: Use Solana Verified Builds with On-Chain Verification PDA
+        description: |
+          TODO: move this countermeasure to the Supply chain TM. REFID here if necessary.
+          Build all programs using the Solana Verify CLI (`solana-verify`) to produce
+          deterministic, reproducible bytecode verified via an on-chain PDA.
+
+          Ref: https://solana.com/docs/programs/verified-builds
+
+          **How it works**:
+
+          - Builds inside a Docker container with fixed toolchain versions (via `solana-verify build`)
+          - Eliminates environment-dependent compilation differences
+          - Produces identical bytecode from identical source on any machine
+          - Creates an on-chain verification PDA (via the OtterSec verify program) containing
+            program address, git URL, commit hash, and build arguments
+          - Anyone can verify trustlessly using the PDA data
+
+          **Build command**:
+          ```
+          solana-verify build
+          # For a specific program in a workspace:
+          solana-verify build --library-name <PROGRAM_LIB_NAME>
+          ```
+
+          **Get executable hash**:
+          ```
+          solana-verify get-executable-hash target/deploy/<PROGRAM_LIB_NAME>.so
+          ```
+
+          **Verify against on-chain program**:
+          ```
+          solana-verify get-program-hash -u mainnet <PROGRAM_ID>
+          ```
+
+          **Verify against repository** (anyone can run):
+          ```
+          solana-verify verify-from-repo <REPO_URL> --program-id <PROGRAM_ID> -um
+          ```
+
+          **For Squads multisig-controlled programs**:
+          Since the verification PDA must be signed by the program authority,
+          export the PDA transaction and submit it through Squads:
+          ```
+          solana-verify export-pda-tx <REPO_URL> --program-id <PROGRAM_ID> \
+            --uploader <MULTISIG_AUTHORITY> --encoding base58
+          ```
+          Then submit through Squads transaction builder and trigger remote verification:
+          ```
+          solana-verify remote submit-job --program-id <PROGRAM_ID> \
+            --uploader <MULTISIG_AUTHORITY>
+          ```
+
+          **Remote verification via OtterSec API**:
+          ```
+          solana-verify verify-from-repo --remote -um --program-id <PROGRAM_ID> <REPO_URL>
+          ```
+
+          Verification status visible at:
+          - Solana Explorer: `https://explorer.solana.com/address/<PROGRAM_ID>/verified-build`
+          - OtterSec API: `https://verify.osec.io/status/<PROGRAM_ID>`
+
+          **Benefits**:
+
+          - Enables independent third-party verification of deployed code
+          - On-chain PDA provides trustless, permanent verification record
+          - Detects if deployed bytecode differs from audited source
+          - Required for the "Code hash" check in pre-production verification
+          - Integrates with Squads multisig governance for PDA signing
+
+          **Important**: Do not rebuild with `anchor build` or `cargo build-sbf` after
+          `solana-verify build` — these will produce different hashes and break verification.
+
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: SECURE_UPGRADE_AUTH_BEFORE_PROD
+        title: Secure Upgrade Authority Handover Before Production Operations
+        ticketLink: https://r3-cev.atlassian.net/browse/PROT-462
+        description: |
+          Transfer upgrade authority from the deployer key to the Squads multisig PDA
+          immediately after deployment, before any production operations begin.
+
+          This eliminates the single-key upgrade authority window
+          before the system handles real funds or user operations.
+
+          **Required deployment steps**:
+
+          1. Deploy all programs to target cluster (mainnet)
+          2. **Transfer upgrade authority to Squads PDA** (lock down upgrades first)
+          3. Initialize on-chain state (vault, ACL) — uses separate admin and authority keys
+          4. **Run mainnet verification script from independent channel** (see checklist below)
+          5. Block production use until all checks pass
+
+          **CRITICAL**: Run post-deploy verification from a separate, independent channel —
+          not from the same operator machine, CI/CD pipeline, or deployment context that
+          performed the deployment. This is the primary control against COMPROMISED_OPERATOR:
+          if the deployment channel is compromised, verification from the same channel is worthless.
+
+          **Mainnet Pre-Production Verification Checklist** (automated script, run from independent environment):
+
+          | Check | Description |
+          |---|---|
+          | No prior upgrades | Verify programs haven't been upgraded by unauthorized party (check upgrade tx history) |
+          | Correct program IDs | Verify deployed vault program ID matches approved address |
+          | Upgrade authority | Verify upgrade authority == Squads multisig PDA (not still deployer key) |
+          | Admin key | Verify `Vault.admin` matches approved address |
+          | Code hash | Verify on-chain hash matches verified build: `solana-verify get-program-hash -u mainnet <PROGRAM_ID>` vs `solana-verify get-executable-hash target/deploy/<lib>.so` |
+          | Initialization state | Verify vault and pool accounts exist and are properly initialized [ref](#DETERMINISTIC_VERIFIABLE_BUILD) |
+          | Cross-program CPI test | Execute test transaction to confirm programs communicate correctly |
+          | No unexpected txs | Audit program transaction history for unauthorized activity during bootstrap |
+
+          After handover and verification, the original deployer key has no special
+          privileges — the multisig governs all future upgrades.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Deployment Team
+
+  - ID: MULTISIG_SIGNER_COMPROMISE
+    title: Multisig Signer Collusion or Compromise
+    attack: |
+      An attacker compromises or controls two of the three multisig signer keys
+      (2-of-4 threshold) through malware, phishing, insider collusion, or weak custody.
+
+      With quorum control, the attacker can approve unauthorized program upgrades
+      for the vault program.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Complete compromise of upgrade governance for the vault program:
+
+      - Deploy malicious upgrades to vault
+      - Introduce backdoors or fund-draining logic
+      - Maintain persistent access through compromised program code
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: UPGRADE_AUTHORITY_PDA
+      - REFID: DF_UPGRADE_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-847'
+    fullyMitigated: false
+    countermeasures:
+      - ID: HARDWARE_SIGNING
+        title: Hardware-Backed Signing for All Multisig Members
+        description: |
+          Require hardware wallets for all multisig signers.
+          Prohibit exportable private keys and enforce device binding.
+
+        inPlace: false
+        public: true
+        operational: true
+
+      - ID: SIGNER_DIVERSITY
+        title: Organizational and Infrastructure Diversity for Signers
+        description: |
+          Assign signers to separate teams or individuals with distinct
+          administrative domains. Prohibit shared custody channels.
+
+        inPlace: false
+        public: true
+        operational: true
+
+      - ID: UPGRADE_MONITORING
+        title: Monitor and Alert on Program Upgrade Proposals
+        description: |
+          Alert on creation and approval of upgrade proposals in Squads.
+          Require human review for any upgrade targeting the vault.
+
+        inPlace: false
+        public: true
+        operational: true
+
+      - ID: PROGRAM_DEPLOYMENT_TIMELOCK
+        title: 24h timelock on program deployments via Squads multisig
+        description: |
+          All on-chain program deployments and upgrades (Vault, RBAC, Oracle
+          Wrapper) are gated behind a Squads multisig with 3/5 signer ratio
+          and a 24h timelock. The support team must be notified and review the
+          pending deployment within the timelock period.
+
+          **Constraint:** The timelock period must exceed the support SLA to
+          allow review and potential cancellation before execution.
+
+          **Trade-off:** If a critical vulnerability requires redeployment, the
+          vault may need to be frozen (emergency stop) while waiting for the
+          timelock to elapse. This is acceptable — security over speed.
+
+          **Programs covered:**
+
+          - Vault Program (EMDZftqHQgUkj2WB5zGDsGdShWu2GKG8qkhq8AwwSGxa)
+          - RBAC Program (4nuAcGWtRWa6gTN1kc9jEX5u3HmbbnnZZ9u8wW8FKJPs)
+          - Oracle Wrapper Program (HExrWEj2rBHut6KJjsRSmP1WxWA1BtVRmSf3FmPcJcob)
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+  - ID: GOVERNANCE_LIVENESS_AND_SUCCESSION_FAILURE
+    title: Governance Liveness and Key Owner Succession Failure
+    attack: |
+      Key owners (multisig signers, vault admin) become
+      unavailable due to:
+
+      - Employee departure without key handover
+      - Lost hardware wallets or forgotten passphrases
+      - Simultaneous unavailability of multiple signers
+      - Organizational restructuring without succession planning
+
+      For multisig: quorum becomes unreachable, blocking upgrades.
+      For admin keys: since keys are non-rotatable, permanent lockout from admin functions.
+    threatType: Denial of Service
+    impactDesc: |
+      Loss of governance capability across the protocol:
+
+      - Cannot upgrade programs to fix critical vulnerabilities
+      - Cannot modify vault configuration or whitelist
+      - Cannot pause, resume, or lift emergency-stop state during incidents
+      - Permanent operational lockout if admin key is lost (no rotation)
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: VAULT_ADMIN_KEY
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H'
+    pentestTestable: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-872'
+    fullyMitigated: false
+    countermeasures:
+      - ID: SUCCESSION_PLAN
+        title: Key Owner Succession and Recovery Plan
+        description: |
+          Document and test a succession process for:
+
+          - Multisig member replacement via Squads member update
+          - Admin key recovery (requires program upgrade to add rotation)
+          - Emergency procedures for simultaneous signer unavailability
+
+          Include pre-authorized recovery procedures and periodic validation drills.
+
+        inPlace: false
+        public: false
+        operational: true
+
+      - ID: SIGNING_LIVENESS_DRILLS
+        title: Quarterly Signing Liveness Drills
+        description: |
+          Execute periodic drills simulating signer unavailability and
+          emergency upgrade scenarios. Track time-to-quorum metrics.
+
+        inPlace: false
+        public: false
+        operational: true
+
+  - ID: DEVNET_INFORMATION_LEAK
+    title: Program ID and Key Material Information Leak via Devnet
+    attack: |
+      Developers deploy test versions of programs to devnet using production-adjacent
+      keypairs or the same keypairs as intended for mainnet.
+
+      Devnet deployments are publicly visible. An attacker monitors devnet to:
+
+      - Identify program IDs planned for mainnet
+      - Discover deployment patterns and timing
+      - Extract admin public keys from initialization transactions
+      - Front-run mainnet deployment or prepare targeted attacks
+
+    threatType: Information Disclosure
+    impactDesc: |
+      Information leaked from devnet reduces attacker effort for mainnet attacks:
+
+      - Program ID enumeration and front-running
+      - Admin public key identification for social engineering
+      - Deployment timing intelligence for bootstrap window attacks
+      - Architecture and instruction pattern discovery
+
+    impactedSecObj:
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DEPLOY_KEYPAIRS
+      - REFID: DF_DEPLOY_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N'
+    pentestTestable: false
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-886'
+    countermeasures:
+      # - ID: SEPARATE_DEVNET_MAINNET_KEYS
+      #   title: Use Completely Separate Keypairs for Devnet and Mainnet
+      #   description: |
+      #     Generate distinct keypairs for each environment. Never reuse devnet
+      #     deployment keys, admin keys, or program IDs for mainnet.
+
+      #     Document the separation policy and enforce via CI checks.
+
+      #   inPlace: false
+      #   public: true
+      #   operational: true
+
+      - ID: ACCEPT_PRE_RELEASE_CODE_DISCLOSURE
+        title: Accept that devnet code is public and visible to attackers
+        description: |
+          Acknowledge that deploying to devnet inherently exposes program IDs and
+          initialization transactions publicly. Focus security efforts on secure code and mainnet
+          deployment controls rather than attempting to hide devnet activity.
+        inPlace: true
+        public: true
+        operational: false
+
+      - ID: ACCEPT_PUBLIC_PROGRAM_IDS
+        title: Accept That Program IDs Are Public After Deployment
+        description: |
+          Acknowledge that once deployed, program IDs are inherently public on Solana.
+          Focus security on key custody and governance rather than ID secrecy.
+        inPlace: true
+        public: true
+        operational: false
+
+
+  - ID: IMMUTABLE_LOCK_PREMATURE_OR_INCOMPLETE
+    title: Premature or Incomplete Immutable Lock
+    attack: |
+      Operators execute immutable lock (revoke upgrade authority) on one or more programs
+      before all initialization, configuration, and cross-program verification is complete.
+
+      Alternatively, operators fail to lock programs that should be immutable, leaving
+      an unnecessary upgrade attack surface.
+
+      In a multi-program deployment, partial locking creates inconsistent
+      governance states.
+
+    threatType: Denial of Service, Tampering
+    impactDesc: |
+      Premature lock:
+
+      - Cannot fix discovered bugs or misconfigurations
+      - Cannot update hardcoded program IDs if mismatch is found post-lock
+      - Requires full redeployment and state migration to recover
+
+      Incomplete lock:
+
+      - Upgradeable programs remain vulnerable to governance compromise
+      - Inconsistent security posture across the program suite
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: AVAILABILITY
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: DF_IMMUTABLE_LOCK
+      - REFID: UPGRADE_AUTHORITY_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: true
+    countermeasures:
+      - ID: NO_IMMUTABLE_LOCK
+        title: Do Not Lock Programs — Retain Multisig Upgrade Capability
+        description: |
+          Deliberately avoid making programs immutable. Keep both programs
+          upgradeable via Squads multisig governance indefinitely.
+
+          **Rationale**:
+
+          - Preserves ability to fix critical vulnerabilities post-deployment
+          - Eliminates risk of premature lock causing permanent operational issues
+          - Multisig already provides sufficient protection against unauthorized upgrades
+          - Immutability provides marginal security benefit vs. governance compromise risk
+
+          **Trade-off accepted**:
+
+          - Programs remain theoretically upgradeable if multisig is compromised
+          - Mitigated by multisig signer controls (hardware wallets, diversity, monitoring)
+
+          This approach avoids the entire threat category of premature/incomplete locking.
+
+        inPlace: true
+        public: true
+
+      - ID: LOCK_PRECONDITIONS_CHECKLIST
+        title: Mandatory Pre-Lock Verification Checklist
+        supersededBy: NO_IMMUTABLE_LOCK
+        description: |
+          **Not applicable**: Programs will not be locked.
+
+          Original purpose: Before executing immutable lock on any program, verify
+          all deployment and initialization steps are complete.
+
+        inPlace: false
+        public: true
+        operational: true
+
+      - ID: COORDINATED_LOCK_STRATEGY
+        title: Coordinated Lock Strategy for All Programs
+        supersededBy: NO_IMMUTABLE_LOCK
+        description: |
+          **Not applicable**: Programs will not be locked.
+
+          Original purpose: Define a lock sequence respecting cross-program dependencies.
+
+        inPlace: false
+        public: true
+        operational: true
+
+  - ID: MULTISIG_POLICY_MISCONFIGURATION
+    title: Multisig Policy Misconfiguration
+    attack: |
+      During setup or maintenance, operators misconfigure the Squads multisig policy
+      governing upgrade authority for the vault.
+
+      Examples include reducing threshold below 2, enrolling unauthorized signers,
+      or assigning the wrong multisig account as upgrade authority.
+
+      The attacker then exploits weaker policy to execute privileged upgrade transactions
+      without intended governance guarantees.
+    threatType: Tampering
+    impactDesc: |
+      Privileged operations can be executed without intended governance guarantees:
+
+      - Unauthorized program upgrade for the vault
+      - Loss of trust in deployment governance
+      - Potential persistent compromise through malicious upgrade code
+
+    impactedSecObj:
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: UPGRADE_AUTHORITY_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-867'
+    countermeasures:
+      - ID: POLICY_AS_CODE
+        title: Enforce Multisig Policy as Code
+        description: |
+          Define authority addresses, threshold, and member set in version-controlled deployment manifests.
+          Add pre-deployment validation gates that fail if expected values do not match on-chain state.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Deployment Team
+
+      - ID: TWO_PERSON_REVIEW
+        title: Independent Two-Person Review for Policy Changes
+        description: |
+          Require security and platform reviewers to approve any multisig membership or threshold update.
+          Changes must include rollback steps and explicit risk acceptance.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Deployment Team
+
+      - ID: OOB_CHALLENGE_SIGNATURE
+        title: Out-of-Band Challenge Signature Verification for Member Keys
+        description: |
+          Before registering or updating member keys, require each candidate member to sign a fresh
+          challenge message with the submitted public key. Verify signatures out-of-band and record
+          evidence with reviewer approval.
+
+          This reduces spoofing and tampering risk in member key onboarding.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Deployment Team
+
+  - ID: MULTISIG_BRICKING_AND_PERMANENT_DEADLOCK
+    title: Multisig Bricking and Permanent Deadlock
+    attack: |
+      Operators mismanage multisig threshold settings or lose access to a critical number
+      of signer keys. Common failure modes include setting an impractical threshold
+      (for example, effectively requiring all members), inadequate key recovery planning,
+      and simultaneous signer attrition.
+
+      Once quorum becomes unreachable, privileged governance actions can no longer be executed.
+      Unlike temporary liveness failure, this state is permanent.
+    threatType: Denial of Service
+    impactDesc: |
+      Privileged assets and operations become permanently unrecoverable:
+
+      - Cannot upgrade vault to fix critical vulnerabilities
+      - Non-rotatable admin keys cannot be recovered via governance
+      - Emergency changes and recovery actions cannot be approved
+      - Long-term operational lockout and incident escalation
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: UPGRADE_AUTHORITY_PDA
+      - REFID: DF_UPGRADE_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H'
+    pentestTestable: false
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-874'
+    countermeasures:
+      - ID: SUCCESSION_PLAN_FOR_SIGNERS
+        title: Establish Signer Succession and Recovery Plan
+        description: |
+          Define and test a documented succession process for signer replacement,
+          key loss, and operator departure.
+
+          Include pre-authorized recovery procedures, role handover controls,
+          and periodic validation drills.
+        inPlace: false
+        public: false
+        operational: true
+
+      - ID: THRESHOLD_DESIGN_GUARDRAILS
+        title: Keep 2-of-4, Avoid 100% Thresholds Unless Strictly Necessary
+        description: |
+          Keep 2-of-4 threshold as default for upgrade authority to balance security and liveness.
+          Set threshold policies to preserve liveness under realistic operator availability.
+
+          For larger teams, avoid unanimous thresholds by default and require explicit risk sign-off
+          when 100% thresholds are proposed.
+        inPlace: true
+        public: true
+        operational: true
+
+  - ID: UNVERIFIED_LOGIC_PATH_IN_PRIVILEGED_FLOW
+    title: Unverified Logic Path in Privileged Flow
+    attack: |
+      An attacker identifies a privileged instruction path or state transition in the Squads
+      multisig that was not covered by formal proofs (or where proofs are stale after code changes).
+
+      The attacker crafts transaction parameters that satisfy runtime checks but violate intended
+      governance invariants for program upgrades.
+
+      This can occur when verification scope does not include all critical properties for multisig
+      authorization and state transitions.
+    threatType: Tampering
+    impactDesc: |
+      Privileged transaction processing may behave differently than intended:
+
+      - Invariant bypass in upgrade approval workflow
+      - Unsafe state transition in privileged operation
+      - Reduced assurance in deployment governance for both programs
+
+    impactedSecObj:
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: DF_UPGRADE_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H'
+    pentestTestable: false
+    fullyMitigated: true
+    countermeasures:
+      - ID: FORMAL_VERIFICATION
+        title: Formal Verification of Critical Governance Logic
+        description: |
+          Maintain mathematical proofs for critical safety and authorization properties
+          covering proposal lifecycle, threshold enforcement, and execution constraints.
+
+          Enforce verification as a release gate so changes cannot ship without updated
+          proofs and independent review.
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: MUTABLE_PROGRAM_RISK_FOR_PRIVILEGED_CONTROL
+    title: Mutable Program Risk for Privileged Control
+    attack: |
+      An attacker attempts to introduce malicious behavior by targeting a mutable Squads
+      deployment path, or by tricking operators into interacting with a mutable/incorrect
+      program instance rather than the immutable v4 instance.
+
+      If successful, attacker-controlled logic could alter proposal validation or privileged
+      execution behavior for vault program upgrades.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Governance trust assumptions fail if privileged operations are routed through
+      mutable or non-canonical code:
+
+      - Unauthorized logic changes in upgrade control plane
+      - Bypass of expected governance guarantees
+      - Potential persistent compromise of upgrade authority for all programs
+
+    impactedSecObj:
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: UPGRADE_AUTHORITY_PDA
+      - REFID: DF_UPGRADE_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: V4_IMMUTABILITY_ENFORCEMENT
+        title: Enforce Immutable v4 Program Usage
+        description: |
+          Use only the immutable Squads v4 program instance (immutable since November 2024)
+          for all privileged upgrade workflows.
+
+          Add startup and CI checks that verify:
+
+          - Program ID matches approved immutable v4 ID
+          - Upgrade authority is permanently disabled for that program
+          - Runtime configuration rejects non-approved alternatives
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: ROLE_PERMISSION_DRIFT_OR_ABUSE
+    title: Role Permission Drift or Abuse
+    attack: |
+      A signer or administrator misassigns or abuses Squads roles (Proposer, Voter, Executor),
+      creating excess privileges or collapsing separation of duties.
+
+      Examples include granting execution rights too broadly, allowing self-approval flows,
+      or bypassing intended proposal/vote/execution segregation.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Role abuse can weaken governance controls and increase the chance of unauthorized
+      privileged execution:
+
+      - Separation-of-duties breakdown for upgrade authority
+      - Increased insider abuse window across both programs
+      - Reduced auditability and accountability
+
+    impactedSecObj:
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: KEY_GOVERNANCE_INTEGRITY
+    attackers:
+      - REFID: MALICIOUS_SIGNER
+    assets:
+      - REFID: SQUADS_MULTISIG
+      - REFID: DF_UPGRADE_PROGRAMS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N'
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: ROLE_BASED_PERMISSION_MODEL
+        title: Enforce Squads Role-Based Permissions
+        description: |
+          Enforce granular role separation across Proposer, Voter, and Executor
+          with least-privilege defaults.
+
+          Apply controls including:
+
+          - No single member can complete proposal, approval, and execution alone
+          - Role assignment reviews and periodic recertification
+          - Alerting on role changes and high-risk role combinations
+        inPlace: true
+        public: true
+        operational: true
+        operator: Deployment Team

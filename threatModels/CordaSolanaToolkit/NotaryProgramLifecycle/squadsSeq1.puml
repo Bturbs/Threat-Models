@@ -1,0 +1,62 @@
+@startuml
+title Squads v4 Multisig-Governed Solana Program Upgrade (Upgradeable BPF Loader)
+
+actor Dev as "Developer / CI"
+actor Proposer as "Proposer (Squad member)"
+actor Approver as "Approvers (other Squad members)"
+actor Executor as "Executor (member/bot)"
+
+participant Squads as "Squads v4 Program"
+participant Loader as "BPF Upgradeable Loader"
+database Buffer as "Buffer Account (staged .so bytes)"
+database ProgramData as "ProgramData Account (active program bytes/metadata)"
+participant Program as "Upgradeable Program (Program ID)"
+
+== One-time setup (done once per program) ==
+Dev -> Squads: Create Squad (members + threshold)
+Squads -> Squads: Create multisig state + authority PDA
+
+Dev -> Loader: Initial deploy (create Program + ProgramData as upgradeable)
+Loader -> ProgramData: Initialize ProgramData (sets initial upgrade authority)
+
+Dev -> Loader: Set upgrade authority to Squad PDA
+Loader -> ProgramData: SetAuthority(ProgramData.upgrade_authority = Squad PDA)
+
+== Build new version ==
+Dev -> Dev: Build new program binary (.so)
+
+== Stage binary on-chain (Buffer creation + chunk writes) ==
+Dev -> Loader: Create buffer account sized for .so (rent-exempt)
+Loader -> Buffer: Create/allocate buffer data space + metadata\n(authority = Squad PDA or deploy authority)
+
+loop For each chunk of .so
+  Dev -> Loader: Write(Buffer, offset, bytes)
+  Loader -> Buffer: Store bytes into account data
+end
+
+== Propose upgrade via Squads ==
+Proposer -> Squads: Create proposal with Upgrade instruction payload\n(program, programdata, buffer, authority=PDA)
+Squads -> Squads: Store proposal + target instructions
+
+== Approvals ==
+Approver -> Squads: ApproveProposal(proposal_id)
+Squads -> Squads: Record approval, check threshold
+
+== Execute (threshold reached) ==
+Executor -> Squads: ExecuteProposal(proposal_id)
+Squads -> Squads: Verify threshold + proposal state
+
+note over Squads,Loader
+Execution uses the Squad authority PDA (invoke_signed)\n(not aggregated member ed25519 signatures).
+end note
+
+Squads -> Loader: Upgrade(program, programdata, buffer, authority=PDA) (invoke_signed)
+Loader -> Loader: Verify upgradeable + authority + buffer validity
+Loader -> ProgramData: Replace/refresh active program bytes from Buffer
+Loader -> Program: Program now runs new code
+
+== Post-upgrade (optional) ==
+Dev -> Loader: Close(Buffer, recipient) to reclaim lamports
+Loader -> Buffer: Deallocate/transfer lamports
+
+@enduml

@@ -1,0 +1,342 @@
+ID: CBCommandCenter
+schemaVersion: 2
+title: CB Command Center
+parent: CBUAE_PHASE1
+
+
+scope:
+  description: CB Command Center Application
+
+  assets:
+
+    - ID: CBCC_BRIDGE_API
+      title: CB Command Center Bridge API process
+      type: process
+      description: |
+        This component exposes a REST API to the LFI Command Centres of the LFIs.
+      inScope: true
+
+    - ID: CBCC_WORKFLOW_ENGINE
+      title: CB Command Center workflow engine
+      type: process
+      description: |
+        The Workflow Engine represents the heart of the Command Centre. It is responsible
+         for coordinating the multi-step processes required for Issuance and Redemption.
+        The Workflow Engine is stateless (workflow state is recorded into the [CBCC_DATABASE](#CBCC_DATABASE)
+      inScope: true
+
+    - ID: CBCC_API_CONTROLLER
+      title: CB Command Center API Controller
+      type: process
+      description: |
+        The API controllers serve the backend to the CB GUI and the external reporting systems.
+         They will present a REST interface to their clients.
+         The API Controller is stateless, which facilitates its deployment as multiple load-balanced instances.
+        The API controller will implement Role Based Access and Control mechanisms.
+      inScope: true
+
+    - ID: CBCC_KAFKA_BUS
+      title: CB Command Center Kafka message bus
+      type: process
+      description: |
+        The Central Bank Controller employs a services architecture based around a message bus, for the CBCC is Kafka.
+      inScope: true
+
+    - ID: DF_LFI_CB_CC_REST_BRIDGE
+      title: API calls from the LFI to the CB Control Center
+      type: process
+      description: |
+        API calls from the LFI to the CB Control Center. There may be at times high loads on the Bridge API. The Bridge API will be stateless, 
+        to facilitate its deployments as multiple load-balanced instances.
+      inScope: true
+      properties:
+        authorization: JWT token claims
+        authentication: JWT token
+        TLS: yes (non mutual TBC)
+        payload: JSON requests over HTTP
+
+    - ID: DF_CBCC_KAFKA
+      type: dataflow
+      title: CBCC Java process to KAFKA connection
+      description: |
+        CBCC Java process to KAFKA communication, achieved through an async messaging service (KAFKA).
+      inScope: true
+      properties:
+        authorization: enforced by Kafka broker
+        authentication: client Kafka credentials
+        TLS: non mutual, Kafka server certificate checked
+        payload: |
+          JSON request 
+
+    - ID: LFI_REST_BRIDGE_CREDENTIAL
+      title: Credentials uses to obtain JWT for the CBCC_BRIDGE_API
+      type: credential
+      description: |
+        API calls from the LFI to the CB Control Center. There may be at times high loads on the Bridge API. The Bridge API will be stateless, 
+        to facilitate its deployments as multiple load-balanced instances.
+      inScope: true
+      properties:
+        location: VAULT, injected sidecar to POD
+        format: |
+          api client key 64 char string TBC (RFI: what credential are given to the LFI? is it given during onboard? )
+        length: 256
+        type: client api key
+      applicationRelated: true
+      infrastructureRelated: false
+
+
+    - ID: CBCC_DATABASE
+      title: CB Command Center Bridge DATABASE
+      type: database
+      description: |
+        CB Command Center Bridge DATABASE, type Postgres. 
+        The current status of each Issuance or Redemption request will be stored in the database.
+      inScope: true
+
+    - ID: CC_DB_CRED
+      title: CBCC_DATABASE credentials
+      type: credential
+      description: |
+        Credentials uses to connect to CBCC_DATABASE
+      inScope: true
+      properties:
+        location: VAULT, injected as sidecar to POD
+        format: |
+          DB connection String
+        length: TBC
+        type: DB connection string
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: DF_CBCC_DATABASE
+      title: CC database connections
+      type: dataflow
+      description: |
+        CB Command Center DATABASE JDBC connections
+      inScope: true
+
+    - ID: CC_KAFKA_CRED_CON
+      title: CBCC_KAFKA_BUS credentials
+      type: credential
+      description: |
+        Credentials uses to connect to CBCC_KAFKA_BUS
+      inScope: true
+      properties:
+        location: VAULT, injected as sidecar to POD
+        format: |
+          SALSs (username/password)
+        length: TBC
+        type: username/password
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CC_KAFKA_CRED_WE
+      title: CBCC_KAFKA_BUS credentials
+      type: credential
+      description: |
+        Credentials uses to connect to CBCC_KAFKA_BUS
+      inScope: true
+      properties:
+        location: VAULT, injected as sidecar to POD
+        format: |
+          SALSs (username/password)
+        length: TBC
+        type: username/password
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CC_KAFKA_CRED_BR
+      title: CBCC_KAFKA_BUS credentials
+      type: credential
+      description: |
+        Credentials uses to connect to CBCC_KAFKA_BUS
+      inScope: true
+      properties:
+        location: VAULT, injected as sidecar to POD
+        format: |
+          SALSs (username/password)
+        length: TBC
+        type: username/password
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CC_KAFKA_TLS_CERT
+      title: CBCC_KAFKA_BUS TLS certificate
+      type: certificate
+      description: |
+        Certificate used by CC_KAFKA serve to apply TLS and authenticate the server to the clients
+      inScope: true
+      properties:
+        location: VAULT, injected as sidecar to POD
+        format: |
+          X.509/pem
+        length: 256 ECDSA keys (TBC)
+        type: private key
+      applicationRelated: true
+      infrastructureRelated: true
+
+    - ID: CC_KAFKA_TLS_CLIENT_CERT
+      title: CBCC_KAFKA_BUS TLS CA root of trust
+      type: certificate
+      description: |
+        Certificate used by CC_KAFKA clients to verify Kafka server identity
+      inScope: true
+      properties:
+        location: VAULT, injected as sidecar to POD
+        format: |
+          X.509/pem
+        length: 256 ECDSA keys (TBC)
+        type: Public key root of trust
+      applicationRelated: true
+      infrastructureRelated: true
+
+    - ID: CB_WCONNECTOR_VNODE_CRED
+      title: Credentials (user/pass) to start CB's VNode flows
+      type: credentials
+      description: |
+        Corda Cluster REST client Credentials (user/pass) to call/start CB's VNode flows
+      inScope: true
+      properties:
+        location: |
+          VAULT, injected as sidecar to POD (RFI: how is this secret stored/injected)
+        format: |
+          test (user/password)
+        length: |
+          (RFI: what is the VNode user/pass format and requirements)
+        type: text
+      applicationRelated: true
+      infrastructureRelated: false
+
+analysis: |
+
+threats:
+
+  - ID: DISABLED_AUTHORIZATION_FOR_ADMIN
+    title: Missing authorization controls for Admin user
+    assets:
+      - REFID: DF6_ADMIN_MNGGUI
+
+    attackers:
+      - REFID: ANONYMOUS
+      - REFID: CBCC_ADMIN
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H
+    threatType: Spoofing, tampering, repudiation
+    attack: |
+      A rogue or compromised admin account is able to compromise the full system and escalate attacks. 
+      [REF](https://github.com/corda/dc-tanx/blob/c97510fbe3a19d21a680cb417c7b38e473d2c925/platform/services-security/src/main/kotlin/com/r3/dc/tanx/services/security/SecurityConfig.kt#L23C89-L23C89)
+    impactedSecObj:
+      - REFID: ADMIN_ATTACK_RESILIENCE
+    fullyMitigated: false
+    countermeasures:
+      - ID: MINIMAL_ADMIN_RIGHTS
+        title: Admin user minimal rights grant
+        description: |
+          Admins, like any other authenticated user, will have checked permissions and authorization mechanisms (e.g. RBAC).
+        operational: false
+        inPlace: false
+        public: true
+
+  - ID: LFI_REQUEST_REPUDIATION
+    title: An LFI repudiates an API request
+    assets:
+      - REFID: DF_LFI_CB_CC_REST_BRIDGE
+    attackers:
+      - REFID: ANONYMOUS
+      # - REFID: LFI_ TODO: define the specific LFI attacker
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H #TODO cvss
+    threatType: repudiation
+    attack: |
+      TODO expand on: An LFI repudiates an API request as there's not cryptographic proof being negotiated on the application level request
+    impactedSecObj:
+      - REFID: NON_REPUDIATION
+    fullyMitigated: true
+
+    countermeasures:
+      - ID: CORDAPP_LEDGER_STATUS
+        title: Admin user minimal rights grant
+        description: |
+          The CorDapp ledger allows to proof the origin of the correlated API request. 
+          (RFI: how this is happening in the cordapp? how many APIs endpoints suffer of this?)
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: SIGNED_API_REQUEST
+        title: Signed request
+        description: |
+          The request contains a signature with a recognized LFI private key
+        operational: false
+        inPlace: false
+        public: true
+
+
+##TODO internal database and internal messaging (kafka) are attack surface for tampering etc. that could be avoided/minimized
+## proposed solution would be to HMAC with an internal shared secret
+
+  - ID: STORAGE_DISCLOSURE1
+    title: Storage disclosure (DB/Kafka)
+    assets:
+      - REFID: DF_CBCC_DATABASE
+      - REFID: DF_CBCC_KAFKA
+      - REFID: CBCC_DATABASE
+      - REFID: CBCC_KAFKA_BUS
+    attackers:
+      - REFID: ANONYMOUS
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N
+    threatType: Information Disclosure
+    attack: |
+      A successful attack allows to disclose the data in storage. This could happen with application level attacks 
+      (e.g. SQL or other Injection) or for any other exploited vulnerability in the storage systems.
+    impactedSecObj:
+      - REFID: MINIMAL_RISK_SURFACE
+    fullyMitigated: false
+    public: false
+    countermeasures:
+      - ID: ENCRYPT_STORED_OBJECT
+        title: Encrypt stored objects (DB/Kafka)
+        description: |
+          Processes accessing database (also with ORM frameworks) will encrypt the stored object.
+           The key used to to encrypt the object will be a symmetric key 
+           shared across the Java processes (more trusted) than the storage processes. Any tampering of the DB data will require the 
+           secret key that is only available to the processes and not to the storage system.
+        operational: false
+        inPlace: false
+        public: true
+
+
+  - ID: STORAGE_TAMPERING1
+    title: Storage tampering (BB, KAFKA)
+    assets:
+      - REFID: DF_CBCC_DATABASE
+      - REFID: DF_CBCC_KAFKA
+      - REFID: CBCC_DATABASE
+      - REFID: CBCC_KAFKA_BUS
+    attackers:
+      - REFID: ANONYMOUS
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:L
+    threatType: tampering, repudiation
+    attack: |
+      A successful attack allows the attacker to tamper the data in storage. This could happen with application level attacks 
+      (e.g. SQL or other Injection) or for any other exploited vulnerability in the storage systems.
+    impactedSecObj:
+      - REFID: MINIMAL_RISK_SURFACE
+    fullyMitigated: false
+    public: false
+    countermeasures:
+      - ID: HMAC_STORED_OBJECT
+        title: HMAC stored objects (DB/Kafka)
+        description: |
+          Processes accessing database (also with ORM frameworks) will include a HMAC that will verify
+           integrity and authenticity of the stored records. The key used to to create and verify HMACs will be a symmetric key 
+           shared across the Java processes (more trusted) than the storage processes. Any tampering of the DB data will require the 
+           secret key that is only available to the processes and not to the storage system. Implementation should allow for at least two
+           HMAC fields to allow HMAC secret rotation.
+        operational: false
+        inPlace: false
+        public: true
+      - REFID: ENCRYPT_STORED_OBJECT
+

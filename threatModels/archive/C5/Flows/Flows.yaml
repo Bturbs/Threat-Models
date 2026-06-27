@@ -1,0 +1,209 @@
+parent: cluster
+ID: Flows
+schemaVersion: 2
+prefix: C5.Flows
+children:
+  - REFID: ExternalMessaging
+scope:
+  description: |
+    Flows are CorDapp CPI declarations and are run inside a SANDBOX. They can orchestrate CONTRACTS and TRANSACTIONS 
+    among PEERS and NOTARIES and expose them as a REST API that uses REST_AUTHENTICATION and RBAC authorization.
+    <strong>Cordapp flow execution, sequence diagram analysis</strong>
+
+    <img src=" img/FlowExecution.png">
+
+    REF: [https://docs.r3.com/en/platform/corda/5.0/developing-applications/getting-started/first-flow.html](https://docs.r3.com/en/platform/corda/5.0/developing-applications/getting-started/first-flow.html)
+    Threats occurring inside the Flow Sandbox are in the scope of the *Sandboxes* Threat Model.
+
+  assets:
+    - ID: DF_UI0
+      type: dataflow
+      title: |
+        Final user triggers a CorDapp event via an UI. 
+      description: |
+        An UI user triggers (or configure an automation that triggers) a client/server middleware system with VNODE_OPERATOR 
+        credentials. This is a common part of a final system but out ff the scope of this analysis. During development and testing 
+        this system is replaced  with a common HTTP client.
+      inScope: false
+
+    - ID: DF_UI1
+      type: dataflow
+      title: |
+        UI and middleware system for Flow triggering.
+      description: |
+        An UI user triggers (or configure an automation that triggers) a client/server middleware system with VNODE_OPERATOR 
+        credentials. This is a common part of a final system but out ff the scope of this analysis. During development and testing 
+        this system is replaced  with a common HTTP client.
+      inScope: false
+
+    - ID: DF_FLOW_REQ
+      type: dataflow
+      specifies: DF_VNodeAnyEndP
+      title: |
+        RPC REST API call requesting a CorDapp defined flow execution
+      description: |
+        HTTP call to HTTPGateway:
+        ```
+        POST /api/v1/flow/$HOLDING_ID: "startFlow": { "clientRequestId": "r1",
+        "flowClassName": "net.cordapp.testing.calculator.CalculatorFlow",
+        "requestData": "{ \"a\":10, \"b\":20 }"}
+        ```
+        It accepts the following parameters in the HTTP body request payload:
+
+        - *clientRequestId* of type String
+        - *flowClassName* of type String
+        - *requestBody* of any type, usually a JSON encoded string deserialized into an CordApp data object in side the *call()* method of the flow
+
+        It is called by a VNODE_OPERATOR and takes a VNodeID as a URL parameter
+      inScope: true
+
+    - ID: DF_FLOW_STAT1
+      type: dataflow
+      title: |
+        RPC REST API call requesting a CorDapp flow STATUS
+      description: |
+        API showing the status of a DF_FLOW_REQ given the *clientRequestId* as a parameter.
+        Status returned could be:
+
+         - REQUESTED
+         - RUNNING
+         - COMPLETED
+         - ...
+         [REF](https://docs.r3.com/en/platform/corda/5.0/reference/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/get_flow__holdingidentityshorthash_)
+      inScope: true
+
+    - ID: DF_SANDBOX_FINALIZE1
+      type: process
+      title: |
+        LedgerService.finalize CorDapp call
+      description: |
+        Specific Flow sandbox API call *ledgerService.finalize (participant peer ID)*. It also triggers DF_P2P_RESPONDER_FLOW
+      inScope: true
+
+
+    - ID: DF_P2P_RESPONDER_FLOW
+      type: dataflow
+      title: |
+        Responder flow trigger (P2P request from peer)
+      description: |
+        P2P requesting a CorDapp flow responder execution by a peer. This data flow is triggered by DF_SANDBOX_FINALIZE1
+      inScope: true
+
+analysis: |2
+
+  <img src=" img/FlowExecution_analysis.png">
+
+  Note:: DF_FLOW_REQ DoS issues are out of scope for this analysis as those threats are mitigated in the HTTPGateway analysis, specifically 
+  those threat involving DF_VNodeAnyEndP.
+
+  Note:: some of the DF_FLOW_REQ analysis applies also to DF_FLOW_STAT1 
+
+  DF_P2P_RESPONDER_FLOW (RFI: p2p team - how the DF_P2P_RESPONDER_FLOW message is avro encoded, validated etc ? ) 
+threats:
+
+  - ID: HOLDINGID_URLPARAM_TAMPERING
+    title: Tampered URL param HOLDINGID
+    assets:
+      - REFID: DF_FLOW_REQ
+      - REFID: DF_FLOW_STAT1
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N
+    threatType: Denial Of Service
+    attackers:
+      - REFID: VNODE_OPERATOR
+      - REFID: ANONYMOUS
+    attack: |
+      HOLDINGID param is different that HTTP_GW authenticated (e.g. basic auth user/password or else).
+      The VNODE_OPERATOR maliciously modifies this field. This could be triggered also by anonymous 
+      user in conjunction with an XSS vulnerability.
+    impactedSecObj:
+      - REFID: LEDGER_SPOOFING_PREVENTION
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    countermeasures:
+      - ID: HOLDINGID_VALIDATION
+        title: HOLDINGID validation against request credentials
+        description: |
+          The expected HOLDINGID value is verified at the HTTPGateway against te authenticated VNODE_OPERATOR user/Vnode.
+          (RFI: @Bassem, is there an example test for it?)
+        operational: false
+        inPlace: true
+        public: true
+      - ID: REMOVE_HOLDINGID_PARAM
+        title: Calculated HOLDINGID based on a 1 to 1 user/VNode logic
+        description: |
+          The expected value HOLDINGID is calculated from the authenticated VNODE_OPERATOR. 
+          This requires that one VNODE_OPERATOR user can only operate a single VNode
+        operational: false
+        inPlace: false
+        public: true
+
+
+
+  - ID: ResponderFlowDOS1
+    title: Responder Flow DOS
+    assets:
+      - REFID: DF_P2P_RESPONDER_FLOW
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L
+    threatType: Denial Of Service
+    attackers:
+      - REFID: VNODE_OPERATOR
+    attack: |
+      A malicious VNODE_OPERATOR on the same cluster or in another cluster of the Corda network can trigger multiple Responder flows. This would consume peer Nodes resources.
+    impactDesc: Attackers can attempt flows flooding, consume resources, pollute
+      logs.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    public: true
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: MGM_PARTICIPANT_SUSPENSION
+        title: Network Node suspension via MGM
+        description: |
+          The MGM VNODE_OPERATOR suspends VNode after a peer abuse report... (RFI: TODO describe how to MGM_PARTICIPANT_SUSPENSION ,e.g. participant distribution list?. pls provide more reference)
+        operational: true
+        operator: VNODE_OPERATOR
+        inPlace: true
+        public: true
+      - ID: P2P_PEER_BLACKLIST
+        title: Peer suspension at P2P level by VNODE_OPERATOR api
+        description: |
+          The VNode has an option to ignore/block certain peer Nodes.
+        operational: true
+        operator: VNODE_OPERATOR
+        inPlace: false
+        public: true
+
+  - ID: FLOW_RESULT_TAMPER_REST
+    title: Tampering (and disclosure) of flow results at rest in DB
+    threatType: tampering, Information disclosure
+    pentestTestable: true
+    # assets:
+    #   - REFID: DF_REST_STATE
+    attackers:
+      - REFID: ANONYMOUS
+    impactedSecObj:
+      - REFID: DATABASE_TAMPER_RESILIENCY
+      - REFID: DATABASE_LEAK_RESILIENCY
+    attack: |
+      An anonymous user with gained access to [StateManagerDB](#StateManagerDB) can escalate privileges by tamper the Flow results sent back via REST API to the CorDapp client
+       (e.g. TANX or workflow system).
+      This will allow the attacker to trigger the response of fake and fraudulent transaction as if they were legit; for example a 
+      CorDapp Flow may imply receiving a value token that can be redeemed by another system as in the case of digital coin redemption.      
+      [REF](https://github.com/corda/platform-eng-design/blob/main/core/corda-5/corda-5.2/flow/flow-status-storage/flow-status-storage.md#32-security-concerns)
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:N/I:H/A:L/E:U/RC:U
+    fullyMitigated: false
+    countermeasures:
+      - ID: ENCRYPTION_AT_REST
+        title: Encrypt state data at rest
+        description: |
+          Encrypt data at rest (e.g. flow status) with a key that is in an higher trust zone (e.g. Worker process Memory)
+        inPlace: false
+        public: true
+        operational: false
+title: Flows

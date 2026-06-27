@@ -1,0 +1,417 @@
+ID: Wallet_Back_Office_Portal
+schemaVersion: 2
+parent: CBUAE_PHASE2
+scope:
+  description: |
+    WORK IN PROGRESS
+
+    This threat model focuses on the Wallet Back Office Portal, which is part of R3's Digital Currency suite.
+     The Wallet Back Office Portal consists of the Back Office UI, the Back Office API Gateway, 
+     and the Back Office Client Specific Backend (CSB). The UI is a Single Page Application (SPA)
+      accessed by back-office users within a private network. 
+      The CSB acts as a bridge between the UI and the Wallet Service,
+       orchestrating calls and ensuring correct authorization.
+
+    **Refs:** [LLD - 2 Wallet Back-Office Portal](#LLD), [LLD - 2.1 Wallet Back-Office Portal/Overview](#LLD)
+  assets:
+    - ID: BACK_OFFICE_UI
+      type: application
+      title: Back Office UI
+      description: |
+        The Back Office UI is a web application accessed by back-office users within a private network.
+
+        **Refs:** [LLD - 2.3.3.1 Wallet Back-Office Portal/Solution design/Component diagram/Wallet Back Office UI](#LLD)
+      inScope: true
+    - ID: BACK_OFFICE_API_GATEWAY
+      type: service
+      title: Back Office API Gateway
+      description: |
+        Routes incoming traffic to various services within the application, 
+        handling traffic management, load balancing, SSL termination, and so on.
+
+        **Refs:** [LLD - 5.2 Corda Networks/API gateway](#LLD)
+      inScope: true
+    - ID: BACK_OFFICE_CSB
+      type: service
+      title: Back Office Client Specific Backend (CSB)
+      description: |
+        Mediates all interactions between the web client and the backend services, 
+        ensuring correct authorization and data orchestration.
+
+        **Refs:** [LLD - 2.3.3.2 Wallet Back-Office Portal/Solution design/Component diagram/Wallet Back Office CSB](#LLD)
+      inScope: true
+    - ID: DF_BO_UI_2_APIGW
+      type: dataflow
+      title: Back Office UI to API Gateway
+      description: |
+        Data flow representing user requests to the API Gateway.
+
+        **Refs:** [LLD - 2.3.1 Wallet Back-Office Portal/Solution design/Architecture/context](#LLD)
+      inScope: true
+    - ID: DF_APIGW_2_BOCSB
+      type: dataflow
+      title: API Gateway to Back Office CSB
+      description: |
+        Data flow representing requests from the API Gateway to the Back Office CSB.
+
+        **Refs:** [LLD - 2.3.1 Wallet Back-Office Portal/Solution design/Architecture/context](#LLD)
+      inScope: true
+    - ID: DF_BACKOFFICE_TO_WALLET
+      type: dataflow
+      title: Back Office CSB to Wallet Service
+      description: |
+        Data flow representing requests from the Back Office CSB to the Wallet Service.
+
+        **Refs:** [LLD - 2.4 Wallet Back-Office Portal/Implementation](#LLD)
+      inScope: true
+    - ID: DF_BO_UI_2_SSO
+      type: dataflow
+      title: Back Office UI to SSO
+      description: |
+        Data flow representing user requests to the Single Sign-On (SSO) service (Keycloak).
+
+        **Refs:** [LLD - 12.3.1 Identity and Access Management (IAM)/Architecture/context/Authentication](#LLD)
+      inScope: true
+    - ID: BO_JWT
+      type: credential
+      title: Back Office JWT
+      description: |
+        Data flow representing the JWT token used by the Back Office UI for authentication.
+
+        **Refs:** [LLD - 12.7.4.5 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Scopes and tokens](#LLD)
+      inScope: true
+      applicationRelated: true
+      infrastructureRelated: false
+
+
+analysis: |
+  The Wallet Back Office Portal serves as an interface for LFI back-office users to manage the wallets hosted by the LFI.
+   It exposes the Wallet Services functionality to the back-office user, 
+   including wallet management, views of wallet data, and triggering workflows. 
+   The CSB acts as a bridge between the UI and the Wallet Service, 
+   orchestrating calls between the Wallet Service and the Authorization service.
+
+   **Refs:** [LLD - 2.1.2 Wallet Back-Office Portal/Overview/Thesis](#LLD), [LLD - 2.3 Wallet Back-Office Portal/Solution design](#LLD)
+
+   <img src="img/BackOfficePortal1.svg"/>
+
+threats:
+  - ID: CSRF_ATTACK
+    title: Cross-Site Request Forgery (CSRF)
+    attack: |
+      An attacker may trick a back-office user into performing unwanted actions on the Wallet Back Office Portal by exploiting the user's authenticated session.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD)
+    impactDesc: |
+      CSRF attacks can lead to unauthorized transactions, data breaches, and compromise of wallet data integrity.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N
+    threatType: Spoofing, Tampering
+    countermeasures:
+      - ID: JTW_BROWSER_SESSION_STORAGE
+        title: CSRF Protection for SPAs Using sessionStorage
+        description: |
+          In Single Page Applications (SPAs), Cross-Site Request Forgery (CSRF) 
+          protection can be achieved by storing sensitive session-related data, such as 
+          authentication tokens, exclusively in `sessionStorage`. This approach eliminates 
+          the risk of token leakage through cookies and ensures that tokens are only 
+          accessible within the current browser session.
+
+          **Key Protection Measures:**
+
+          - Store authentication tokens (such as JWTs) in `sessionStorage` to ensure they are 
+            not automatically included in cross-site requests.
+          - Use bearer tokens in the `Authorization` header of API requests instead of relying on 
+            cookies, preventing unauthorized cross-origin requests.
+          - Ensure all requests are sent with an `Origin` or `Referer` header to allow backend 
+            servers to validate request sources.
+          - Implement same-origin policy and Content Security Policy (CSP) to minimize attack surface.
+          - Clear `sessionStorage` data upon logout or session expiration to prevent token persistence.
+
+          **Rationale:**
+
+          - Unlike cookies, `sessionStorage` data is not automatically sent with requests, 
+            making CSRF attacks infeasible.
+          - The data stored in `sessionStorage` is only accessible within the same tab and session, 
+            reducing risks of unauthorized access.
+
+          **Refs:** [LLD - 12.9.7.2 Identity and Access Management (IAM)/Securing the identity provider/Application security/Client-side security](#LLD)
+        operational: false
+        inPlace: true
+        public: true
+
+  - ID: XSS_ATTACK
+    title: Cross-Site Scripting (XSS)
+    attack: |
+      An attacker may inject malicious scripts into the Back Office UI,
+       which are then executed in the context of the user's browser.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD)
+    impactDesc: |
+      XSS attacks can lead to unauthorized access to user sessions, data breaches, and compromise of wallet data integrity.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N
+    threatType: Spoofing, Tampering
+    countermeasures:
+      - ID: XSS_PROTECTION_REACT_CONTEXTUAL_ENCODING
+        title: React Contextual Encoding for XSS Prevention
+        description: |
+          The React JS framework automatically encodes content rendered within JSX expressions to prevent 
+          XSS attacks. Developers should rely on this built-in escaping feature to avoid 
+          direct DOM manipulation.
+
+          **Best Practices:**
+
+          - Always use JSX expressions (`{value}`) to render dynamic content.
+          - Avoid concatenating user input directly within HTML attributes or element inner text.
+          - Refrain from using `dangerouslySetInnerHTML` unless necessary and with sanitized content.
+
+          **Refs:** [LLD - 12.9.7.2 Identity and Access Management (IAM)/Securing the identity provider/Application security/Client-side security](#LLD)
+        operational: false
+        public: true
+        inPlace: true
+
+      - ID: XSS_PROTECTION_AVOID_DANGEROUSLYSETINNERHTML
+        title: Avoid `dangerouslySetInnerHTML` Usage
+        description: |
+          Using React's `dangerouslySetInnerHTML` bypasses React's default escaping 
+          mechanisms, potentially introducing XSS vulnerabilities if content is not sanitized.
+
+          **Best Practices:**
+
+          - Avoid using `dangerouslySetInnerHTML` where possible.
+          - If required, sanitize content with libraries such as DOMPurify before rendering.
+          - Regularly review and audit any component utilizing this API.
+
+          **Refs:** [LLD - 12.9.7.2 Identity and Access Management (IAM)/Securing the identity provider/Application security/Client-side security](#LLD)
+        operational: false
+        public: true
+        inPlace: true
+
+      - ID: XSS_PROTECTION_INPUT_VALIDATION
+        title: Input Validation and Sanitization
+        description: |
+          All user inputs should be validated and sanitized to prevent injection attacks, 
+          ensuring only expected and safe data is processed.
+
+          **Best Practices:**
+
+          - Validate all user inputs on both client and server-side.
+          - Optional: Sanitize inputs with DOMPurify before rendering user-generated content.
+
+          **Refs:** [LLD - 12.9.7.1 Identity and Access Management (IAM)/Securing the identity provider/Application security/Keycloak application security](#LLD)
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: XSS_PROTECTION_CSP
+        title: Enforce Strict Content Security Policy (CSP)
+        description: |
+          A strong Content Security Policy (CSP) helps prevent the execution of 
+          malicious scripts by restricting the sources from which resources can be loaded.
+
+          **Best Practices:**
+
+          - Use a strict CSP policy such as `default-src 'self'; script-src 'self' 'sha256-<hash>';`.
+          - Avoid using `unsafe-inline` and `unsafe-eval` directives.
+          - Regularly monitor and update the CSP to accommodate application needs securely.
+        operational: false
+        inPlace: false
+        public: true
+
+      - ID: XSS_PROTECTION_EVENT_HANDLERS
+        title: Avoid Inline Event Handlers
+        description: |
+          Inline event handlers can expose applications to DOM-based XSS attacks. 
+          React's event handling system should be used instead to ensure secure binding.
+
+          **Best Practices:**
+
+          - Use React's `onClick` and other event bindings within JSX components.
+          - Avoid `eval()` and inline event handler attributes like `onclick="..."`
+          - Ensure event handler arguments are properly validated.
+        inPlace: false
+        operational: false
+        public: true
+
+      - REFID: JTW_BROWSER_SESSION_STORAGE
+
+
+      - ID: XSS_PROTECTION_SECURITY_HEADERS
+        title: Enable HTTP Security Headers
+        description: |
+          HTTP security headers provide an additional layer of defense against XSS attacks 
+          by instructing the browser on handling content securely.
+
+          **Recommended Headers:**
+
+          - `X-Content-Type-Options: nosniff`
+          - `X-Frame-Options: SAMEORIGIN`
+          - `X-XSS-Protection: 1; mode=block`
+          - `Referrer-Policy: no-referrer`
+          - `Strict-Transport-Security (HSTS)`
+        operational: false
+        inPlace: false
+        public: true
+
+  - ID: BACKOFFICE_INSUFFICIENT_AUTHORIZATION
+    title: Backoffice UI Insufficient Authorization checks
+    attack: |
+      An attacker may exploit insufficient authorization mechanisms to perform
+       unauthorized actions within the Wallet Back Office Portal.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD), [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+    impactDesc: |
+      Insufficient authorization can lead to unauthorized access to wallet data and functionality,
+       compromising the security of the system.
+
+      **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H
+    threatType: Spoofing, Information Disclosure
+    countermeasures:
+      - ID: SERVER_SIDE_AUTHORIZATION
+        title: Robust Server Side Authorization
+        description: |
+          Implement server-side authorization checks to ensure that all actions performed by users are properly authorized.
+
+          **Best Practices:**
+
+          - Validate user permissions on the server side for every request.
+          - Use role-based access control (RBAC) or attribute-based access control (ABAC) to manage user permissions.
+          - Ensure that sensitive operations require appropriate authorization levels.
+          - Regularly review and update authorization policies to reflect changes in user roles and permissions.
+
+          **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD), [LLD - 12.11 Identity and Access Management (IAM)/Authorization services](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: BOP_ABUSE_OF_PRIVILEGED_ACCESS
+    title: Abuse of Privileged Access
+    attacker:
+      - REFID: BACK_OFFICE_LFI_ADMIN
+    attack: |
+      A back-office user with administrative privileges may 
+      attempt to perform dangerous operations that could compromise the system's security or integrity.
+
+      **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+    impactDesc: |
+      Abuse of privileged access can lead to unauthorized changes, data breaches, and potential system compromise.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD)
+    impactedSecObj:
+      - REFID: ADMIN_ATTACK_RESILIENCE
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:L
+    threatType: Elevation of Privilege, Tampering
+    countermeasures:
+      - ID: LEAST_PRIVILEGE
+        title: Principle of Least Privilege
+        description: |
+          Ensure that back-office users, including administrators, 
+          have only the minimum level of access necessary to perform their duties.
+
+          > Add and deduct are unique operations in that they change the total amount of value in the network of wallets.
+           For this reason, permission to execute these operations is restricted to specific issuer users accessing specific issuer wallets.
+           [REF](https://github.com/corda/r3-engineering/blob/wallet-detailed-design/architecture-and-design/wallets/detailed-design/v1/README.md#permissions)
+
+          **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+        inPlace: true
+        public: true
+
+      - ID: MONITOR_AND_AUDIT
+        title: Monitor and Audit
+        description: |
+          Implement monitoring and auditing mechanisms to track
+           and log user activities within the Wallet Back Office Portal.
+
+          **Examples:**
+
+          - Enable logging of all critical actions performed by back office users.
+          - Regularly review audit logs to detect any suspicious or unauthorized activities.
+          - Use automated tools to analyze logs and generate alerts for potential security incidents.
+          - Ensure that logs are securely stored and protected from tampering.
+          - Conduct periodic audits to ensure compliance with security policies and procedures.
+
+          **Refs:** [LLD - 2.6.5 Wallet Back-Office Portal/Other considerations/Monitoring and alarms](#LLD), [LLD - 12.12 Identity and Access Management (IAM)/Security information and event management (SIEM), monitoring and alerting](#LLD)
+        inPlace: true
+        public: true
+
+      - ID: MULTIPLE_APPROVAL
+        title: Multiple Approval for Critical Operations
+        description: |
+          Implement multiple approval for critical operations to ensure that no single user has the ability to perform 
+          critical operations without oversight or approval from other authorized users.
+
+          **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+        inPlace: false
+        public: true
+
+      - ID: STEP_UP_AUTHENTICATION
+        title: Step-Up Authentication for Critical Operations
+        description: |
+          Implement step-up authentication mechanisms to require additional verification 
+          for users performing critical operations within the Wallet Back Office Portal.
+
+          **Examples:**
+
+          - Require multi-factor authentication (MFA) for sensitive actions such as financial transactions, 
+          access to sensitive data, or administrative changes.
+          - Prompt users to re-authenticate when performing high-risk operations.
+
+          **Refs:** [LLD - 12.3.1 Identity and Access Management (IAM)/Architecture/context/Authentication](#LLD)
+        inPlace: false
+        public: true
+  - ID: UNAUTHORIZED_ACCESS
+    title: Unauthorized Access
+    attack: |
+      An attacker may gain unauthorized access to the Wallet Back Office Portal, 
+      leading to potential data breaches or unauthorized transactions.
+
+      **Refs:** [LLD - 2.6.6 Wallet Back-Office Portal/Other considerations/Security](#LLD)
+    impactDesc: |
+      Unauthorized access can compromise the integrity and confidentiality of wallet data, leading to potential financial losses and data breaches.
+
+      **Refs:** [LLD - 1.4.3 Wallet Services/Wallet Service implementation/Authorization and access control](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:L
+    threatType: Spoofing, Information Disclosure
+    countermeasures:
+      - ID: BOP_STRONG_AUTHENTICATION
+        title: Strong Authentication
+        description: |
+          Implement strong authentication mechanisms to ensure that only authorized users can access the 
+          Wallet Back Office Portal. This may be part of the Single Sign-On (SSO) service and the Keycloak configuration.
+
+          **Refs:** [LLD - 12.7 Identity and Access Management (IAM)/Identity management system fundamentals](#LLD), [LLD - 12.3.1 Identity and Access Management (IAM)/Architecture/context/Authentication](#LLD)
+        inPlace: true
+        public: true
+      - REFID: STEP_UP_AUTHENTICATION
+title: Wallet Back Office Portal

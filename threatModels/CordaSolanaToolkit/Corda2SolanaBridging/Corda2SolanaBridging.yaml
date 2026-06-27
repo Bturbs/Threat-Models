@@ -1,0 +1,1204 @@
+ID: Corda2SolanaBridging
+schemaVersion: 2
+title: Corda to Solana Bridging
+version: 1.0
+parent: CordaSolanaToolkit
+
+scope:
+  description: |
+    This threat model covers the *bridge protocol* for moving tokenized RWAs from a private Corda network
+    to the public Solana blockchain using the **corda-solana-toolkit**.
+
+    **Bridging Architecture (Corda to Solana):**
+
+    The bridging process follows a three-phase protocol:
+
+    1. **Lock Phase**: Tokens are moved from the Token Holder to the Bridge Authority's confidential
+       Locking Identity. A `BridgedFungibleTokenProxy` state is created containing Solana mint metadata.
+       State: [BridgedFungibleTokenProxy](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/BridgedFungibleTokenProxy.kt)
+       Contract: [FungibleTokenBridgeContract.LockToken](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt)
+
+    2. **Notary Change Phase**: The proxy state's notary is changed from the General Notary to the
+       Solana Notary using Corda's `NotaryChangeFlow`.
+
+    3. **Mint Phase**: The Solana Notary executes a `Token2022.mintTo` instruction atomically with
+       Corda transaction finalization. The proxy is consumed (no outputs).
+       Contract: [FungibleTokenBridgeContract.MintToSolana](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt)
+
+    **Redemption Architecture (Solana to Corda):**
+
+    1. **Burn on Solana**: Bridge Authority creates a `Token2022.burn` instruction and issues a
+       [FungibleTokenBurnReceipt](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/FungibleTokenBurnReceipt.kt) as proof.
+       Contract: [FungibleTokenRedemptionContract.BurnOnSolana](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt)
+
+    2. **Notary Change**: The burn receipt's notary is changed from Solana Notary to General Notary.
+
+    3. **Unlock Tokens**: The receipt is consumed along with locked tokens, releasing them to the
+       redemption holder.
+       Contract: [FungibleTokenRedemptionContract.UnlockToken](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt)
+
+    **Key Design Decisions:**
+
+    - Lock-and-mint (not burn-and-mint) for Corda to Solana
+    - Burn-and-unlock (not burn-and-remint) for Solana to Corda
+    - Bridge Authority is a trusted central party holding both Corda and Solana keys
+    - WebSocket subscription monitors Solana redemption addresses for incoming deposits
+      (implementation: [BridgingService](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt), config: [ConfigHandler](https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/ConfigHandler.kt))
+
+  assets:
+    - ID: CORDA_ASSET
+      type: data
+      title: Corda Digital Asset
+      description: |
+        The original tokenized asset residing on the Corda network that is to be bridged.
+      inScope: true
+
+    - ID: SOLANA_REFERENCE_ASSET
+      type: data
+      title: Solana Reference Asset
+      description: |
+        The SPL token minted on Solana that represents the locked asset on Corda.
+      inScope: true
+
+    - ID: BRIDGE_AUTHORITY
+      type: system
+      title: Bridge Authority
+      description: |
+        Central trusted party running the bridging CorDapp. Orchestrates bridging operations, holds locked
+        tokens via a Locking Identity, and signs Solana transactions via whitelisted key. Implemented as
+        a Corda node running the bridging-token-workflows CorDapp.
+      inScope: true
+
+    - ID: SOLANA_NOTARY
+      type: system
+      title: Solana Notary
+      description: |
+        A specialized Corda notary service that validates and notarizes Corda transactions while also
+        executing Solana instructions (mintTo, burn) atomically. Part of the corda-solana-toolkit.
+      inScope: true
+
+    - ID: GENERAL_NOTARY
+      type: system
+      title: General Notary
+      description: |
+        Standard Corda notary for non-bridging transactions. Used for initial token issuance and
+        transfers before bridging.
+      inScope: true
+
+    - ID: LOCKING_IDENTITY
+      type: system
+      title: Locking Identity
+      description: |
+        Confidential identity controlled by Bridge Authority used to hold locked tokens in escrow
+        during bridge lifecycle. Generated via Corda's confidential identity mechanism, tied to a
+        configurable UUID (lockingIdentityLabel).
+      inScope: true
+
+    - ID: BRIDGED_FUNGIBLE_TOKEN_PROXY
+      type: data
+      title: Bridged Fungible Token Proxy
+      description: |
+        Transient Corda state created during Lock Phase containing Solana minting metadata (bridgeTokenAccount,
+        mintAccount, mintAuthority). Consumed during Mint Phase. Contract: FungibleTokenBridgeContract.
+        Source: https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/BridgedFungibleTokenProxy.kt
+      inScope: true
+
+    - ID: FUNGIBLE_TOKEN_BURN_RECEIPT
+      type: data
+      title: Fungible Token Burn Receipt
+      description: |
+        Transient Corda state issued as proof of burn on Solana. Created during BurnOnSolana command,
+        consumed during UnlockToken. Contract: FungibleTokenRedemptionContract.
+        Source: https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/FungibleTokenBurnReceipt.kt
+      inScope: true
+
+    - ID: BRIDGE_AUTHORITY_SOLANA_KEY
+      type: credential
+      title: Bridge Authority Solana Key
+      description: |
+        Solana keypair (Signer) held by Bridge Authority for signing Solana transactions. Loaded from
+        file via ConfigHandler (bridgeAuthorityWalletFile config). In scope: key file loading, in-memory
+        storage, potential log/dump exposure. Out of scope: external HSM internals.
+        Implementation: https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/ConfigHandler.kt
+      inScope: true
+
+    - ID: BA_CONFIG
+      type: configuration
+      title: Bridge Authority Configuration
+      description: |
+        Configuration used by the Bridge Authority service for mapping parties, wallets, mint authorities,
+        notaries, and Solana connectivity.
+
+        <table>
+          <thead>
+            <tr>
+              <th>Config Key</th>
+              <th>Type</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>participants</td>
+              <td>Map&lt;String, String&gt;</td>
+              <td>Corda X500 Name → Solana address (bridging)</td>
+            </tr>
+            <tr>
+              <td>redemptionWalletAccountToHolder</td>
+              <td>Map&lt;String, String&gt;</td>
+              <td>Solana address → Corda X500 Name (redemption)</td>
+            </tr>
+            <tr>
+              <td>mintsWithAuthorities</td>
+              <td>Map&lt;String, Object&gt;</td>
+              <td>Token ID → {tokenMint, mintAuthority}</td>
+            </tr>
+            <tr>
+              <td>lockingIdentityLabel</td>
+              <td>String (UUID)</td>
+              <td>Label for locking identity</td>
+            </tr>
+            <tr>
+              <td>solanaNotaryName</td>
+              <td>String</td>
+              <td>X500 name of Solana notary</td>
+            </tr>
+            <tr>
+              <td>generalNotaryName</td>
+              <td>String</td>
+              <td>X500 name of general notary</td>
+            </tr>
+            <tr>
+              <td>solanaWsUrl</td>
+              <td>String</td>
+              <td>Solana WebSocket URL</td>
+            </tr>
+            <tr>
+              <td>solanaRpcUrl</td>
+              <td>String</td>
+              <td>Solana RPC URL</td>
+            </tr>
+            <tr>
+              <td>bridgeAuthorityWalletFile</td>
+              <td>String (path)</td>
+              <td>Path to bridge authority keypair file</td>
+            </tr>
+            <tr>
+              <td>redemptionCheckIntervalSeconds</td>
+              <td>Long (optional)</td>
+              <td>Polling interval (default: 10)</td>
+            </tr>
+          </tbody>
+        </table>
+      inScope: true
+
+    - ID: SOLANA_RPC_PROVIDER
+      type: system
+      title: Solana RPC Provider
+      description: |
+        Third-party RPC service (e.g., Helius, Infura, QuickNode) that provides HTTP RPC and WebSocket
+        endpoints for interacting with the Solana blockchain. The Bridge Authority connects to this
+        service for:
+
+        - Submitting transactions to the Solana network
+        - Querying account balances and state
+        - Receiving real-time account change notifications via WebSocket
+
+        **Trust Implications:** The RPC provider is a trusted intermediary. It can observe all queries
+        and transactions, and the Bridge Authority relies on it for accurate blockchain state.
+        WebSocket events from the provider are NOT cryptographically signed blockchain data.
+
+        Configuration: solanaRpcUrl, solanaWsUrl in ConfigHandler
+      inScope: true
+
+    - ID: DFC2S_WEBSOCKET_SUBSCRIPTION
+      type: dataflow
+      title: WebSocket Redemption Monitoring
+      description: |
+        WebSocket subscription used by BridgingService to monitor Solana redemption addresses for
+        incoming token deposits. Triggers redemption flow when non-zero balance detected.
+        The connection is to the RPC Provider, not directly to Solana validators.
+        Implementation: https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt
+      inScope: true
+
+    - ID: BRIDGING_PARTY_WALLET
+      type: system
+      title: Bridging Party Wallet
+      description: |
+        The wallet used by the Corda network participant to initiate the bridging transaction and specify the destination for the Solana reference asset.
+      inScope: true
+
+    - ID: DFC2S_TRANSFER_STATE
+      type: dataflow
+      title: Transfer Corda state to bridging authority
+      description: |
+        Alice transfers the Corda state to the Bridging Authority to initiate the bridging process.
+      inScope: true
+
+    - ID: DFC2S_NOTARISE_REQUEST
+      type: dataflow
+      title: Send transaction for notarisation and bridging
+      description: |
+        The Bridging Authority sends the constructed Corda transaction to the Solana Notary.
+      inScope: true
+
+    - ID: DFC2S_SEND_SOLANA_TX
+      type: dataflow
+      title: Submit Solana transaction
+      description: |
+        The Solana Notary submits the signed Solana transaction (commit + mint) to the Solana network.
+      inScope: true
+
+    - ID: DFC2S_CONF_SOLANA_TX
+      type: dataflow
+      title: Confirm Solana transaction
+      description: |
+        The Solana network confirms the transaction back to the Notary.
+      inScope: true
+
+    - ID: DFC2S_NOTIF_BRIDGE_OK
+      type: dataflow
+      title: Notify bridging complete
+      description: |
+        The Solana Notary notifies the Bridging Authority that the process is complete.
+      inScope: true
+
+    - ID: DFC2S_NOTIF_USER_BRIDGE_OK
+      type: dataflow
+      title: Notify user bridging complete
+      description: |
+        The Bridging Authority notifies Alice that the bridging is complete.
+      inScope: true
+
+    - ID: DFC2S_MINT_TOKEN
+      type: dataflow
+      title: Minted Solana token credited
+      description: |
+        The minted SPL token is credited to Alice's Solana account.
+      inScope: true
+
+    - ID: DFC2S_TRANSFER_SOLANA_TOKEN
+      type: dataflow
+      title: Transfer/SWAP Solana token
+      description: |
+        Alice transfers the Solana token to another party, Bob.
+      inScope: true
+
+    - ID: DFC2S_SEND_REDEEM_ADDR
+      type: dataflow
+      title: Out-of-band redemption address communication
+      description: |
+        Alice (the original Corda holder) provides Bob with the designated Solana redemption address
+        needed to initiate the burning process. This happens via manual, out-of-band channels
+        (email, chat, etc.) because the address is not discoverable on-chain.
+      inScope: false
+
+    - ID: DFC2S_SEND_FOR_REDEMPTION
+      type: dataflow
+      title: Send tokens to redemption address
+      description: |
+        Bob sends the tokens to a redemption address to initiate the burn process.
+      inScope: true
+
+    - ID: DFC2S_POLL_REDEMPTION
+      type: dataflow
+      title: Monitor redemption address (WebSocket)
+      description: |
+        The Bridge Authority monitors redemption addresses via WebSocket subscription for non-zero balances.
+        This triggers the redemption flow when tokens are deposited.
+      inScope: true
+
+    - ID: DFC2S_NOTIF_BALANCE
+      type: dataflow
+      title: Notify non-zero balance
+      description: |
+        The Solana network notifies the Bridging Authority of the balance.
+      inScope: true
+
+    - ID: DFC2S_REDEEM_REQUEST
+      type: dataflow
+      title: Send transaction for atomic redemption
+      description: |
+        The Bridging Authority sends the un-bridge transaction to the Solana Notary.
+      inScope: true
+
+    - ID: DFC2S_SEND_BURN_TX
+      type: dataflow
+      title: Submit Solana burn transaction
+      description: |
+        The Solana Notary submits the signed burn transaction to the Solana network.
+      inScope: true
+
+    - ID: DFC2S_CONF_BURN_TX
+      type: dataflow
+      title: Confirm Solana burn transaction
+      description: |
+        The Solana network confirms the burn transaction back to the Notary.
+      inScope: true
+
+    - ID: DFC2S_NOTIF_REDEMPTION_OK
+      type: dataflow
+      title: Notify redemption complete
+      description: |
+        The Solana Notary notifies the Bridging Authority of the successful redemption.
+      inScope: true
+
+    - ID: DFC2S_NOTIF_USER_RED_OK
+      type: dataflow
+      title: Notify user redemption complete
+      description: |
+        The Bridging Authority notifies Bob that the redemption is complete.
+      inScope: true
+
+    - ID: BRIDGE_AUTHORITY_WALLET
+      type: credential
+      title: Bridge Authority Wallet
+      description: |
+        Solana wallet owned by the Bridge Authority service.
+        Used to sign Token2022 mint and burn instructions during bridging operations.
+        Controls issuance and redemption of bridged tokens on Solana.
+      inScope: true
+      properties:
+        location: Bridge Authority operational key, secure key management system
+        format: Ed25519 keypair (public + private key)
+        publicKeyLength: 256 bits
+        privateKeyLength: 256 bits
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: BRIDGE_AUTHORITY_REDEMPTION_WALLET
+      type: credential
+      title: Bridge Authority Redemption Wallet
+      description: |
+        Per-redeemer Solana wallet owned by the Bridge Authority.
+        Used to manage token redemption ATAs and burn instructions for redemption flows.
+        Owned by the Bridge Authority per redemption participant.
+      inScope: true
+      properties:
+        location: Bridge Authority operational key, per-redeemer instance in 
+          secure storage
+        format: Ed25519 keypair (public + private key)
+        publicKeyLength: 256 bits
+        privateKeyLength: 256 bits
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: USER_WALLET
+      type: credential
+      title: User Wallet
+      description: |
+        Solana wallet owned by the user/participant who bridges or redeems tokens.
+        Holds Associated Token Account (ATA) for bridged assets on Solana.
+        Signs token transfer and bridging instructions initiated by the user.
+      inScope: true
+      properties:
+        location: User-controlled Solana wallet, typically local key management 
+          (hardware or software wallet)
+        format: Ed25519 keypair (public + private key)
+        publicKeyLength: 256 bits
+        privateKeyLength: 256 bits
+      applicationRelated: true
+      infrastructureRelated: false
+
+
+
+
+  attackers:
+    - ID: BRIDGING_PARTY
+      title: Malicious Bridging Party
+      description: |
+        A legitimate participant on the Corda network who attempts to exploit the bridging process
+        to double-spend assets, front-run redemptions, or craft malicious Solana instructions.
+      inScope: true
+
+
+
+    - ID: COMPROMISED_BRIDGE_AUTHORITY_OPERATOR
+      title: Compromised Bridge Authority Operator
+      description: |
+        An insider or external attacker who has gained access to the Bridge Authority node, including
+        its Solana keypair file, configuration files, or runtime environment. This is in scope only
+        for key material handled by the application code (key file loading, in-memory storage, log
+        exposure). External HSM compromise is out of scope.
+      inScope: false
+
+    - ID: MALICIOUS_VALIDATOR
+      title: Malicious Solana Validator
+      description: |
+        A compromised or malicious validator on the Solana network that attempts to censor, delay,
+        or manipulate transactions related to the bridge. Includes validators on sanctions lists.
+      inScope: true
+
+    - ID: NON_COLLABORATIVE_PARTICIPANT
+      title: Non-Collaborative Corda Participant
+      description: |
+        A Corda participant (e.g., original token issuer) who refuses to sign required transactions,
+        such as notary change requests, preventing the bridging process from completing.
+      inScope: true
+
+    - ID: MALICIOUS_RPC_PROVIDER
+      title: Malicious or Compromised RPC Provider
+      description: |
+        The Solana RPC provider (e.g., Helius, Infura) that the Bridge Authority relies on for
+        blockchain access is either malicious, compromised, or experiencing a service failure.
+        This includes scenarios where the provider:
+
+        - Returns fabricated or stale blockchain state
+        - Suppresses WebSocket notifications
+        - Censors or delays transaction submissions
+        - Logs and correlates bridge activity for surveillance
+
+        Unlike Solana validators, RPC providers do not participate in consensus but serve as
+        trusted intermediaries for reading and submitting data.
+      inScope: true
+
+  assumptions:
+    - ID: CORDA_NETWORK_SECURE
+      description: |
+        The underlying Corda network and its participating nodes are assumed to be secure and operating correctly.
+
+    - ID: SOLANA_CONSENSUS_RELIABLE
+      description: |
+        The Solana network's consensus mechanism is assumed to be reliable and resistant to majority attacks.
+        Transaction finality is trusted once confirmed.
+
+    - ID: BRIDGE_AUTHORITY_TRUSTED
+      description: |
+        The Bridge Authority is a trusted party that will not mint Solana tokens without properly locking
+        Corda tokens, and will not unlock tokens without valid burn receipts. The Bridge Authority holds
+        both Corda signing keys and the Solana mint authority key.
+
+    - ID: SOLANA_NOTARY_TRUSTED
+      description: |
+        The Solana Notary correctly validates Corda transactions and executes only legitimate Solana
+        instructions as part of atomic settlement. It will reject malformed or unauthorized instructions.
+
+    - ID: EXTERNAL_KEY_STORAGE_OUT_OF_SCOPE
+      description: |
+        External key management infrastructure (HSMs, hardware wallets, external signing services) is out
+        of scope. Only the application's handling of key material is in scope, including: key file loading
+        via ConfigHandler, in-memory key storage during flow execution, and potential exposure in logs or
+        crash dumps.
+
+    - ID: CONFIGURATION_INTEGRITY
+      description: |
+        The configuration mappings between Corda parties and Solana accounts (wallet mappings, mint
+        authorities, redemption addresses) are pre-validated and correct. Misconfiguration is an
+        operational concern but not a threat vector in this model.
+
+    - ID: SOLANA_PROGRAM_WHITELISTING
+      description: |
+        The Solana token program only allows whitelisted mint authorities to mint tokens. The Bridge
+        Authority's Solana key must be pre-registered with the token mint.
+
+    - ID: RPC_PROVIDER_TRUSTED
+      description: |
+        The Solana RPC provider (e.g., Helius, Infura) is trusted to accurately relay blockchain state
+        and not suppress, fabricate, or delay transactions or notifications. This is a significant
+        trust assumption as the Bridge Authority does not run its own Solana validator node.
+        The provider can observe all bridge-related queries and transactions.
+
+analysis: |
+  The primary threat surface of the Corda-to-Solana bridge lies at the intersection of two distinct
+  blockchain/DLT environments with different trust models. Key risks include:
+
+  1. **Atomicity Failures**: Ensuring that lock-on-Corda and mint-on-Solana (or burn/unlock) occur atomically
+  2. **Asset Integrity**: Preventing double-spending, unbacked minting, or asset loss during bridging
+  3. **Key Material Exposure**: The Bridge Authority handles Solana keypairs via file loading and in-memory storage
+  4. **Redemption Front-Running**: Malicious participants could attempt to hijack redemption flows
+  5. **Malicious Instructions**: Crafted Solana instructions could attempt unauthorized operations
+
+  The Bridge Authority is a trusted, centralized component; this is an accepted counterparty risk documented
+  in assumptions. Contract validation (FungibleTokenBridgeContract, FungibleTokenRedemptionContract) provides
+  defense-in-depth by enforcing strict rules on token movements and Solana instruction formats.
+
+  **Sequence Diagrams:**
+
+  - Generic bridging flow: <img src="img/C2SBridge_seq1.svg"/>
+  ** Data Model **
+  <a id="Corda2SolanaBridgeDataModel"></a>
+  <img src="img/Corda2SolanaBridgeDataModel.svg"/>
+
+
+threats:
+  - ID: BRIDGE_DOUBLE_SPEND
+    title: Double Spending of Bridged Assets via Race Condition
+    attack: |
+      A malicious bridging party attempts to spend the original Corda asset after it has been locked and a corresponding reference asset has been minted on Solana. This could be achieved by exploiting a race condition or a failure in the locking mechanism.
+    threatType: Tampering
+    impactDesc: |
+      Successful double-spending would lead to the creation of unbacked reference assets on Solana, causing financial loss and undermining the integrity of the bridge.
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: BRIDGING_PARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:N/I:H/A:L
+    fullyMitigated: true
+    countermeasures:
+      - ID: NOTARY_DOUBLE_SPEND_CHECK
+        title: Notary Double-Spend Check
+        description: |
+          The Solana Notary (all of the versions) performs a double-spend check during the notarization process to
+           ensure that the Corda asset has been properly locked and is not being spent again.
+        inPlace: true
+        public: true
+      - ID: ATOMIC_LOCK_MINT
+        title: Atomic Lock-and-Mint
+        description: |
+          The Corda asset must be verifiably locked (encumbered) in the same atomic transaction that mints the
+          Solana reference asset. The Solana Notary ensures that the Corda state transition is only notarized if
+          the corresponding Solana mint instruction is successfully executed.
+
+          This atomicity is achieved during the **SN -> SN: Build Solana transaction (commit + mint_to)** step
+          in the bridging sequence, where the Solana Notary constructs a transaction that simultaneously
+          finalizes the Corda state transition (consuming the proxy) and triggers the `mint_to` instruction
+          on the Solana network.
+        inPlace: true
+        public: true
+
+
+  - ID: SOLANA_KEY_EXPOSURE_VIA_APPLICATION
+    title: Solana Key Exposure via Application Handling
+    attack: |
+      The Bridge Authority's Solana keypair is loaded from a file (bridgeAuthorityWalletFile config)
+       and held in memory during flow execution. An attacker with access to the Bridge Authority node 
+       could extract the key via: (1) reading the key file directly, (2) memory dump/heap analysis, 
+       (3) log file exposure if key material is inadvertently logged, (4) crash dumps containing key data.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Attacker can sign arbitrary Solana transactions as the Bridge Authority, potentially minting unbacked tokens, burning tokens without unlocking on Corda, or performing other unauthorized operations.
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: REGULATORY_COMPLIANCE
+    attackers:
+      - REFID: COMPROMISED_BRIDGE_AUTHORITY_OPERATOR
+    CVSS:
+      vector: CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: SECURE_KEY_FILE_PERMISSIONS
+        title: Secure Key File Permissions
+        description: |
+          The Solana keypair file must have restrictive filesystem permissions (e.g., 600) and be stored outside web-accessible directories. Access should be limited to the Bridge Authority service account.
+        operational: true
+        operator: Corda Network operator
+        inPlace: false
+        public: true
+      - ID: AVOID_KEY_LOGGING
+        title: Prevent Key Material in Logs
+        description: |
+          Ensure logging frameworks are configured to never log key material. Review all log statements in BridgingService and related flows to confirm Solana keys are not exposed.
+        inPlace: true
+        public: true
+      - ID: SECURE_HEAP_HANDLING
+        title: Secure Heap Handling
+        description: |
+          Consider zeroing sensitive key material after use and avoiding heap dumps in production. JVM options like -XX:+DisableAttachMechanism can prevent runtime memory access.
+          Also -XX:HeapDumpPath=/dev/null to prevent heap dumps 
+          from being written to disk.
+        operational: true
+        operator: Corda Network operator
+        inPlace: false
+        public: true
+
+  - ID: DEV_KEY_BUNDLED_IN_SOURCE
+    title: Development Keypair Bundled in Source Code
+    attack: |
+      A Solana keypair for Devnet testing is bundled in the source repository (bridging-token-workflows/src/main/resources/). If this key is accidentally used in production or if the repository is public, attackers have immediate access to signing credentials.
+    threatType: Information Disclosure
+    impactDesc: |
+      If the bundled key is used beyond Devnet, attackers can impersonate the Bridge Authority on Solana.
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: NETWORK_ATTACKER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N
+    fullyMitigated: true
+    pentestTestable: true
+    countermeasures:
+      - ID: SEPARATE_PROD_KEYS
+        title: Separate Production Keys
+        description: |
+          Production Solana keys must never be stored in source control. Use environment-specific configuration to inject keys at deployment time.
+        inPlace: true
+        public: true
+        operational: true
+        operator: Corda Network operator
+      - ID: DEVNET_ONLY_ANNOTATION
+        title: Mark Bundled Keys as Devnet-Only
+        description: |
+          Clearly document that bundled keys are for Devnet testing only. Consider build-time checks to prevent production builds from including test keys.
+        inPlace: true
+        public: true
+
+
+  - ID: WEBSOCKET_SUBSCRIPTION_SPOOFING
+    title: Spoofing of WebSocket Redemption Notifications
+    attack: |
+      The BridgingService uses WebSocket subscriptions to monitor Solana redemption addresses.
+       An attacker could attempt to spoof WebSocket messages to trigger false redemption flows,
+        potentially causing the Bridge Authority to unlock tokens without actual Solana burns.
+    threatType: Spoofing
+    pentestTestable: true
+    impactDesc: |
+      Tokens unlocked on Corda without corresponding burn on Solana, breaking the 1:1 peg and causing financial loss.
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: ATOMICITY
+    attackers:
+      - REFID: NETWORK_ATTACKER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: VERIFY_SOLANA_STATE
+        title: Verify Solana State Before Redemption
+        description: |
+          Before processing any redemption, the Bridge Authority  Solana program
+           must independently query the Solana state to verify
+           the redemption address balance and burn transaction, not relying solely on WebSocket notifications.
+        inPlace: false
+        public: true
+      - ID: SECURE_WEBSOCKET_CONNECTION
+        title: Secure WebSocket Connection
+        description: |
+          Use authenticated, encrypted WebSocket connections to trusted Solana RPC endpoints. Validate the TLS certificate of the RPC server.
+        inPlace: true
+        public: true
+
+  # - ID: RPC_PROVIDER_DATA_FALSIFICATION
+  #   title: RPC Provider Returns Falsified Blockchain State
+  #   attack: |
+  #     A malicious or compromised RPC provider (e.g., Helius, Infura) returns fabricated or stale blockchain data to the Bridge Authority. For example:
+
+  #     - Reporting a false token balance on a redemption address to trigger unauthorized minting on Corda
+  #     - Suppressing WebSocket notifications of redemption deposits, causing delayed or missed redemptions
+  #     - Returning outdated account state to cause the Bridge Authority to make decisions on stale data
+
+  #     The Bridge Authority cannot cryptographically verify RPC responses as they are plain JSON-RPC data,
+  #     not signed blockchain attestations.
+  #   threatType: Spoofing
+  #   impactDesc: |
+  #     Breaking the 1:1 peg between Corda and Solana tokens. Potential double-spending or loss of funds
+  #     if the Bridge Authority acts on falsified state.
+  #   impactedSecObj:
+  #     - REFID: ASSET_INTEGRITY
+  #     - REFID: ATOMICITY
+  #   attackers:
+  #     - REFID: MALICIOUS_RPC_PROVIDER
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: MULTI_RPC_VERIFICATION
+  #       title: Multi-Provider State Verification
+  #       description: |
+  #         Query multiple independent RPC providers and compare results before acting on critical state
+  #         (e.g., balance checks before redemption). Require consensus across providers.
+  #       inPlace: false
+  #       public: true
+  #     - ID: WEBSOCKET_AS_TRIGGER_ONLY
+  #       title: Use WebSocket as Trigger Only
+  #       description: |
+  #         Treat WebSocket notifications as untrusted triggers only. Always perform an independent RPC
+  #         query to verify state before executing any token minting or unlocking.
+  #       inPlace: true
+  #       public: true
+  #     - ID: RPC_PROVIDER_REPUTATION
+  #       title: Use Reputable RPC Providers
+  #       description: |
+  #         Select RPC providers with strong reputation, SLAs, and security track records. Consider
+  #         providers with SOC2 compliance or similar certifications.
+  #       inPlace: true
+  #       public: true
+
+  # - ID: RPC_PROVIDER_AVAILABILITY_FAILURE
+  #   title: RPC Provider Outage Disrupts Bridge Operations
+  #   attack: |
+  #     The RPC provider experiences an outage, rate-limits the Bridge Authority, or becomes unreachable.
+  #     This prevents the Bridge Authority from:
+
+  #     - Monitoring redemption addresses for incoming deposits
+  #     - Submitting minting or burning transactions to Solana
+  #     - Verifying blockchain state before Corda operations
+
+  #     Single provider dependency creates a single point of failure for all Solana interactions.
+  #   threatType: Denial of Service
+  #   impactDesc: |
+  #     Bridge operations halt completely. Users cannot bridge assets in either direction. Pending
+  #     redemptions are delayed, causing poor user experience and potential financial impact.
+  #   impactedSecObj:
+  #     - REFID: AVAILABILITY
+  #   attackers:
+  #     - REFID: MALICIOUS_RPC_PROVIDER
+  #     - REFID: NETWORK_ATTACKER
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: RPC_FAILOVER
+  #       title: Multi-Provider Failover
+  #       description: |
+  #         Configure multiple RPC providers with automatic failover. If the primary provider becomes
+  #         unavailable, switch to backup providers to maintain service continuity.
+  #       inPlace: false
+  #       public: true
+  #     - ID: RPC_HEALTH_MONITORING
+  #       title: RPC Provider Health Monitoring
+  #       description: |
+  #         Implement health checks and alerting for RPC provider connectivity. Detect degradation
+  #         early and trigger failover or operational alerts.
+  #       inPlace: false
+  #       public: true
+  #     - ID: GRACEFUL_DEGRADATION
+  #       title: Graceful Degradation Mode
+  #       description: |
+  #         Design the bridge to handle RPC unavailability gracefully. Queue pending operations and
+  #         resume processing when connectivity is restored.
+  #       inPlace: false
+  #       public: true
+
+
+  - ID: RPC_PROVIDER_SURVEILLANCE
+    title: RPC Provider Activity Surveillance
+    attack: |
+      The RPC provider logs and correlates all Bridge Authority activity, including:
+
+      - Redemption address monitoring patterns
+      - Transaction submission timing and amounts
+      - Associated Corda holder addresses (if exposed in metadata)
+
+      This data could be used for competitive intelligence, regulatory reporting, or sold to third parties.
+    threatType: Information Disclosure
+    impactDesc: |
+      Loss of operational privacy for the bridge. Bridge activity patterns, volumes, and timing are
+      exposed to the RPC provider and potentially to third parties.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_RPC_PROVIDER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:N/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: MINIMIZE_RPC_EXPOSURE
+        title: Minimize Metadata in RPC Requests
+        description: |
+          Avoid including unnecessary metadata in RPC requests. Use separate addresses for different
+          operations to limit correlation.
+        inPlace: true
+        public: true
+      - ID: RPC_PROVIDER_PRIVACY_POLICY
+        title: Review RPC Provider Privacy Policy
+        description: |
+          Select RPC providers with strong privacy commitments and data retention policies. Prefer
+          providers that do not log request details beyond operational necessity.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Corda Network operator
+      - ID: SELF_HOSTED_NODE
+        title: Self-Hosted Validator Node
+        description: |
+          For maximum privacy and trustlessness, consider running a self-hosted Solana RPC node.
+          This eliminates third-party visibility into bridge operations but requires significant
+          infrastructure investment.
+        inPlace: false
+        operationsal: true
+        operator: Corda Network operator
+        public: true
+
+  # - ID: NON_COLLABORATION_NOTARY_CHANGE
+  #   title: Bridging Blocked by Non-Collaborative Participant
+  #   attack: |
+  #     The notary change flow (from General Notary to Solana Notary) may require signatures from participants on the original token state (e.g., issuer). A non-collaborative participant refuses to sign, permanently blocking the bridging process.
+  #   threatType: Denial of Service
+  #   impactDesc: |
+  #     Token holder cannot bridge their tokens to Solana, leading to locked value and poor user experience.
+  #   impactedSecObj:
+  #     - REFID: AVAILABILITY
+  #   attackers:
+  #     - REFID: NON_COLLABORATIVE_PARTICIPANT
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: PRE_BRIDGING_CONSENT
+  #       title: Pre-Bridging Consent Mechanism
+  #       description: |
+  #         Establish agreements with all relevant participants before tokens are issued, ensuring they will cooperate with notary changes for bridging purposes.
+  #       inPlace: false
+  #       public: true
+  #     - ID: DESIGN_FOR_MINIMAL_SIGNATURES
+  #       title: Design for Minimal Required Signatures
+  #       description: |
+  #         Structure token states so that notary changes require only the token holder's signature, not all historical participants.
+  #       inPlace: false
+  #       public: true
+
+  - ID: SENDER_ATA_REPUDIATION
+    title: Sender repudiates the intended Solana ATA
+    attack: |
+      In DFC2S_TRANSFER_STATE, the transfer and bridge token transaction does not include the sender's
+      Solana associated token account (ATA). Instead, the Bridge Authority (BA) uses a static ATA from
+      node configuration to mint/transfer the Solana reference asset. A sender can later repudiate that
+      this was the intended destination and claim they requested a different ATA, creating a dispute
+      over the beneficiary address.
+    threatType: Repudiation
+    impactDesc: |
+      Disputes over the intended Solana destination can lead to loss claims, operational escalation,
+      and regulatory/compliance exposure. The bridge lacks cryptographic proof tying the sender's intent
+      to a specific ATA.
+    impactedSecObj:
+      - REFID: AUDITABILITY
+      - REFID: REGULATORY_COMPLIANCE
+    attackers:
+      - REFID: BRIDGING_PARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: INCLUDE_ATA_IN_TX_METADATA
+        title: Include ATA in bridging transaction metadata
+        description: |
+          Extend the bridging CorDapp to embed the destination ATA in the Corda transaction metadata
+          or state, signed by the initiator. This provides durable cryptographic proof of the sender's
+          intent for the specific Solana address.
+        operational: true
+        operator: Cordapp Developer
+        inPlace: false
+        public: true
+      - ID: ATA_DISCLOSURE_FLOW
+        title: Additional flow to submit ATA to BA
+        description: |
+          Add a dedicated Corda flow/transaction where the initiator submits the ATA to the Bridge
+          Authority and signs it. The BA must reference this signed submission when minting on Solana.
+        operational: true
+        inPlace: false
+        operator: Cordapp Developer
+        public: true
+
+  # - ID: BRIDGE_DOS_ATTACK
+  #   title: Denial of Service on the Bridge
+  #   attack: |
+  #     An attacker floods the Bridge Authority or Solana Notary with a high volume of invalid or
+  #      resource-intensive bridging requests. This could exhaust computational resources, 
+  #      increase operational costs (Solana compute units), and prevent legitimate transactions 
+  #      from being processed.
+  #   threatType: Denial of Service
+  #   impactDesc: |
+  #     The bridging service becomes unavailable, locking up assets and preventing users from moving liquidity between the two networks.
+  #   impactedSecObj:
+  #     - REFID: AVAILABILITY
+  #   attackers:
+  #     - REFID: NETWORK_ATTACKER
+  #     - REFID: BRIDGING_PARTY
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: REQUEST_RATE_LIMITING
+  #       title: Implement Request Rate Limiting
+  #       description: |
+  #         The Bridge Authority should implement rate limiting and traffic shaping to manage the flow of incoming bridging requests and filter out malicious or excessive traffic.
+  #       inPlace: false
+  #       public: true
+  #     - ID: COMPUTE_UNIT_BUDGETING
+  #       title: Solana Compute Unit Budgeting
+  #       description: |
+  #         Implement robust mechanism for managing Solana compute units, including a strategy for prioritizing legitimate transactions and handling fee spikes during network congestion.
+  #       inPlace: false
+  #       public: true
+
+
+  - ID: REDEMPTION_HIJACKING
+    title: Redemption Hijacking via Front-Running
+    attack: |
+      A malicious Corda participant observes a deposit to a redemption address on Solana that is 
+      not their own.
+       They then front-run the legitimate owner by creating a Corda transaction (forging a syntactically valid tampered Redeem flow TX) to
+        "un-bridge" one of their own locked assets, consuming the deposited Solana tokens and 
+        effectively stealing the redemption value.
+    pentestTestable: true
+    threatType: Tampering
+    impactDesc: |
+      The legitimate redeemer loses their funds on Solana, while the attacker successfully redeems their own asset using someone else's deposit. This breaks the 1:1 peg and trust in the redemption process.
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: BRIDGING_PARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:H/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: BIND_REDEMPTION_TO_DEPOSIT
+        title: Bind Redemption to Specific Deposit
+        description: |
+          The redemption process must cryptographically link the Corda "un-bridge" transaction to a specific 
+          deposit event on Solana. 
+          The configuration maps redemption wallet accounts to specific Corda holders 
+          (redemptionWalletAccountToHolder), but this must be enforced atomically during the burn-and-unlock
+           process.
+        inPlace: true
+        public: true
+      - ID: RESTRICT_REDEMPTION_FLOW_INITIATORS
+        title: Restrict Redemption Flow Initiators
+        description: |
+          Only allow the Bridge Authority to initiate the redemption flow.
+        inPlace: true
+        public: true
+
+  - ID: UNFINALIZED_REDEMPTION1
+    title: Redemption finality not delivered to redeemer
+    attack: |
+      The redemption is first committed on Solana and then finalized on Corda. In DFC2S_FINALITY_REDEEM,
+      a network or node issue can block the whole transactional workflow. The Solana burn is final,
+      but the redeemer does not receive the updated Corda state in their vault, creating an availability
+      and reconciliation gap.
+    threatType: Denial of Service
+    pentestTestable: true
+    impactDesc: |
+      The redeemer cannot observe or use the redeemed Corda asset despite a successful burn on Solana.
+      This causes operational disputes and delays in settlement reconciliation.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: ASSET_INTEGRITY
+    attackers:
+      - REFID: NETWORK_ATTACKER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L
+    fullyMitigated: true
+    countermeasures:
+      - ID: BA_TX_RECOVERY
+        title: Bridge Authority Transaction and worflow Recovery
+        description: |
+          Retry and recovery mechanisms are implemented in the Bridge Authority for completing transactions.
+          If delivery to the redeemer fails, the BA queue and retry until successful.
+        inPlace: true
+        public: true
+
+  # - ID: OBSTRUCTED_CORDA_REDEMTION_BY_OWNER
+  #   title: Redemption finality obstructed by recipient
+  #   attack: |
+  #     The redemption recipient can deliberately fail or refuse FinalityFlow on their own Corda node
+  #     after the Solana burn succeeds. This blocks the finality update for the recipient, while the
+  #     notary consumes the state and the Solana tokens remain burned, leaving Corda vaults inconsistent
+  #     between the Bridge Authority and the recipient.
+  #   threatType: Denial of Service
+  #   pentestTestable: true
+  #   impactDesc: |
+  #     Ledger views diverge between participants, creating disputes and operational risk. The recipient
+  #     can claim non-receipt despite a successful redemption, complicating reconciliation and auditability.
+  #   impactedSecObj:
+  #     - REFID: AVAILABILITY
+  #     - REFID: AUDITABILITY
+  #   attackers:
+  #     - REFID: BRIDGING_PARTY
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:L
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: FINALITY_ACK_POLICY
+  #       title: Finality acknowledgment policy
+  #       description: |
+  #         Require explicit acknowledgment or automated retry/escrow logic for FinalityFlow delivery.
+  #         Define operational procedures for dispute resolution when a recipient obstructs finality.
+  #       inPlace: false
+  #       public: true
+  #     - ID: LACK_OF_INCENTIVES1
+  #       title: Lack of incentives for own redemption 
+  #       description: |
+  #         There are not obvious incentives for a recipient to block their own redemption finality,
+  #         as they would be forfeiting access to their own assets.
+  #       inPlace: false
+  #       public: true
+
+  # - ID: MALICIOUS_NOTARY_INSTRUCTION
+  #   title: Malicious Solana Instruction Injection
+  #   attack: |
+  #     A malicious participant crafts a Corda transaction with a SolanaInstruction that performs an unauthorized action on Solana, such as transferring ownership of the token mint contract or interacting with an unrelated, malicious program, instead of the intended mintTo or burn operation.
+  #   threatType: Elevation of Privilege
+  #   impactDesc: |
+  #     Could lead to a wide range of exploits, from stealing assets to compromising the entire bridge infrastructure on Solana, depending on the permissions of the notary's signing key.
+  #   impactedSecObj:
+  #     - REFID: ASSET_INTEGRITY
+  #     - REFID: AVAILABILITY
+  #   attackers:
+  #     - REFID: BRIDGING_PARTY
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: CONTRACT_INSTRUCTION_VALIDATION
+  #       title: Contract-Level Instruction Validation
+  #       description: |
+  #         The FungibleTokenBridgeContract.MintToSolana command validates that exactly one Solana instruction is present and matches the expected mintTo format. Similarly, FungibleTokenRedemptionContract.BurnOnSolana validates burn instructions. These contract checks prevent arbitrary instruction injection.
+  #       inPlace: true
+  #       public: true
+  #     - ID: PROGRAM_ID_ALLOWLIST
+  #       title: Solana Program ID Allowlist
+  #       description: |
+  #         The Solana Notary should maintain an allowlist of permissible program IDs (e.g., only SPL Token 2022 program) and reject any transaction targeting unauthorized programs.
+  #       inPlace: true
+  #       public: true
+
+  # - ID: SANCTIONED_VALIDATOR_RISK
+  #   title: Transaction Finalized by Sanctioned Validator
+  #   attack: |
+  #     A bridging transaction is processed and finalized by a Solana validator that is on
+  #      a government sanctions list. While not a technical attack, this creates a compliance and legal 
+  #      risk for the participants.
+  #   threatType: Compliance Violation
+  #   impactDesc: |
+  #     Financial institutions participating in the bridge may be in violation of regulatory requirements, leading to fines, legal action, and reputational damage.
+  #   impactedSecObj:
+  #     - REFID: REGULATORY_COMPLIANCE
+  #   attackers:
+  #     - REFID: MALICIOUS_VALIDATOR
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: VALIDATOR_MONITORING
+  #       title: Validator Monitoring Service
+  #       description: |
+  #         Utilize third-party services that monitor the Solana validator set and provide data on their identity and sanction status. While transactions cannot be routed away from specific validators, this allows for post-transaction analysis and risk assessment.
+  #       inPlace: false
+  #       public: true
+  #     - ID: COMPLIANCE_POLICY
+  #       title: Clear Compliance Policy and Disclosure
+  #       description: |
+  #         Establish a clear policy regarding the risks of interacting with public, permissionless blockchains and disclose this to all participants.
+  #       inPlace: true
+  #       public: true
+
+  # - ID: SPOOF_BRIDGE_COMPLETION
+  #   title: Spoofing of Bridge Completion Notification
+  #   attack: |
+  #     An attacker spoofs the bridge completion notification to mislead the Bridge Authority or the user. This could involve injecting false messages into the WebSocket subscription or impersonating bridge components.
+  #   threatType: Spoofing
+  #   impactDesc: |
+  #     Could cause the user or bridge components to act on false information, leading to inconsistent states or failed subsequent actions. For example, a user might attempt a follow-up action believing the bridge was successful when it was not.
+  #   impactedSecObj:
+  #     - REFID: ATOMICITY
+  #     - REFID: ASSET_INTEGRITY
+  #   attackers:
+  #     - REFID: NETWORK_ATTACKER
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:L/A:N
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: SECURE_NOTIFICATION_CHANNEL
+  #       title: Secure Notification Channel
+  #       description: |
+  #         All notifications between bridge components must be sent over authenticated and encrypted channels. The BridgingService WebSocket connection to Solana should use secure endpoints and validate message authenticity.
+  #       inPlace: true
+  #       public: true
+  #     - ID: STATE_VERIFICATION
+  #       title: Independent State Verification
+  #       description: |
+  #         Upon detecting a redemption event via WebSocket, the Bridge Authority should independently verify the transaction state on Solana before proceeding with the Corda unlock operation.
+  #       inPlace: false
+  #       public: true
+
+  - ID: UNSYNC_REDEEM_ADDRESS
+    title: Unsynchronized Redemption Address Communication
+    attack: |
+      Bob purchases tokens from Alice on Solana and later wants to redeem them back to Corda. However, redemption
+      requires sending tokens to Alice's designated redemption address, which is:
+
+      1. **Manually configured** by the Bridge Authority in the redemptionWalletAccountToHolder mapping
+      2. **Not discoverable on-chain** or from token metadata
+      3. **Communicated out-of-band** from Alice to Bob (email, chat, contract terms)
+
+      This creates multiple attack vectors:
+
+      - **Stale Address**: BA reconfigures redemption addresses, but Alice provides Bob with an old address. Bob's
+        tokens are sent to an unmapped address and are permanently lost.
+      - **Incorrect Address**: Alice accidentally provides the wrong address (typo, copy-paste error). Bob's tokens
+        are lost or sent to another user's redemption address.
+      - **Unavailable Information**: Alice is unreachable or unwilling to provide the redemption address. Bob cannot
+        redeem tokens he legitimately owns.
+      - **Malicious Misdirection**: Alice intentionally provides Bob with a wrong address to cause him loss.
+
+      The bridge design constrains redemption to always unlock tokens to the *original Corda holder* (Alice), not
+      to the current token holder (Bob). This requires trust and coordination between trading parties.
+    threatType: Tampering
+    impactDesc: |
+      Impacts include:
+
+      - **Asset Loss**: Tokens sent to wrong or unmapped addresses are permanently lost, breaking the 1:1 peg
+      - **Denial of Service**: Bob cannot redeem tokens if Alice won't provide the redemption address
+      - **Poor UX**: Manual coordination required between trading parties creates friction and errors
+      - **Trust Requirement**: Bob must trust Alice to provide correct information, undermining public blockchain principles
+    impactedSecObj:
+      - REFID: ASSET_INTEGRITY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: BRIDGING_PARTY
+      - REFID: NETWORK_ATTACKER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:H/A:L
+    fullyMitigated: false
+    countermeasures:
+      - ID: DETERMINISTIC_REDEMPTION_ADDRESS
+        title: Deterministic Redemption Address Derivation
+        description: |
+          Use Solana Program Derived Addresses (PDAs) to deterministically derive redemption addresses from
+          immutable identifiers:
+
+          redemptionAddress = deriveAddress(seed: hash(cordaX500Name), mintAccount)
+
+          This makes redemption addresses:
+          - **Discoverable**: Anyone can calculate the address
+          - **Immutable**: Cannot be changed by BA reconfiguration
+          - **Self-service**: No manual communication needed
+
+          Implementation: Use Anchor's seeds constraint or native Solana PDA derivation.
+        inPlace: false
+        public: true
+
+      - ID: DYNAMIC_REDEMPTION_WALLET_CREATION
+        title: Dynamic Redemption Wallet Creation During Bridging
+        description: |
+          Modify BridgeFungibleTokenFlow to automatically create and configure a redemption wallet when
+          tokens are first bridged:
+
+          1. BA creates redemptionWallet and redemptionTokenAccount during mint phase
+          2. Mapping stored in vault or dynamic config (not static file)
+          3. Redemption address returned to user as part of bridging confirmation
+          4. Address embedded in SPL token metadata or associated on-chain account
+
+          This ensures:
+          - **Timely creation**: Address exists before tokens can be traded
+          - **No staleness**: Address created for this specific bridging event
+          - **Automated communication**: Address returned via Corda flow, not out-of-band
+
+          Implementation: Add createRedemptionWallet() call in BridgeFungibleTokenFlow.call()
+        inPlace: false
+        public: true
+      - ID: ONCHAIN_REDEMPTION_METADATA
+        title: On-Chain Redemption Address Metadata
+        description: |
+          Store the redemption address in a cryptographically verifiable on-chain location so any token
+          holder can discover it without out-of-band communication.
+
+          **Recommended Approach: Deterministic, Program-Owned Address**
+
+          Derive the redemption address deterministically from immutable inputs (Corda holder identity + token mint).
+          The address is owned by a Bridge Authority (BA) Solana program, not a keypair. This ensures:
+
+          - **Discoverability**: Any holder can compute or query the address
+          - **Immutability**: Address cannot drift due to configuration changes
+          - **Authority control**: Only the BA program can authorize burns from this address
+          - **Fewer keys**: BA does not need a separate private key per redemption address
+
+          **Operational Implication**
+
+          Because the address is program-owned, a **custom BA program is required** to sign burn instructions
+          via CPI. A standard keypair alone cannot authorize burns from a program-owned address.
+        inPlace: false
+        public: true
+

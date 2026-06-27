@@ -1,0 +1,170 @@
+featuresCategories:
+  - category: Process integration
+    features:
+    - ID: FPI1
+      description: maintenance and review frequency
+      scoringQuestions:
+      - ID: QFPI1.1
+        question:  How often the threat models are reviewed and maintained?
+        answers: 
+        - answer: No defined frequency
+          weight: 0
+        - answer: Periodically
+          weight: 0.33
+        - answer: At least annually
+          weight: 0.66
+        - answer: At least annually and before every release
+          weight: 1
+    - ID: FPI2
+      description: Threat Modeling process engagement
+      scoringQuestions:
+        - ID: QFPI2.1
+          question:  On what occasions threat modeling is performed during SSDL?
+          answers: 
+          - answer: Never performed 
+            weight: 0
+          - answer: on ad-hoc basis
+            weight: 0.33
+          - answer: Modelling performed as part of standard process that is loosely aligned to release processes
+            weight: 0.66
+          - answer: Integration into software delivery management (e.g. Agile) and using formal quality gates (Def of Done, Def of Ready) for change management and release criteria.​
+            weight: 1
+    - ID: FPI3
+      description: SSDL and TM features synergies
+      scoringQuestions:
+        - ID: QFPI3.1
+          question: How current threat modeling enables and improves other aspects of security and development?
+          answers:
+          - answer: Threat Models are not present or if present are mostly ignored and unused to improve other aspects of development
+            weight: 0
+          - answer: on ad-hoc basis threat models are used (for example as a reference documentation, or for customers request, or as compliance evidence)
+            weight: 0.33
+          - answer: Threat Models are the main reference for securing software architecture and design 
+            weight: 0.66
+          - answer: |
+              Threat Models findings and the identified mitigations feed at least some specific secure development practices, 
+              for example, dynamic testing, manual regression testing, penetration testing, static/dynamic/composition/interactive analysis       
+            weight: 1
+  - category:
+    name: Methodology &​ granularity
+    features:
+      - ID: FM1
+        description: methodology and analysis consistency 
+        scoringQuestions:
+          - ID: QFM1.1
+            question: what methodologies are used for threat modeling?
+            answers:
+            - answer: No use of any methodologies or no analysis
+              weight: 0
+            - answer: "Standard methodologies for example:data flow analysis, STRIDE, attack trees, trust boundaries definition, etc."
+              weight: 0.66
+            - answer: Standard and custom methodologies that takes into account specific system threats
+              weight: 1
+      - ID: FM2
+        description: granularity and level of abstraction 
+        scoringQuestions:
+          - ID: QFM2.1
+            question: what granularity and level of abstraction are the system analyzed at?
+            answers:
+            - answer: No analysis at all
+              weight: 0
+            - answer: "Mostly high level of abstraction, for example Data Flow Diagrams and high level architecture and system views"
+              weight: 0.5
+            - answer: |
+                Mostly high and Medium level of abstraction, for example single processes and their communications, microservices, 
+                individual storage of sensitive information detailed
+              weight: 0.75
+            - answer: Both high level and single features level (single API endpoints, sequence diagrams, feature abuse cases)
+              weight: 1
+    
+      - ID: FM3
+        description: threat model scalability and composability
+        scoringQuestions:
+          - ID: QFM3.1
+            question: How scalable are the threat models?
+            answers:
+              - answer: every threat model is logically not compatible with the others threat models
+                weight: 0      
+              - answer: bigger systems are divided into multiple threat models but there is not clear boundaries among them and assets and scope definition consistency 
+                weight: 0.5           
+              - answer: bigger systems are divided into multiple threat models and there is clear boundaries among them and assets definition consistency 
+                weight: 1
+  - category:
+    name: Staff enablement
+    features:
+      - ID: FSE1
+        description: Security expertise availability (SME/training/sec champions)
+        scoringQuestions:
+          - ID: QFSE1.1
+            question: what security expertise is available to perform threat modeling?
+            answers:
+              - answer: security expertise for threat modeling mostly unavailable and difficult to find in the organization
+                weight: 0  
+              - answer: there are SMEs for ad-hoc threat modeling
+                weight: 0.33
+              - answer: there are SMEs for ad-hoc threat modeling and training available
+                weight: 0.66         
+              - answer: there are SMEs and consistent training (for example security champions)
+                weight: 1             
+
+  - category:
+    name: Measurements and metrics
+    features:
+      - ID: FMM2
+        description: threat modeling metrics
+        scoringQuestions:
+            - ID: QFMM2.1
+              question: what metrics the TM process produces?
+              answers:
+                - answer: no metrics 
+                  weight: 0      
+                - answer: TM completion for every system that needs analysis
+                  weight: 0.5           
+                - answer: TM outcomes contributes to the overall system risk management/evaluation
+                  weight: 1
+
+  - category:
+    name: Threat model lifecycle and capabilities
+    features:
+      - ID: FENLC1
+        description: threat model storage, format, template and tracking 
+        scoringQuestions:
+            - ID: QFENLC1.1
+              question: how are TM stored and accessible?
+              answers:
+                - answer: not defined, and no consistent way to retrieve threat models
+                  weight: 0      
+                - answer: standard storage location is defined and enforced
+                  weight: 0.66           
+                - answer: TM are stored and versioned using compliant tools and access control
+                  weight: 1
+            - ID: QFENLC1.2
+              question: what file format and template are threat models on?
+              answers:
+                - answer: not defined
+                  weight: 0      
+                - answer: standard format and templates available but not used in most threat models
+                  weight: 0.5
+                - answer: standard format and templates available but and used in most threat models
+                  weight: 1                  
+      - ID: FIT1
+        description: issue tracking/gates
+        scoringQuestions:
+            - ID: QFIT1.1
+              question: how TM outcomes and security issue management are related?
+              answers:
+                - answer: not defined
+                  weight: 0      
+                - answer: on ad-hoc basis and not consistently TM findings are added to the issue tracking system
+                  weight: .5
+                - answer: TM outcomes are part of the security issue bucket and prioritized
+                  weight: 1           
+            - ID: QFIT1.2
+              question: how TM analysis and its outcomes impact the release condition and gates?
+              answers:
+                - answer: TM practices do not affect releases status
+                  weight: 0      
+                - answer: on ad-hoc basis and not consistently TM findings are affecting releases status
+                  weight: .5
+                - answer: TM analysis and outcomes are part of the release gating capabilities
+                  weight: 1         

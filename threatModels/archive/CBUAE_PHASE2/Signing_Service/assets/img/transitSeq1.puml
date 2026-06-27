@@ -1,0 +1,54 @@
+@startuml
+
+box "Kubernetes" #LightBlue
+    participant "Kubernetes API" as KubernetesAPI
+    participant "Pod/Application" as Application
+end box
+
+
+actor SystemAdmin as SystemAdmin
+
+box "Segregated Crypto Zone" #Pink
+participant Vault
+participant HSM as "HSM"
+end box 
+
+
+
+group Vault Initialization
+    SystemAdmin -> Vault: Initialize Vault
+    Vault -> Vault: Create master keys
+    Vault -> HSM: Store and protect master keys
+    SystemAdmin -> Vault: Unseal Vault (provide key shares)
+    Vault -> Vault: Unseal process completed
+end
+
+group Enable and Configure Transit Engine
+    SystemAdmin -> Vault: Enable Transit Secrets Engine
+    SystemAdmin -> Vault: Create encryption keys (e.g., my-key)
+    Vault -> Vault: Store and manage encryption keys securely
+    Vault -> HSM: Protect encryption keys
+end
+
+group Kubernetes Pod Startup
+    KubernetesAPI -> Application: Start Pod
+    KubernetesAPI -> Application: Inject Service Account Token into Pod
+end
+
+group Application Authentication and Operations
+    group Authentication with Vault
+        Application -> KubernetesAPI: Read Service Account Token
+        Application -> Vault: Authenticate with Kubernetes Auth
+        Vault -> KubernetesAPI: Validate Service Account Token
+        KubernetesAPI -> Vault: Token validation success
+        Vault -> Application: Return Vault token
+    end
+    
+    group Signature Operation with Transit Engine
+        Application -> Vault: Request signature (data + my-key)
+        Vault -> Vault: Validate and authorize request
+        Vault -> Vault: Sign data using my-key
+        Vault -> Application: Return signature
+    end
+end
+@enduml

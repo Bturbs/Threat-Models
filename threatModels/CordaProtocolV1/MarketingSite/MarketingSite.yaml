@@ -1,0 +1,682 @@
+ID: MarketingSite
+schemaVersion: 2
+title: Marketing Website Delivery Pipeline
+version: '0.1'
+status: Draft
+authors: |
+  Security Research team at R3
+parent: CordaProtocolV1
+
+scope:
+  description: |
+    Threat model for the CordaXYZ marketing website delivery pipeline —
+    from Webflow export through SharePoint handoff, GitHub, and Cloudflare Pages.
+
+    **Delivery Flow:**
+
+    1. Marketing team exports static site as ZIP from Webflow
+    2. Marketing team uploads ZIP to SharePoint and notifies the security team
+    3. Security team downloads the ZIP from SharePoint and commits it to the repository
+    4. An import pipeline triggers on repository change, extracts the ZIP into a build
+       directory, and updates the staging branch
+    5. Staging CI runs: domain scan, await hosting deploy, link check, and DAST
+    6. Promotion requires staging CI green, then production-gate environment approval
+       (one reviewer other than the initiator) before staging is merged into production
+    7. The hosting platform auto-deploys the production branch; post-deployment smoke
+       test and DAST run
+    8. A scheduled workflow polls a promotion schedule file; if a scheduled time has
+       arrived, it dispatches a promotion (still subject to production-gate approval)
+
+    **Repository:** CordaXYZ-Marketing-Site
+
+    **Branch protection:**
+
+    - production: write-restricted to the automated deployment system only (no human direct push)
+    - staging: signed commits required for human pushes; automated system force-pushes allowed
+    - main: source of truth for CI/CD configuration and content imports
+
+    **Scope boundary (Are we building it?):**
+
+    In scope — CI/CD pipeline workflows, domain-scan script and CSP allowlist,
+    branch protection rules, content ingestion logic, scheduled promotion mechanism.
+
+    Out of scope — Webflow platform internals, SharePoint infrastructure, Cloudflare Pages
+    platform, GitHub platform, third-party pipeline action internals.
+
+  securityObjectives:
+    - ID: DEPLOYMENT_INTEGRITY
+      title: Deployment Pipeline Integrity
+      description: |
+        Only content that has passed all automated security gates (domain scan,
+        DAST, link check) and received human production-gate approval can be
+        merged into the production branch and served to end users.
+      group: System Integrity
+      treeImage: false
+      contributesTo:
+        - REFID: INTEGRITY
+
+  assets:
+    - ID: WEBFLOW_EXPORT_ZIP
+      type: data
+      title: Webflow Export ZIP Artifact
+      description: |
+        Static-site ZIP exported by the marketing team from Webflow.
+        Uploaded to SharePoint, then manually placed in the content ingestion
+        directory by the security team and committed to the main branch.
+        This is the primary trust-boundary entry point for all website content.
+      inScope: true
+
+    - ID: MARKETING_SITE_REPO
+      type: system
+      title: CordaXYZ-Marketing-Site GitHub Repository
+      description: |
+        GitHub repository hosting the delivery pipeline, security gate scripts,
+        and the content ingestion staging area.
+        Branch structure: main (source of truth), staging (ephemeral deploy branch
+        updated by the import pipeline), production (hosting-connected, write-restricted
+        to the automated deployment system only).
+      inScope: true
+
+    - ID: GH_ACTIONS_SECRETS
+      type: credential
+      title: CI/CD Pipeline Secrets
+      description: |
+        Repository-level secrets consumed by pipeline workflows.
+        Includes notification webhook credentials, deployment target URLs,
+        and hosting platform deployment credentials.
+      inScope: true
+      properties:
+        access: Available to all pipeline jobs with write permissions in this repository
+
+    - ID: DF_SHAREPOINT_TO_REPO
+      type: dataflow
+      title: SharePoint ZIP to Repository Ingestion
+      description: |
+        Manual, human-mediated dataflow. Marketing team uploads ZIP to SharePoint
+        and notifies the security team. Security team downloads the ZIP and commits
+        it to the content ingestion directory on the main branch.
+        No cryptographic integrity verification (hash or signature) occurs at any
+        point in this transfer.
+      inScope: true
+
+    - ID: DF_STAGING_TO_PROD
+      type: dataflow
+      title: Staging to Production Promotion
+      description: |
+        Automated pipeline-mediated flow. Merges staging into production after
+        production-gate environment approval. The hosting platform automatically
+        deploys the production branch on push.
+      inScope: true
+
+    - ID: DOMAIN_SCAN_GATE
+      type: system
+      title: Domain Scan Security Gate
+      description: |
+        Script that scans all site files for external domain references
+        (script src, link href, iframe src, form action, img src) and blocks
+        the pipeline for any domain not in the approved CSP allowlist.
+        Primary automated control against third-party resource injection.
+      inScope: true
+
+    - ID: PROMOTE_AT_SCHEDULE_FILE
+      type: data
+      title: Scheduled Promotion Configuration File
+      description: |
+        Configuration file committed to the main branch that schedules automatic
+        promotion dispatches. A scheduled pipeline job polls this file periodically
+        and dispatches a promotion workflow when the scheduled time is reached.
+        The promotion workflow still requires production-gate approval after dispatch.
+      inScope: true
+
+  attackers:
+    - ID: COMPROMISED_MARKETING
+      title: Compromised or Malicious Marketing Team Member
+      description: |
+        Marketing team member with legitimate Webflow export access and SharePoint
+        upload permissions, acting maliciously or whose account or workstation has
+        been compromised. Can introduce arbitrary static content into the delivery
+        pipeline without any technical barrier at the SharePoint upload step.
+      inScope: true
+
+  assumptions:
+    - ID: SHAREPOINT_ACCESS_CONTROL
+      description: |
+        SharePoint upload permissions are assumed to be restricted to the authorised
+        marketing team. SharePoint platform security is out of scope.
+
+    - ID: GITHUB_PLATFORM_TRUST
+      description: |
+        GitHub authentication, authorisation, and the production-gate environment
+        approval mechanism are assumed to operate correctly.
+        GitHub platform bugs are out of scope.
+
+    - ID: CLOUDFLARE_DEPLOYMENT_TRUST
+      description: |
+        Cloudflare Pages deployment integrity is assumed. Cloudflare's internal
+        security and the deployment pipeline from the production branch to the
+        live site are out of scope.
+
+analysis: |
+  The marketing website delivery pipeline moves content from Webflow through a
+  manual SharePoint handoff into a GitHub-hosted CI/CD pipeline that deploys
+  to Cloudflare Pages.
+
+  **Delivery Pipeline Overview**
+
+  <object type="image/svg+xml" data="img/MarketingDelivery-flowSEQ1.svg" style="width:100%; height:auto;">
+  <img src="img/MarketingDelivery-flowSEQ1.svg"/>
+  </object>
+
+  **Key Attack Surfaces:**
+
+  1. Content ingestion: no cryptographic verification at the SharePoint → repository boundary
+  2. CI/CD configuration: pipeline configuration files can be modified by anyone with repository
+     write access; without strong branch protection on the main branch, security gates can be
+     silently removed
+  3. Third-party pipeline dependencies: external pipeline actions referenced by mutable version
+     tags rather than immutable content hashes are vulnerable to supply chain compromise
+  4. Domain scan evasion: the primary automated content gate is static and has known blind spots
+     for inline JavaScript and dynamically loaded resources
+  5. Scheduled promotion: a promotion schedule configuration file in the repository can trigger
+     an unsolicited production-gate approval request via a commit to main
+
+  **Existing Security Controls:**
+
+  - Branch protection: production writable only by the automated deployment system; staging requires signed human commits
+  - Production-gate environment: one independent approver required before promotion
+  - Domain scan: blocks external domains not in CSP allowlist
+  - DAST: passive baseline scan on both staging and production
+  - Staging CI gate: promotion blocked unless the latest staging CI run has passed
+
+threats:
+  - ID: MALICIOUS_CONTENT_INJECTION
+    title: Malicious content injected via Webflow ZIP
+    attack: |
+      A compromised marketing team member, or an attacker who has taken over a
+      Webflow or SharePoint account, uploads a ZIP containing malicious static-site
+      content. Possible payloads include:
+
+      - Injected JavaScript that exfiltrates form data or session cookies to an
+        attacker-controlled endpoint
+      - Credential-harvesting forms mimicking the legitimate CordaXYZ UI
+      - Hidden iframes loading attacker-controlled content
+      - Meta-refresh or JavaScript redirects to phishing sites
+      - Malvertising pixels or trackers that violate brand and privacy policy
+
+      The security team has no cryptographic proof that the content retrieved from
+      the file sharing platform is identical to the original export. The ingestion
+      step is manual and relies on human vigilance rather than automated diff analysis.
+      If the malicious content uses only allowlisted domains or inline scripts,
+      the domain-scan gate will not block it.
+
+    threatType: Tampering
+    impactDesc: |
+      Malicious or deceptive content is served from the official CordaXYZ marketing
+      domain, resulting in:
+
+      - Visitor credential theft or phishing attacks
+      - Reputational and brand damage
+      - Regulatory exposure (GDPR, data protection obligations)
+      - Erosion of user trust in the CordaXYZ brand
+
+    impactedSecObj:
+      - REFID: DEPLOYMENT_INTEGRITY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: COMPROMISED_MARKETING
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: WEBFLOW_EXPORT_ZIP
+      - REFID: DF_SHAREPOINT_TO_REPO
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:H/A:N'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: DOMAIN_SCAN_CONTROL
+        title: Domain scan blocks unapproved external resources
+        description: |
+          A pre-deployment content scan checks all site files against an approved
+          domain allowlist. Any external resource reference not in the allowlist
+          blocks the pipeline and alerts the security team.
+          This prevents third-party script, iframe, and image injections from
+          passing into the staging environment.
+        inPlace: true
+        public: true
+
+      - ID: DAST_STAGING_GATE
+        title: OWASP ZAP passive scan on staging before promotion
+        description: |
+          A passive DAST scan runs against the live staging environment before
+          promotion is permitted. Findings are shared with the security team
+          and staging must pass before production promotion is allowed.
+          DAST can detect reflected XSS, insecure forms, and injection patterns
+          not visible in static file analysis.
+        inPlace: true
+        public: true
+
+      - ID: ZIP_HASH_VERIFICATION
+        title: Cryptographic hash verification of content artifact at handoff
+        description: |
+          The content producer publishes a cryptographic hash of the export
+          alongside the handoff notification. The security team verifies the
+          hash before ingesting the artifact into the repository, providing a
+          chain of custody and detecting any in-transit tampering.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Team
+
+      - ID: STATIC_CONTENT_DIFF_REVIEW
+        title: Automated diff report of content changes posted before promotion
+        description: |
+          A human-readable diff of all content changes is generated between the
+          incoming build and the currently deployed version as part of the staging
+          pipeline. This gives production-gate reviewers a clear picture of what
+          they are approving before committing to production.
+        inPlace: false
+        public: true
+        operational: false
+
+  - ID: WORKFLOW_FILE_TAMPERING
+    title: CI/CD pipeline configuration modified to bypass security gates
+    attack: |
+      An attacker with write access to the main branch — either a compromised
+      developer account or a pull request approved with insufficient scrutiny —
+      modifies pipeline configuration files to:
+
+      - Remove or disable the domain-scan job
+      - Delete the production-gate environment requirement, removing the mandatory
+        human approval step
+      - Add steps that exfiltrate pipeline secrets to an attacker-controlled endpoint
+      - Change the deployment target to an attacker-controlled environment
+      - Disable the staging verification check so any staging state can be promoted
+        regardless of CI outcome
+
+      Pipeline configuration files live on the main branch. Branch protection applies
+      signed commits to staging and automated-system-only writes to production. If the
+      main branch does not require signed commits or mandatory review for configuration
+      changes, a compromised developer can push directly and alter the entire pipeline.
+
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      Compromised pipeline configuration gives the attacker full control over the
+      deployment pipeline:
+
+      - Security gates are bypassed, allowing malicious content to reach production
+        without domain scan, DAST, or human review
+      - Pipeline secrets are exfiltrated, enabling follow-on attacks
+      - Production deployments are redirected or poisoned
+      - All subsequent pipeline runs execute attacker-controlled steps until detected
+
+    impactedSecObj:
+      - REFID: DEPLOYMENT_INTEGRITY
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: DEVELOPER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: MARKETING_SITE_REPO
+      - REFID: GH_ACTIONS_SECRETS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:L'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: BRANCH_PROTECTION_PRODUCTION
+        title: Production branch write-restricted to automated deployment system only
+        description: |
+          The production branch is write-restricted so no human can push directly.
+          Only the automated deployment system can merge into production, ensuring
+          all production deployments pass through the established workflow gate
+          regardless of any configuration changes on other branches.
+        inPlace: true
+        public: true
+
+      - ID: BRANCH_PROTECTION_STAGING_SIGNED
+        title: Signed commits required on staging branch
+        description: |
+          Human commits to the staging branch must be cryptographically signed.
+          This prevents unsigned commits from reaching staging and provides
+          identity attribution for all human-pushed content.
+        inPlace: true
+        public: true
+
+      - ID: PRODUCTION_GATE_APPROVAL
+        title: Production-gate environment enforces independent approval
+        description: |
+          The deployment pipeline requires one independent reviewer to approve
+          before staging content is merged into production. This enforces a
+          four-eyes principle on every production deployment.
+        inPlace: true
+        public: true
+        operational: true
+        operator: Security Team
+
+      - ID: WORKFLOW_CHANGE_CODEOWNERS
+        title: Require security team review for pipeline configuration changes
+        description: |
+          A code ownership rule requires the security team to approve any pull
+          request that modifies CI/CD configuration files. This ensures pipeline
+          changes receive explicit security review before merging, reducing the
+          risk of accidental or malicious gate removal.
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: WORKFLOW_SIGNED_COMMIT_MAIN
+        title: Enforce signed commits on the main branch
+        description: |
+          Cryptographic commit signing should be enforced on all branches that
+          host pipeline configuration. This prevents anonymous or forged commit
+          injection and provides identity attribution for all configuration changes.
+        inPlace: false
+        public: true
+
+  - ID: THIRD_PARTY_ACTION_SUPPLY_CHAIN
+    title: Supply chain compromise via unpinned third-party pipeline dependencies
+    attack: |
+      The pipeline consumes external dependencies referenced by mutable version
+      tags rather than immutable content hashes. If a dependency publisher's
+      account is compromised, or a malicious maintainer pushes a new commit
+      under the same tag, every subsequent pipeline run executes attacker-controlled
+      code in the runner environment. That code runs with access to all secrets
+      available to the job and with the job's declared write permissions.
+
+      Tag mutation is silent — the platform generates no alert when a tag is moved
+      to a different commit, and dependencies are not pinned by content hash unless
+      explicitly configured.
+
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      A supply-chain-compromised dependency can:
+
+      - Exfiltrate all pipeline secrets to an external endpoint
+      - Modify site content before it is committed to staging
+      - Push malicious content directly to repository branches
+      - Disable or tamper with other security gate steps within the same run
+      - The attack is transparent — all pipeline steps appear to succeed
+
+    impactedSecObj:
+      - REFID: DEPLOYMENT_INTEGRITY
+      - REFID: CONFIDENTIALITY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: MARKETING_SITE_REPO
+      - REFID: GH_ACTIONS_SECRETS
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: PIN_ACTIONS_TO_SHA
+        title: Pin all third-party pipeline dependencies to immutable content hashes
+        description: |
+          All external pipeline dependencies should be referenced by immutable
+          commit SHA hashes rather than mutable version tags. A pinned reference
+          cannot be silently mutated after the pipeline configuration is committed.
+          Use automated tooling to keep pins current with reviewed upstream releases.
+        inPlace: false
+        public: true
+
+      - ID: DEPENDABOT_ACTIONS_UPDATES
+        title: Enable automated dependency monitoring for pipeline dependencies
+        description: |
+          Configure automated dependency monitoring to open pull requests when
+          new versions of pipeline dependencies are published. This enables
+          controlled, reviewed updates rather than relying on mutable version
+          references that may change without notice.
+        inPlace: false
+        public: true
+
+  - ID: GH_ACTIONS_SECRET_EXFILTRATION
+    title: Pipeline secrets exfiltrated via malicious pipeline step
+    attack: |
+      Any pipeline job that has access to secrets can attempt to exfiltrate them.
+      This can occur via a compromised third-party dependency (see
+      THIRD_PARTY_ACTION_SUPPLY_CHAIN), a tampered pipeline configuration file
+      (see WORKFLOW_FILE_TAMPERING), or a modified security gate script that adds
+      outbound network calls when altered by an attacker with repository write access.
+
+      The platform masks known secret values in log output, but this does not
+      prevent deliberate exfiltration to external endpoints inside pipeline steps.
+
+    threatType: Information Disclosure
+    impactDesc: |
+      Exfiltrated secrets enable follow-on attacks:
+
+      - Notification credentials: attacker sends fake pipeline notifications to the
+        security team, undermining confidence in pipeline outputs and enabling social
+        engineering of the production-gate approval step
+      - Hosting deployment credentials: attacker deploys arbitrary content directly
+        to staging or production, bypassing all security gates
+      - Deployment target URLs: confirms infrastructure topology and enables targeted
+        reconnaissance
+
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: DEPLOYMENT_INTEGRITY
+    attackers:
+      - REFID: DEVELOPER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: GH_ACTIONS_SECRETS
+      - REFID: MARKETING_SITE_REPO
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:L/A:N'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: GITHUB_SECRET_MASKING
+        title: Platform automatically masks secrets in pipeline logs
+        description: |
+          The CI/CD platform redacts known secret values from pipeline run logs,
+          preventing accidental disclosure via console output or artifact uploads.
+          This does not prevent deliberate exfiltration via outbound network
+          requests inside pipeline steps.
+        inPlace: true
+        public: true
+
+      - ID: RESTRICT_SECRETS_BY_ENVIRONMENT
+        title: Scope deployment secrets to the approval-gated environment only
+        description: |
+          Deployment credentials should be scoped to the protected deployment
+          environment rather than available to all pipeline jobs. Least-privilege
+          scoping ensures sensitive credentials are only accessible to the
+          approval-gated promotion step, not to untrusted staging or build jobs.
+        inPlace: false
+        public: true
+
+      - ID: SLACK_WEBHOOK_ROTATION
+        title: Rotate notification credentials on suspected compromise
+        description: |
+          A credential rotation process should exist for all notification and
+          integration credentials. Rotating a compromised credential immediately
+          invalidates any exfiltrated copy. Monitor integration audit logs for
+          unexpected activity as an early-detection signal.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Team
+
+  - ID: ZIP_PATH_TRAVERSAL
+    title: Path traversal in archive extraction writes files outside the build directory
+    attack: |
+      The import pipeline extracts the content ZIP into a designated build directory.
+      A crafted archive can include entries with path-traversal sequences that, on
+      some extraction tools and configurations, write files outside the intended
+      target directory — even when a destination path is specified.
+
+      An attacker who can influence the ZIP content could overwrite security gate
+      scripts or pipeline configuration files on the runner during the import job,
+      silencing automated controls within the same pipeline run. Files extracted
+      outside the build directory are not persisted to the repository via the normal
+      commit step, but they exist on the runner for the duration of the workflow
+      and can corrupt any steps that execute after extraction.
+
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      Security gate scripts overwritten during the import run are silenced for that
+      run only, allowing malicious content to pass the domain scan and DAST gates
+      undetected. The malicious site content then proceeds through a pipeline with
+      its primary automated controls disabled.
+
+    impactedSecObj:
+      - REFID: DEPLOYMENT_INTEGRITY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: COMPROMISED_MARKETING
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: WEBFLOW_EXPORT_ZIP
+      - REFID: DOMAIN_SCAN_GATE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:N'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: ZIPSLIP_SAFE_EXTRACTION
+        title: Validate archive entries before extraction to prevent path traversal
+        description: |
+          Archive extraction should validate that no entry resolves to a path
+          outside the intended target directory before any files are written.
+          Reject the entire archive and fail the pipeline if any path traversal
+          attempt is detected.
+        inPlace: false
+        public: true
+
+  - ID: DOMAIN_SCAN_EVASION
+    title: Malicious content evades domain scan using inline or dynamic techniques
+    attack: |
+      The domain scan performs static analysis on site files, scanning HTML attributes
+      for external domain references. It cannot detect:
+
+      - Inline JavaScript that dynamically constructs and loads external URLs at runtime
+      - CSS-based exfiltration using properties resolved only by the browser
+      - Obfuscated JavaScript with encoded or split-string URLs
+      - Service worker registrations pointing to an external origin
+      - Fetch or XHR calls inside inline script blocks
+      - Data URI payloads that decode to executable content in the browser
+
+      An attacker aware of the domain scan's static nature can craft content that
+      passes all automated gate checks while executing malicious behaviour in
+      visitors' browsers.
+
+    threatType: Tampering
+    impactDesc: |
+      Malicious content that evades the domain scan reaches staging and, if not caught
+      by DAST or manual review, production. The impact mirrors MALICIOUS_CONTENT_INJECTION:
+      visitor data exfiltration, phishing, and regulatory and reputational harm.
+
+    impactedSecObj:
+      - REFID: DEPLOYMENT_INTEGRITY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: COMPROMISED_MARKETING
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DOMAIN_SCAN_GATE
+      - REFID: WEBFLOW_EXPORT_ZIP
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:R/S:C/C:L/I:H/A:N'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: CONTENT_SECURITY_POLICY_STRICT
+        title: Deploy a strict Content Security Policy header
+        description: |
+          A strict Content Security Policy should restrict script execution to
+          trusted origins, disable unsafe inline evaluation, and limit connection
+          targets to approved domains. A well-configured CSP blocks most runtime
+          injection vectors even when static analysis misses them.
+        inPlace: false
+        public: true
+
+      - ID: DAST_DYNAMIC_ANALYSIS
+        title: OWASP ZAP baseline scan provides secondary dynamic detection
+        description: |
+          A passive DAST scan on the live staging environment observes HTTP responses
+          and can detect CSP violations, mixed content, and suspicious response patterns
+          that static file analysis cannot observe. Passive mode does not execute
+          JavaScript, so highly obfuscated inline payloads may still evade it.
+        inPlace: true
+        public: true
+
+      - ID: MANUAL_CONTENT_REVIEW
+        title: Security team performs manual review before production gate approval
+        description: |
+          The production-gate approver reviews the staged site — particularly any
+          JavaScript and form elements — before approving promotion. This is the last
+          human control before production and the principal defence against evasion
+          of all automated gates.
+        inPlace: true
+        public: true
+        operational: true
+        operator: Security Team
+
+  - ID: SCHEDULED_PROMOTION_ABUSE
+    title: Promotion schedule file manipulated to trigger unsolicited deployment requests
+    attack: |
+      A scheduled pipeline job periodically reads a promotion schedule configuration
+      file from the main branch. If the file contains an immediate or past trigger
+      value, the pipeline automatically dispatches a promotion workflow — initiating
+      a production-gate approval request without any manual Security Team action.
+
+      An attacker or insider who can commit to the main branch can:
+
+      - Set an immediate trigger to dispatch a promotion request within the next
+        polling cycle, bypassing the normal Security Team-initiated flow
+      - Schedule a promotion for an unmonitored time window — such as early morning
+        on a weekend — when reviewers are less likely to scrutinise the request
+      - Chain this with malicious content already committed to the import directory
+        to create a timed attack sequence requiring only a single colluding approver
+
+      The production-gate approval gate still applies and cannot be bypassed by this
+      technique alone. However, it enables timing attacks and social engineering:
+      approvers receiving an unexpected promotion request may approve it without normal
+      scrutiny, particularly if the accompanying notification appears legitimate.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      A timed, unsolicited promotion request reaches production-gate approvers outside
+      the normal security team review window. Combined with a colluding or inattentive
+      approver, this could result in an unapproved content change reaching production.
+
+    impactedSecObj:
+      - REFID: DEPLOYMENT_INTEGRITY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: DEVELOPER
+      - REFID: COMPROMISED_MARKETING
+    assets:
+      - REFID: PROMOTE_AT_SCHEDULE_FILE
+      - REFID: DF_STAGING_TO_PROD
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:R/S:U/C:N/I:L/A:N'
+    pentestTestable: false
+    fullyMitigated: false
+    countermeasures:
+      - ID: PROMOTE_AT_CODEOWNERS
+        title: Require security team approval for promotion schedule configuration changes
+        description: |
+          A code ownership rule should require the security team to approve any
+          pull request that modifies the promotion schedule configuration. Combined
+          with mandatory pull request review for the main branch, this ensures the
+          security team reviews any schedule change before it can trigger a deployment.
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: SCHEDULE_DISPATCH_ALERT
+        title: Alert security channel on every automated promotion dispatch
+        description: |
+          All automated deployment dispatches are notified to a monitored security
+          channel. The security team has a defined process for cancelling an unexpected
+          deployment request before it is approved.
+        inPlace: true
+        public: true
+        operational: true
+        operator: Security Team

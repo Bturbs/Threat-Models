@@ -1,0 +1,122 @@
+flowchart TD
+  Init([Initiate key rotation request])
+
+  %% --- Pre-check: Policy acknowledgement ---
+  PolicyAck{Policy for this process acknowledged? will change alteer explicitly acknowledge in internal system later}
+  AcknowledgePolicy[Acknowledge required policy in internal system]
+
+  Init --> PolicyAck
+  PolicyAck -- Yes --> RaiseCR
+  PolicyAck -- No --> AcknowledgePolicy --> PolicyAck
+
+  %% --- Section 1 ---
+  subgraph S1[" "]
+    direction TB
+    H1["1. Change Request and Authorization"]
+    RaiseCR[Raise change request ticket]
+    Scope[Define scope and target key or signer]
+    CRApproval{Approved by Engineering and Security?}
+    CRReject[Update and resubmit change request]
+  end
+
+  RaiseCR --> Scope --> CRApproval
+  CRApproval -- Yes --> KeyGenStart[Proceed to key generation]
+  CRApproval -- No --> CRReject --> RaiseCR
+
+  %% --- Section 2 ---
+  subgraph S2[" "]
+    direction TB
+    H2["2. Key Generation"]
+    SecureEnv[Prepare secure environment]
+    GenKey[Generate new keypair]
+    Custody[Document key custody]
+    PubKey[Obtain rotated public key]
+  end
+
+  KeyGenStart --> SecureEnv --> GenKey --> Custody --> PubKey
+
+  %% --- Section 3 ---
+  subgraph S3[" "]
+    direction TB
+    H3["3. Multisig Update Proposal"]
+    Identify[Identify target key or signer to rotate]
+    CreateProp[Create on-chain rotation proposal]
+    VerifyThreshold[Verify threshold unchanged]
+    SubmitProp[Submit proposal]
+  end
+
+  PubKey --> Identify --> CreateProp --> VerifyThreshold --> SubmitProp
+
+  %% --- Section 4 ---
+  subgraph S4[" "]
+    direction TB
+    H4["4. Execute Rotation"]
+    FetchState[Fetch multisig state from chain]
+    BuildInstr[Build and assemble transaction]
+    SignTx[Sign transaction]
+    SubmitRPC[Submit to RPC]
+    Confirm[Confirm finalized]
+    VerifyState[Verify updated multisig state]
+    CloseProp[Close proposal account]
+  end
+
+  SubmitProp --> FetchState --> BuildInstr --> SignTx --> SubmitRPC --> Confirm --> VerifyState --> CloseProp
+
+  %% --- Section 5 ---
+  subgraph S5[" "]
+    direction TB
+    H5["5. Post Rotation Validation"]
+    TestSigning[Test signing with rotated key]
+    TestNotary[Test notary operations]
+    ValidateLogs[Validate logs]
+    POST_OK{Tests pass?}
+  end
+
+  CloseProp --> TestSigning --> TestNotary --> ValidateLogs --> POST_OK
+  POST_OK -- Yes --> DocsStart[Proceed to documentation]
+  POST_OK -- No --> ErrorHandleStart[Error handler]
+
+  %% --- Section 6 ---
+  subgraph S6[" "]
+    direction TB
+    H6["6. Documentation and Closeout"]
+    UpdateRegistry[Update key registry and access controls]
+    ArchiveOld[Archive or destroy old key material]
+    LogEvent[Log rotation event against change request]
+    NotifyClose[Notify stakeholders and close change request]
+    DONE([Rotation complete])
+  end
+
+  DocsStart --> UpdateRegistry --> ArchiveOld --> LogEvent --> NotifyClose --> DONE
+
+  %% --- Section 7 ---
+  subgraph S7[" "]
+    direction TB
+    H7["7. Error Handling"]
+    ErrorCapture[Capture error logs]
+    FailType{Failure type?}
+    Retry[Retry RPC submission]
+    RebuildProposal[Rebuild proposal]
+    EmergencyEscalate[Escalate to emergency rotation]
+    EndError([Error path complete])
+  end
+
+  ErrorHandleStart --> ErrorCapture --> FailType
+  FailType -- RPC --> Retry --> SubmitRPC
+  FailType -- Program or Expired --> RebuildProposal --> CreateProp
+  FailType -- Other --> EmergencyEscalate --> EndError
+
+  SubmitRPC -.->|Error| ErrorHandleStart
+  Confirm -.->|Not finalized| ErrorHandleStart
+  VerifyState -.->|Mismatch| ErrorHandleStart
+
+  %% Styling
+  classDef decision fill:#fff3cd,stroke:#b8860b,stroke-width:1.5px,color:#333;
+  classDef startend fill:#d4edda,stroke:#28a745,stroke-width:1.5px;
+  classDef error fill:#f8d7da,stroke:#dc3545,stroke-width:1px;
+  classDef sectionTitle fill:#1f2937,color:#fff,stroke:#1f2937,font-weight:bold;
+
+  class CRApproval,POST_OK,FailType,PolicyAck decision;
+  class Init,DONE,EndError startend;
+  class ErrorHandleStart,ErrorCapture,Retry,RebuildProposal,EmergencyEscalate error;
+  class H1,H2,H3,H4,H5,H6,H7 sectionTitle;

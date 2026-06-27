@@ -1,0 +1,158 @@
+@startuml
+title Redeem Sequence — Solana Token Vault
+
+actor "User\n<<signer>>" as User
+
+box "User Owned" #pink
+participant "User Shares\n<<account>>" as UserShareAccount
+participant "User USDC\n<<account>>" as UserUSDCAccount
+end box
+
+box "Vault Owned" #LightBlue
+participant "Vault\n<<program>>" as VaultProgram
+participant "Vault Investment\n<<account>>" as VaultInvestmentAccount
+participant "Vault USDC\n<<account>>" as VaultUSDCAccount
+participant "Token Program\n<<program>>" as TokenProgram
+end box
+
+box "Jupiter Owned" #LightYellow
+participant "Jupiter\n<<aggregator>>" as JupiterAggregator
+end box
+
+=== REDEEM OPERATION: User redeems shares for USDC ===
+
+User -> VaultProgram : <b>DF_INVOKE_REDEEM\n[[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L19 process_redeem(shares: 95, jupiter_swap_data)]]
+
+note over VaultProgram
+  CHECK 1a: Non-Zero Shares
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L24 check shares > 0 ]]
+alt Zero Shares
+  VaultProgram --> User : ❌ ZeroAmount
+end
+
+note over VaultProgram
+  CHECK 2: Validate Mints
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L27 check usdc_mint == USDC_MINT ]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L32 check investment_mint == INVESTMENT_MINT ]]
+alt Invalid Mints
+  VaultProgram --> User : ❌ InvalidInputMint / InvalidOutputMint
+end
+
+note over VaultProgram
+  CHECK 3: Validate Jupiter Program
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L37 check jupiter_program == JUP_PROGRAM_ID ]]
+alt Invalid Program
+  VaultProgram --> User : ❌ InvalidJupiterProgram
+end
+
+note over VaultProgram
+  CHECK 4: Calculate Investment to Withdraw (1:1 ratio)
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L41 investment_to_withdraw = shares]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L41 investment_to_withdraw = 95]]
+
+note over VaultProgram
+  CHECK 5: Verify Sufficient Vault Balance
+end note
+VaultProgram -> VaultInvestmentAccount : Check balance [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L46 require!(investment_to_withdraw <= vault_investment_balance)]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L46 check investment_to_withdraw <= vault_balance (95 <= 95) ]]
+alt Insufficient Balance
+  VaultProgram --> User : ❌ InsufficientVaultBalance
+end
+
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L53 vault_investment_before = 95 ]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L54 vault_usdc_before = 0 ]]
+
+note over VaultProgram,TokenProgram
+  STEP 1: Burn User's Shares
+end note
+VaultProgram -> UserShareAccount : [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L57 token_2022::burn(...)]]
+UserShareAccount -> TokenProgram : Deduct 95 shares
+note right of UserShareAccount
+  User Shares: 95 → 0
+end note
+note right of TokenProgram
+  Total Supply: -95
+end note
+UserShareAccount --> VaultProgram : Burned successfully
+
+note over VaultProgram,JupiterAggregator
+  STEP 2: Jupiter Swap (Investment → USDC)
+end note
+VaultProgram -> JupiterAggregator : <b>DF_JUPITER_REDEEM_SWAP_CALL\ninvoke_signed(jupiter_swap_data, PDA signs) [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L88 invoke_signed(...)]]
+note over JupiterAggregator
+  Execute swap on Jupiter DEX\nRoute determined by user's jupiter_swap_data
+end note
+JupiterAggregator -> VaultInvestmentAccount : <b>DF_JUPITER_REDEEM_SWAP_REDEEM \n Deduct 95 Investment tokens
+note right of VaultInvestmentAccount
+  Vault Investment: 95 → 0
+end note
+JupiterAggregator -> VaultUSDCAccount : <b>DF_JUPITER_REDEEM_SWAP_CREDIT \n Credit 98 USDC
+note right of VaultUSDCAccount
+  Vault USDC: 0 → 98\n(Favorable swap rate)
+end note
+
+JupiterAggregator --> VaultProgram :<b>DF_JUPITER_REDEEM_SWAP_COMPLETE\nSwap complete
+
+VaultProgram -> VaultInvestmentAccount : reload() [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L99 vault_investment_token_account.reload()]]
+VaultProgram -> VaultUSDCAccount : reload() [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L100 vault_usdc_token_account.reload()]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L103 vault_investment_after = 0 ]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L104 vault_usdc_after = 98 ]]
+
+note over VaultProgram
+  CHECK 6: Verify Investment Was Spent
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L107 check vault_investment_after < vault_investment_before (0 < 95) ]]
+alt Investment Not Spent
+  VaultProgram --> User : ❌ InvestmentNotSpent
+end
+
+note over VaultProgram
+  CHECK 7: Verify USDC Received
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L111 check vault_usdc_after > vault_usdc_before (98 > 0) ]]
+alt USDC Not Received
+  VaultProgram --> User : ❌ UsdcNotReceived
+end
+
+note over VaultProgram
+  CHECK 8: Calculate Amounts with Overflow Protection
+end note
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L117 investment_swapped = checked_sub(95, 0)]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L124 check investment_swapped <= investment_to_withdraw]]
+VaultProgram -> VaultProgram :  [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L129 usdc_received = checked_sub(98, 0)]]
+alt Math Overflow
+  VaultProgram --> User : ❌ MathOverflow
+end
+
+note over VaultProgram,UserUSDCAccount
+  STEP 3: Transfer USDC from Vault to User
+end note
+VaultProgram -> VaultUSDCAccount : transfer_checked(usdc_received: 98, PDA signs) [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/instructions/redeem.rs#L133 transfer_checked(...)]]
+VaultUSDCAccount -> UserUSDCAccount : Transfer 98 USDC
+note right of VaultUSDCAccount
+  Vault USDC: 98 → 0
+end note
+note right of UserUSDCAccount
+  User USDC: +98
+end note
+
+VaultProgram -> UserUSDCAccount : reload()
+
+VaultProgram -> VaultProgram : emit!(WithdrawEvt { caller: user, assets: 95, shares: 95 }) [[https://github.com/corda/solana-token-vault-program/blob/development/protocol-programs/programs/pre-commit-vault/src/events.rs#L12 WithdrawEvt]]
+
+VaultProgram --> User : <b>DF_REDEEM_COMPLETE\n ✅ SUCCESS: Redeemed 95 Shares → 98 USDC
+
+note over User,UserUSDCAccount
+  FINAL STATE
+User Shares: -95
+User USDC: +98
+Vault Investment: -95 (now 0)
+Vault USDC: 0 (temporary)
+Share Mint Total Supply: -95
+end note
+
+@enduml

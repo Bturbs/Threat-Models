@@ -1,0 +1,181 @@
+@startuml
+
+ !pragma layout smetana
+' left to right direction
+' top to bottom direction
+
+!define INSTRUCTION class
+!define EVENT class
+!define ACCOUNT class
+!define PROGRAM class
+!define ACTOR class
+
+hide circles
+
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor<<Account>> LightBlue
+    BackgroundColor<<TokenAccount>> LightCyan
+    BackgroundColor<<Instruction>> LightYellow
+    BackgroundColor<<Event>> LightGreen
+    BackgroundColor<<PDA>> LightCoral
+    BackgroundColor<<Program>> LightSalmon
+    BackgroundColor<<wallet>> LightGray
+    BorderColor Black
+}
+
+skinparam package {
+    BackgroundColor #f9f9f9
+    BorderColor #666666
+}
+
+ACTOR NotaryWallet <<wallet>> {
+    + pubkey: Pubkey
+    + privateKey: privateKey
+    --
+    **Owner:** System Program
+    **Note:**
+    Its public key is the authorized
+    notary for the network.
+}
+
+ACTOR AdminWallet <<wallet>> {
+    + pubkey: Pubkey
+    + privateKey: privateKey
+    --
+    **Owner:** System Program
+    **Note:**
+    Its public key is the admin for
+    the Corda Notary program.
+}
+
+
+
+' Instructions - defined BY the program, not IN a namespace
+INSTRUCTION Initialize  <<Instruction>> [[https://github.com/corda/solana-notary/blob/main/solana-program/programs/corda-notary/src/instructions/initialize.rs#L5]] {
+    + admin: Signer
+    --
+    + Seeds: [SEED_ADMIN]
+    + Creates: Administration PDA
+}
+
+
+INSTRUCTION AuthorizeNotary <<Instruction>> [[https://github.com/corda/solana-notary/blob/main/solana-program/programs/corda-notary/src/instructions/authorize_notary.rs#L6]] {
+    + admin: Signer
+    + address_to_authorize: Pubkey
+    --
+    + Seeds: [SEED_NOTARY_AUTHORIZATION, address_to_authorize]
+    + Constraint: admin == administration.admin
+    + Constraint: administration.admin != address_to_authorize
+    + Requires: Network PDA (seeded by network_id)
+    + Creates: NotaryAuthorization PDA
+}
+
+INSTRUCTION RevokeNotary <<Instruction>> [[https://github.com/corda/solana-notary/blob/main/solana-program/programs/corda-notary/src/instructions/revoke_notary.rs#L7]] {
+    + admin: Signer
+    + address_to_revoke: Pubkey
+    --
+    + Seeds: [SEED_NOTARY_AUTHORIZATION, address_to_revoke]
+    + Constraint: admin == administration.admin
+    + Closes: NotaryAuthorization PDA
+}
+
+INSTRUCTION CreateNetwork <<Instruction>> [[https://github.com/corda/solana-notary/blob/main/solana-program/programs/corda-notary/src/instructions/create_network.rs#L6]] {
+    + admin: Signer
+    --
+    + Seeds: [SEED_NETWORK_ACCOUNT, administration.next_network_id]
+    + Uses: next_network_id from Administration
+    + Creates: Network PDA
+}
+
+INSTRUCTION Commit <<Instruction>> [[https://github.com/corda/solana-notary/blob/main/solana-program/programs/corda-notary/src/instructions/commit.rs#L4]] {
+    + notary: Signer
+    + inputs_and_references: Vec<StateRefGroup>
+    --
+    + Requires Signature: notary
+    + Requires Authorization: NotaryAuthorization PDA (seeded by notary)
+    + Seeds: [SEED_CORDA_TX, tx_id, network_id]
+    + Creates/Updates: CordaTxAccount PDA(s)
+}
+
+Initialize -[hidden]down-> AuthorizeNotary
+AuthorizeNotary -[hidden]down-> RevokeNotary
+RevokeNotary -[hidden]down-> CreateNetwork
+CreateNetwork -[hidden]down-> Commit
+
+
+package "Solana On-Chain Accounts" {
+
+    package "Admin/Notary Controlled" {
+        ACCOUNT Administration <<PDA>> {
+            + version: u8
+            + bump: u8
+            + admin: Pubkey
+            + next_network_id: u16
+            --
+            Seed: [b"admin"]
+            Size: INIT_SPACE + DISCRIMINATOR
+            Owner: Corda Notary Program
+        }
+
+        ACCOUNT Network <<PDA>> {
+            + version: u8
+            + bump: u8
+            + network_id: u16
+            --
+            Seed: [b"network_account", network_id]
+            Size: INIT_SPACE + DISCRIMINATOR
+            Owner: Corda Notary Program
+            Created by: CreateNetwork
+        }
+
+        ACCOUNT NotaryAuthorization <<PDA>> {
+            + version: u8
+            + bump: u8
+            + notary: Pubkey
+            + network_id: u16
+            --
+            Seed: [b"notary_authorization", notary]
+            Size: INIT_SPACE + DISCRIMINATOR
+            Owner: Corda Notary Program
+            Created by: AuthorizeNotary
+        }
+    }
+
+    package "Transaction Data Accounts" {
+        ACCOUNT CordaTxAccount <<PDA>> {
+            + version: u8
+            + unspent_bitset: u128
+            --
+            Seed: [b"corda_tx", tx_id, network_id]
+            Size: INIT_SPACE + DISCRIMINATOR
+            Owner: Corda Notary Program
+            Created by: Commit
+            Purpose: Tracks notarized Corda txs
+            Note: Bitset tracks output states (spent/unspent)
+        }
+    }
+}
+
+
+' Relationships
+Initialize -.-> Administration : creates
+AuthorizeNotary -.-> NotaryAuthorization : creates
+RevokeNotary -.-> NotaryAuthorization : closes
+CreateNetwork -.-> Network : creates
+Commit -.-> CordaTxAccount : creates/updates
+Commit -.-> NotaryAuthorization : verifies
+
+Administration --> Network : next_network_id
+NotaryAuthorization --> Network : network_id (reference)
+
+
+AdminWallet -.-> Initialize : signs
+AdminWallet -.-> AuthorizeNotary : signs
+AdminWallet -.-> RevokeNotary : signs
+AdminWallet -.-> CreateNetwork : signs
+
+NotaryWallet -.-> Commit : signs
+
+
+@enduml

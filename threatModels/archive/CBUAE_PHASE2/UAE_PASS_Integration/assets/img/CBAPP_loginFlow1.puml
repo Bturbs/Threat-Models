@@ -1,0 +1,51 @@
+@startuml
+
+actor User
+box "Mobile Device"
+participant "Digital Dirham\nMobile App" as App
+participant "UAE PASS\nMobile App" as UAEApp
+end box
+
+box "UAE PASS" #lightgreen
+participant "UAE PASS\n<auth server>" as UAEPass
+end box
+
+box "LFI" #LightYellow
+participant "LFI Identity Broker\n(Keycloak)" as LFIKeycloak
+participant "LFI Mobile Back End" as Backend
+end box
+
+box "CB" #LightBlue
+participant "CB APP \n<OAUTH CLIENT>" as CBAPP
+end box
+autonumber 
+
+
+User -> App : Select LFI login
+App -> LFIKeycloak : Auth request
+LFIKeycloak -> User : Prompt for credentials
+LFIKeycloak -> App : Redirect with deep link to UAE PASS
+User -> UAEApp : Enter credentials
+UAEApp -> UAEPass : Authenticate to UAEPASS
+note across:  How to redirection works (need whitelisting) this step is an abstraction of a redirect frmo the mobile
+UAEPass --> LFIKeycloak: Return UAE PASS auth code
+
+alt "LFI Keycloak as UAE PASS OAuth client"
+note over LFIKeycloak, CBAPP: same flow for shared Auth client across LFIs
+LFIKeycloak -[#red]-> UAEPass: Request Authentication Token
+UAEPass -[#red]-> LFIKeycloak: Return ID Token \n+ Access Token (derives UUID)
+else "via CB APP as unique OAuth client"
+note over LFIKeycloak, CBAPP: Custom SPI or federation
+LFIKeycloak --> CBAPP: Forwards UAEPASS auth code
+CBAPP --> UAEPass: Request UAEPASS auth token
+UAEPass --> CBAPP: Return UAEPASS auth token
+CBAPP --> LFIKeycloak: Return "success" + UUID
+end
+
+LFIKeycloak --> App: Return Keycloak OAUTH tokens + refresh token
+
+App -> Backend: Access wallet feature with Keycloak OAUTH token
+Backend --> App: Return wallet data
+App -> User: Display Home Screen
+
+@enduml

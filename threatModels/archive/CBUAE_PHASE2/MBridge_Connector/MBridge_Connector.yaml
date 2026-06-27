@@ -1,0 +1,453 @@
+ID: MBridge_Connector
+schemaVersion: 2
+parent: CBUAE_PHASE2
+scope:
+
+  assets:
+
+    - ID: MBRIDGE_CONNECTOR_ENGINE
+      type: service
+      title: mBridge Connector Engine
+      description: |
+        Enables cross-border and cross-currency payment flows 
+        between multiple central banks and participating financial institutions. 
+        Acts as an integration layer for processing, routing, 
+        and settling transactions with the mBridge network.
+      inScope: true
+
+    - ID: MBRIDGE_LEDGER
+      type: external
+      title: mBridge DLT/Network
+      description: |
+        External distributed ledger system that processes 
+        multi-jurisdictional digital currency transfers and finalizes settlement.
+      inScope: false
+
+    # - ID: MBRIDGE_AUTH_LAYER
+    #   type: service
+    #   title: Authorization & Identity Module
+    #   description: |
+    #     Secures connector endpoints, providing identity verification 
+    #     and enforcing policy checks for cross-border transactions.
+    #   inScope: true
+
+    - ID: MBC_MESSAGING_SERVICE
+      type: process
+      description: |
+        Messaging service that handles the exchange of messages 
+        between the mBridge Connector and the mBridge network.
+      title: mBridge Connector Messaging Service
+      inScope: true
+
+    # - ID: MBC_REPORTING_SERVICE
+    #   type: process
+    #   title: mBridge Connector Reporting Service
+    #   inScope: true
+
+    # - ID: MBC_TRANSLATING_SERVICE
+    #   type: process
+    #   title: mBridge Message Translator Service
+    #   inScope: true
+
+    # - ID: MB_API_ENDPOINT
+    #   type: system
+    #   inScope: true
+
+    # - ID: MBC_HEALTH_METRICS
+    #   type: system
+    #   inScope: true
+
+    - ID: MBC_TRANSLATION_DATA
+      title: mBridge Connector Translation Data
+      description: |
+        Data (constants, configurations, and so on) used for translating between different message formats 
+        and protocols in the connector.
+      type: data
+      inScope: true
+
+    - ID: MBC_SOAP_MESSAGE_SIGNING_KEY
+      title: MBridge Connector SOAP message signing key
+      type: key
+      description: It is used to sign SOAP messages sent to the CB mBridge node.
+      inScope: true
+      properties:
+        location: VAULT
+        format: ECDSA key pair (secp256k1)
+        length: 256
+        type: Private authentication key
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: MB_CERTIFICATE
+      title: MBridge SOAP/XML Verification certificate
+      type: Certificate
+      description: This is the certificate holding the mBridge CBUAE node 
+        backend public key. It is used by the connector to verify the mBridge's 
+        signature.
+      properties:
+        location: |
+        format: X.509
+      inScope: true
+
+    - ID: DF_MBRIDECON_ISSUANCE_API
+      title: mBridge Connector API for issuance workflows
+      type: API
+      description: |
+        Exposes endpoints for issuance workflows.
+      inScope: true
+
+    - ID: DF_MBRIDGECON_MBRIDGE
+      title: mBridge Connector to mBridge Dataflow
+      type: Dataflow
+      description: |
+        Dataflow between the mBridge Connector and the mBridge through signed SOAP messages (XML).
+      inScope: true
+
+    - ID: CHECK_SOAP_SIGNATURE_CONFIG
+      title: Check SOAP Signature Configuration
+      type: Configuration
+      description: |
+        Configuration to check the SOAP signature of the incoming messages.
+      inScope: true
+analysis: |
+  The mBridge Connector is crucial for multi-currency cross-border payments, 
+  interfacing with mBridge DLT. Threats involve unauthorized ledger access, 
+  transaction tampering, and bridging data integrity.
+
+threats:
+
+  - ID: INSUFFICIENT_AUTH_MBRIDGECON
+    title: Insufficient Authentication for mBridge Connector Issuance API Calls
+    assets:
+      - REFID: DF_MBRIDECON_ISSUANCE_API
+    attack: |
+      Attackers exploit weak or missing authentication mechanisms to access 
+      the connector's Issuance API, bypassing security controls and initiating 
+      unauthorized cross-border transactions.
+    impactDesc: |
+      May result in improper asset issuance, unauthorized ledger updates, or data leaks 
+      that undermine system integrity.
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: INTEGRITY
+    fullyMitigated: true
+    threatType: Spoofing
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:N
+    countermeasures:
+      - REFID: SVID_JWT
+        # title: Strict SPIFFE JWT Authentication & Audience Check
+        # description: |
+        #   Require issuance API callers to present valid SPIFFE-based JWT tokens. 
+        #   Validate token signatures, issuer, and audience fields to ensure 
+        #   only trusted Core Business Services or the Issuance Platform can invoke 
+        #   the connector. Enforce fine-grained authorization at the application level.
+        # inPlace: true
+        # public: true
+
+  - ID: UNENCRYPTED_PENDING_TX_DATA
+    title: Unencrypted Pending Transaction Data Exposure
+    assets:
+      - REFID: DF_MBRIDGECON_MBRIDGE
+    attack: |
+      Attackers or unauthorized parties intercept pending transaction data 
+      before final commitment, gaining insights and potentially front-running 
+      or profiting from the information.
+    impactDesc: |
+      Leads to financial exploitation, market manipulation, and loss of trust 
+      in the confidentiality of cross-border transactions.
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+    fullyMitigated: true
+    threatType: Information Disclosure
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N
+    countermeasures:
+      - ID: ENCRYPT_PENDING_TX
+        title: Enforce TLS Confidentiality
+        description: |
+          Secure mBridge transaction data in-transit using TLS. 
+          Validate certificates and disallow unsecured channels to 
+          prevent eavesdropping on sensitive information.
+        inPlace: true
+        public: true
+
+
+  - ID: SPOOFING_MBC_MB
+    title: Spoofing mBridge Connector or mBridge over their connection
+    # assets:
+    #   - REFID: DF1_MBRIDGECON_MB
+    attackers:
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:L
+    threatType: Spoofing, tampering
+    attack: |
+      An attacker is able to spoof mBridge or the mBridge Connector and send messages
+    impactDesc: Attackers can send redemption requests, responses, and 
+      acknowledgments for mBridge or the mBridge Connector to consume.
+    impactedSecObj:
+      - REFID: INTEGRITY
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+
+      # - ID: TLS_CONNECTION_MB_MBC
+      #   title: TLS Connection between the mBridge connector and mBridge
+      #   description: |
+      #     This connection uses TLS to ensure authentication, integrity, and confidentiality.
+      #   operational: false
+      #   inPlace: true
+      #   public: true
+
+      - ID: SIGNATURE_VERIFICATION_MECHANSIM
+        title: Signature verification mechanism
+        description: |
+          Message integrity is handled by a signature verification mechanism. 
+           The signature is calculated by the sender by creating a hash of the entire XML body of the 
+           message and then signing this hash with the sender private key. The signed hash is set in the
+            HTTP request header. 
+           The receiver extracts and verifies the signature 
+           using the corresponding public key stored in its keystore.
+           There are two types of digital signature deployed: message layer signature and core element signature.
+           The latter is used for certain important smart contract fields.
+
+        operational: false
+        inPlace: true
+        public: true
+
+  - ID: SPOOFING_CONFIG_BYPASS
+    title: Spoofing Attack by Disabling SOAP Signature Checking
+    attack: |
+      Attackers exploit the CHECK_SOAP_SIGNATURE_CONFIG setting, setting it to 'false',
+      allowing SOAP messages to bypass signature validation. This permits malicious payloads
+      or forged messages to appear legitimate and undermine trust in message exchange.
+    impactDesc: |
+      Results in unauthorized operations, tampered data, and potential financial or reputational damage.
+    assets:
+      - REFID: CHECK_SOAP_SIGNATURE_CONFIG
+      - REFID: DF_MBRIDGECON_MBRIDGE
+    impactedSecObj:
+      - REFID: INTEGRITY
+    fullyMitigated: false
+    threatType: Spoofing
+    pentestTestable: true
+    public: false
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4241
+    countermeasures:
+      - ID: ACTIVATE_SOAP_SIG_CHECK
+        title: Enforce mBridge SOAP Signature Checking
+        description: |
+          Ensure CHECK_SOAP_SIGNATURE_CONFIG remains actively set to 'true' in production.
+          Validate signature presence and correctness before processing any SOAP request.
+        inPlace: false
+        public: true
+
+  # - ID: REPUDIATION_MBC_MB_DF
+  #   title: Repudiation by the participants on the MB and MBC dataflow
+  #   # assets:
+  #   #   - REFID: DF1_MBRIDGECON_MB
+
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N
+  #   threatType: Repudiation
+  #   attack: |
+  #     Participants on the dataflow between mBridge and the mBridge Connector repudiate their messages.
+  #   impactDesc: Attackers can repudiate sending messages
+  #   impactedSecObj:
+  #     - REFID: ZERO_TRUST
+  #     - REFID: DEFENSE_IN_DEPTH
+  #     - REFID: MINIMAL_RISK_SURFACE
+
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - REFID: SIGNATURE_VERIFICATION_MECHANSIM
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+
+  # - ID: SNIFFING_MBC_MB_DF
+  #   title: Sniffing dataflow between MBridge and the MBridge Connector 
+  #   # assets:
+  #   #   - REFID: DF1_MBRIDGECON_MB
+  #   attackers:
+  #     - REFID: ANONYMOUS
+
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N
+  #   threatType: Information disclosure
+  #   attack: |
+  #     An attacker is able to read the communication between the mBridge connector and mBridge.
+  #   impactDesc: Attackers can view issuance requests, responses, and acknowledgments
+  #     between mBridge and the mBridge Connector.
+  #   impactedSecObj:
+  #     - REFID: CONFIDENTIALITY
+
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: TLS
+  #       title: TLS Connection between mBridge and the mBridge Connector
+  #       description: |
+  #         TLS connection between mBridge and the mBridge Connector.
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+
+
+
+  # - ID: UNAUTH_LEDGER_ACCESS
+  #   title: Unauthorized Access to MBridge Ledger via Connector
+  #   attack: |
+  #     Users or external actors attempt transactions directly through 
+  #     the connector without valid credentials or impersonate an institution’s identity.
+  #   impactDesc: |
+  #     Could enable fraudulent transfers, resulting in financial loss and reputational damage 
+  #     across the participant banks and the entire mBridge network.
+  #   impactedSecObj:
+  #     - REFID: CONFIDENTIALITY
+  #     - REFID: INTEGRITY
+  #   fullyMitigated: false
+  #   threatType: Elevation of Privilege, Spoofing
+  #   pentestTestable: true
+  #   public: true
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L
+  #   countermeasures:
+  #     - ID: STRONG_AUTHN
+  #       title: Strong Authentication & Access Control
+  #       description: |
+  #         Implement certificate-based mutual TLS or similar robust identity checks, 
+  #         ensuring only authorized entities can initiate or query transactions.
+  #       inPlace: false
+  #       public: true
+
+  # - ID: TRANSACTION_TAMPERING
+  #   title: Tampering with Connector Transaction Data
+  #   attack: |
+  #     Attackers exploit insecure channels or configuration errors to intercept 
+  #     and modify cross-border payment instructions before they reach the mBridge ledger.
+  #   impactDesc: |
+  #     Unauthorized value changes, altered beneficiaries, or fraudulent instructions 
+  #     could occur without timely detection, causing significant financial impact.
+  #   impactedSecObj:
+  #     - REFID: INTEGRITY
+  #   fullyMitigated: false
+  #   threatType: Tampering
+  #   pentestTestable: true
+  #   public: true
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N
+  #   countermeasures:
+  #     - ID: ENCRYPTED_CHANNELS
+  #       title: End-to-End Encryption & Message Authentication
+  #       description: |
+  #         Use secure protocols (such as TLS 1.3) and message signing 
+  #         to ensure transactions remain untampered in transit.
+  #       inPlace: false
+  #       public: true
+
+  - ID: MISCONFIGURED_RECONCILIATION
+    title: Reconciliation Failures Between Local Systems and MBridge Ledger
+    attack: |
+      System or process misconfigurations result in inconsistent states between 
+      internal ledgers and MBridge. Attackers could exploit this discrepancy to conceal fraudulent transactions.
+    impactDesc: |
+      Delayed settlement, missing or duplicated transactions, 
+      or inaccurate reporting undermines trust in cross-border payment flows.
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: AVAILABILITY
+    fullyMitigated: true
+    threatType: Tampering
+    pentestTestable: false
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:L/I:H/A:L
+    countermeasures:
+      - ID: PERIODIC_LEDGER_RECONCILIATION
+        title: Routine Transaction Audit & Reconciliation
+        description: |
+          Perform scheduled comparisons of local transaction logs 
+          with mBridge ledger records to detect mismatches promptly, 
+          triggering alerts for suspicious discrepancies.
+        inPlace: false
+        public: true
+
+      - ID: MBRIDGE_CONNECTOR_STATELESS_LOGIC
+        title: Stateless Logic for MBridge Connector
+        description: |
+          Implement stateless processing logic in the connector to ensure 
+          consistent transaction handling and avoid state misalignments.
+        inPlace: true
+        public: true
+
+
+  # - ID: DENIAL_OF_SERVICE_CONNECTOR
+  #   title: Service Overload or DoS on MBridge Connector
+  #   attack: |
+  #     Attackers flood the connector with large volumes of requests or malicious payloads, 
+  #     exhausting resources and making legitimate cross-border transactions unavailable.
+  #   impactDesc: |
+  #     Critical cross-currency payments are delayed or fail entirely, 
+  #     disrupting commerce and damaging the network’s reputation.
+  #   impactedSecObj:
+  #     - REFID: AVAILABILITY
+  #   fullyMitigated: false
+  #   threatType: Denial of Service
+  #   pentestTestable: true
+  #   public: true
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+  #   countermeasures:
+  #     - ID: RATE_LIMITING
+  #       title: Rate Limiting & Scalability Measures
+  #       description: |
+  #         Implement throttling and horizontal scaling for mBridge Connector services, 
+  #         plus real-time monitoring and automated blocking of suspicious traffic patterns.
+  #       inPlace: false
+  #       public: true
+
+  # - ID: TAMPERING_DATA_AT_REST
+  #   title: Unauthorized Modification of Persistent Data
+  #   attack: |
+  #     Attackers gain access to on-disk or database storage for the mBridge Connector 
+  #     and modify transaction records, ledger states, or configurations at rest.
+  #   impactDesc: |
+  #     Results in inconsistent transaction histories, fraudulent ledger entries, 
+  #     or corrupted system settings that undermine trust in the connector.
+  #   impactedSecObj:
+  #     - REFID: INTEGRITY
+  #   fullyMitigated: false
+  #   threatType: Tampering
+  #   pentestTestable: true
+  #   public: true
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:A/AC:H/PR:H/UI:N/S:U/C:L/I:H/A:L
+  #   countermeasures:
+  #     - ID: ENCRYPT_AT_REST
+  #       title: Encryption & Integrity Checks for Data at Rest
+  #       description: |
+  #         Encrypt critical data (files, databases, KV stores) with secure keys 
+  #         and apply integrity verification or hashing to detect tampering 
+  #         and ensure stored records remain unaltered.
+  #       inPlace: false
+  #       public: true
+  #     - ID: HMAC_VERIFICATION
+  #       title: HMAC Integrity Checks
+  #       description: |
+  #         Apply an HMAC (using a secret key) to data at rest. 
+  #         Upon retrieval, verify the HMAC to detect any unauthorized modification 
+  #         and trigger alerts or reject tampered records.
+  #       inPlace: false
+  #       public: true
+title: Mbridge Connector

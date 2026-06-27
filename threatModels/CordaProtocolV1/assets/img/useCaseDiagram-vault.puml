@@ -1,0 +1,238 @@
+@startuml useCaseDiagramVault
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+' LEGACY_NOTE_2026_05_13: this diagram may include historical ACL/receipt/tokenizer details pending upstream simplification merge; validate against current code before implementation decisions.
+title Corda Protocol V1 — Vault Use Case Diagram
+
+left to right direction
+
+skinparam usecase {
+    BackgroundColor<<vault>> LightYellow
+    BackgroundColor<<liquidity>> LightCyan
+    BackgroundColor<<acl>> LightCoral
+    BackgroundColor<<gui>> LightGreen
+    BackgroundColor<<compliance>> #FFE0B2
+    BackgroundColor<<tokenizer>> LightSalmon
+    BorderColor Black
+    ArrowColor #333333
+}
+
+skinparam rectangle {
+    BorderColor #555555
+    BackgroundColor #FAFAFA
+    RoundCorner 10
+}
+
+' ========================================
+' Actor color definitions
+' ========================================
+!define COLOR_ADMIN    #1B5E20
+!define COLOR_CURATOR  #red
+!define COLOR_INVESTOR #green
+!define COLOR_MANAGER  #E65100
+!define COLOR_TOKENIZER #B71C1C
+!define COLOR_COMPLIANCE #00695C
+
+
+' ========================================
+' Actors (colored)
+' ========================================
+
+actor "Admin" as admin #C8E6C9
+actor "Curator" as curator #BBDEFB
+actor "Investor /\nAllocator" as investor #E1BEE7
+actor "Liquidity\nManager" as manager #FFE0B2
+actor "Tokenizer\n(Issuer)" as tokenizer #FFCDD2
+actor "Compliance\nOfficer" as compliance #B2DFDB
+
+' ========================================
+' Vault System
+' ========================================
+rectangle "Vault Program" {
+
+    ' --- Admin Use Cases ---
+    usecase "Initialize Vault" as UC_InitVault <<vault>>
+    usecase "Update Vault Config\n(curator, fees, thresholds)" as UC_UpdateConfig <<vault>>
+    usecase "Pause Deposits\n/ Redemptions" as UC_Pause <<vault>>
+    usecase "Resume Deposits\n/ Redemptions" as UC_Resume <<vault>>
+
+    ' --- Curator Use Cases ---
+    usecase "Settle Investment\n(pending or accepted proposal)" as UC_SettleLarge <<vault>>
+    usecase "Reject Investment\n(pending proposal only)" as UC_RejectLarge <<vault>>
+    usecase "Settle Redemption\n(send USDC to investor)" as UC_SettleRedemption <<vault>>
+    usecase "Transfer USDC\nto Tokenizer" as UC_TransferTokenizer <<vault>>
+    usecase "Create Auto Invest Order\n(REMOVED - deprecated)" as UC_AutoInvestOrder <<vault>>
+    usecase "Update AUM per Share" as UC_UpdateNAV <<vault>>
+    usecase "Accrue & Collect Fees\n(permissionless — anyone)" as UC_AccrueFees <<vault>>
+
+    ' --- Investor Use Cases ---
+    usecase "Create Investment\nProposal" as UC_CreateLargeProposal <<vault>>
+    usecase "Create Redemption Proposal\n(burn vTokens)" as UC_CreateRedemption <<vault>>
+}
+
+' ========================================
+' Access Control & Compliance
+' ========================================
+rectangle "Access Control & Compliance (AML / KYC)" {
+
+    usecase "Add Investor to\nvToken Whitelist" as UC_AddWhitelist <<acl>>
+    usecase "Remove Investor from\nvToken Whitelist" as UC_RemoveWhitelist <<acl>>
+    usecase "Thaw vToken Account\n(re-enable transfers)" as UC_Thaw <<acl>>
+    usecase "Freeze vToken Account\n(via ACL Gate)" as UC_Freeze <<acl>>
+    usecase "Initialize vToken ACL\n(transfer hook)" as UC_InitACL <<acl>>
+    usecase "Review Inbound/Outbound\nTransaction Monitoring" as UC_TxMonitoring <<compliance>>
+    usecase "Verify KYC/AML\nEligibility" as UC_VerifyKYC <<compliance>>
+}
+
+' ========================================
+' Liquidity Pool
+' ========================================
+rectangle "Liquidity Pool" {
+
+    ' --- Manager Use Cases ---
+    usecase "Initialize Liquidity Pool" as UC_InitPool <<liquidity>>
+    usecase "Update Pool Config\n(limits, markup, spread)" as UC_UpdatePool <<liquidity>>
+    usecase "Deposit USDC / vTokens\nto Pool" as UC_DepositPool <<liquidity>>
+    usecase "Withdraw USDC / vTokens\nfrom Pool" as UC_WithdrawPool <<liquidity>>
+    usecase "Rebalance: Route USDC\nto Vault (async invest)" as UC_RebalanceInvest <<liquidity>>
+    usecase "Rebalance: Route vTokens\nto Vault (async redeem)" as UC_RebalanceRedeem <<liquidity>>
+    usecase "Pause / Resume\nLiquidity Operations" as UC_PausePool <<liquidity>>
+
+    ' --- Investor via Liquidity ---
+    usecase "Invest Sync\n(USDC → vTokens, instant)" as UC_InvestSync <<liquidity>>
+    usecase "Invest Async\n(auto or large, via vault)" as UC_InvestAsync <<liquidity>>
+    usecase "Redeem Sync\n(vTokens → USDC, instant)" as UC_RedeemSync <<liquidity>>
+    usecase "Redeem Async\n(vTokens → USDC, via vault)" as UC_RedeemAsync <<liquidity>>
+}
+
+' ========================================
+' Tokenizer
+' ========================================
+rectangle "Tokenizer (Asset Issuer)" {
+    usecase "Deposit aTokens\n(underlying assets)" as UC_DepositATokens <<tokenizer>>
+    usecase "Burn Freed aTokens\n(PermanentDelegate)" as UC_BurnATokens <<tokenizer>>
+    usecase "Withdraw USDC\n(from vault)" as UC_WithdrawUSDC <<tokenizer>>
+    usecase "Acquire Underlying\nAssets (off-chain)" as UC_AcquireAssets <<tokenizer>>
+}
+
+' ========================================
+' GUI (Web Dashboard)
+' ========================================
+rectangle "Web Dashboard (GUI)" {
+    usecase "Admin Dashboard\n(init, config, whitelist)" as UC_GUIAdmin <<gui>>
+    usecase "Curator Dashboard\n(settle, reject, NAV, fees)" as UC_GUICurator <<gui>>
+    usecase "Investor Dashboard\n(invest, redeem, balances)" as UC_GUIInvestor <<gui>>
+    usecase "Liquidity Dashboard\n(pool mgmt, rebalance)" as UC_GUILiquidity <<gui>>
+    usecase "Tokenizer Dashboard\n(deposit/withdraw assets)" as UC_GUITokenizer <<gui>>
+}
+
+' ========================================
+' Actor → Use Case Connections
+' ========================================
+
+' --- Admin (green) ---
+admin -[COLOR_ADMIN]-> UC_InitVault
+admin -[COLOR_ADMIN]-> UC_UpdateConfig
+admin -[COLOR_ADMIN]-> UC_Pause
+admin -[COLOR_ADMIN]-> UC_Resume
+admin -[COLOR_ADMIN]-> UC_AddWhitelist
+admin -[COLOR_ADMIN]-> UC_RemoveWhitelist
+admin -[COLOR_ADMIN]-> UC_Thaw
+admin -[COLOR_ADMIN]-> UC_Freeze
+admin -[COLOR_ADMIN]-> UC_InitACL
+admin -[COLOR_ADMIN]-> UC_UpdateNAV
+admin -[COLOR_ADMIN]-> UC_GUIAdmin
+
+' --- Curator (blue) ---
+curator -[COLOR_CURATOR]-> UC_SettleLarge
+curator -[COLOR_CURATOR]-> UC_RejectLarge
+curator -[COLOR_CURATOR]-> UC_SettleRedemption
+curator -[COLOR_CURATOR]-> UC_TransferTokenizer
+curator -[COLOR_CURATOR]-> UC_AutoInvestOrder
+curator -[COLOR_CURATOR]-> UC_UpdateNAV
+curator -[COLOR_CURATOR]-> UC_AccrueFees
+curator -[COLOR_CURATOR]-> UC_GUICurator
+
+' --- Investor (purple) ---
+investor -[COLOR_INVESTOR]-> UC_CreateLargeProposal
+investor -[COLOR_INVESTOR]-> UC_CreateRedemption
+investor -[COLOR_INVESTOR]-> UC_InvestSync
+investor -[COLOR_INVESTOR]-> UC_InvestAsync
+investor -[COLOR_INVESTOR]-> UC_RedeemSync
+investor -[COLOR_INVESTOR]-> UC_RedeemAsync
+investor -[COLOR_INVESTOR]-> UC_AccrueFees
+investor -[COLOR_INVESTOR]-> UC_GUIInvestor
+
+' --- Liquidity Manager (orange) ---
+manager -[COLOR_MANAGER]-> UC_InitPool
+manager -[COLOR_MANAGER]-> UC_UpdatePool
+manager -[COLOR_MANAGER]-> UC_DepositPool
+manager -[COLOR_MANAGER]-> UC_WithdrawPool
+manager -[COLOR_MANAGER]-> UC_RebalanceInvest
+manager -[COLOR_MANAGER]-> UC_RebalanceRedeem
+manager -[COLOR_MANAGER]-> UC_PausePool
+manager -[COLOR_MANAGER]-> UC_GUILiquidity
+
+' --- Tokenizer (red) ---
+tokenizer -[COLOR_TOKENIZER]-> UC_DepositATokens
+tokenizer -[COLOR_TOKENIZER]-> UC_BurnATokens
+tokenizer -[COLOR_TOKENIZER]-> UC_WithdrawUSDC
+tokenizer -[COLOR_TOKENIZER]-> UC_AcquireAssets
+tokenizer -[COLOR_TOKENIZER]-> UC_GUITokenizer
+
+' --- Compliance Officer (teal) ---
+compliance -[COLOR_COMPLIANCE]-> UC_TxMonitoring
+compliance -[COLOR_COMPLIANCE]-> UC_VerifyKYC
+compliance -[COLOR_COMPLIANCE]-> UC_AddWhitelist
+compliance -[COLOR_COMPLIANCE]-> UC_RemoveWhitelist
+
+' ========================================
+' Dependencies & Includes
+' ========================================
+
+UC_SettleLarge ..> UC_AddWhitelist : <<precondition>>\ninvestor must\nbe whitelisted
+UC_CreateRedemption ..> UC_AddWhitelist : <<precondition>>\ninvestor must\nbe whitelisted
+UC_RemoveWhitelist ..> UC_Freeze : <<include>>
+UC_VerifyKYC ..> UC_AddWhitelist : <<include>>\non KYC pass
+UC_TransferTokenizer ..> UC_AcquireAssets : <<triggers>>
+UC_InvestAsync ..> UC_SettleLarge : <<resolved by>>
+UC_RedeemAsync ..> UC_SettleRedemption : <<resolved by>>
+UC_CreateRedemption ..> UC_BurnATokens : <<frees aTokens>>\nfor recycling
+UC_SettleLarge ..> UC_BurnATokens : <<reuses>>\nrecycled aTokens
+
+' ========================================
+' Notes
+' ========================================
+
+note bottom of compliance
+    Compliance Officer reviews
+    AML/KYC eligibility off-chain
+    and instructs Admin to
+    whitelist or freeze accounts.
+    Transaction monitoring data
+    (inbound/outbound volumes)
+    is recorded on-chain.
+end note
+
+note right of UC_AccrueFees
+    **Permissionless** — anyone can call.
+    Fees: entry and exit fees
+    plus settlement-time transfers.
+    Applied inline by current price-aware flows:
+    settle_investment,
+    settle_redemption,
+    create_redemption_proposal.
+    Live pricing is read through the
+    oracle-wrapper path or a sealed snapshot.
+    Fees flow to immutable fee_recipient.
+end note
+
+legend right
+    |<#C8E6C9>  | **Admin** |
+    |<#BBDEFB>  | **Curator** |
+    |<#E1BEE7>  | **Investor / Allocator** |
+    |<#FFE0B2>  | **Liquidity Manager** |
+    |<#FFCDD2>  | **Tokenizer (Issuer)** |
+    |<#B2DFDB>  | **Compliance Officer** |
+end legend
+
+@enduml

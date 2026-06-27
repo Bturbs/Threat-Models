@@ -1,0 +1,565 @@
+ID: mBridgeConnector
+schemaVersion: 2
+title: mBridge connector
+parent: CBUAE_PHASE1
+proposal: TESTPROPOSAL
+
+
+scope:
+  description: |
+    This threat model focuses on the mBridge Connector java process. The scope does not include 
+    network infrastructural hardening, firewalls and similar. Infrastructral hardening will be scoped in another threat model. 
+
+  assets:
+
+    - ID: MBC_MESSAGING_SERVICE
+      title: MBridge Connector Messaging Service
+      type: system
+      description: |
+        This component is responsible for the following:
+          - Overall coordination of issuance, redemption and reporting flows
+          - Consuming messages from the CBCC (Issuance platform) via Kafka topic
+          - Producing messages for the CBCC to Kafka topic
+          - Invoke Message Translator service to translate messages from mBridge XML to CBCC JSON and vice-versa.
+          - Invoke Docking API to call mBridge CBUAE Backend node.
+      inScope: true
+
+    - ID: MBC_REPORTING_SERVICE
+      title: mBridge Connector Reporting Service
+      type: system
+      description: |
+        This component is responsible for the following: 
+         - Run a scheduler service to invoke the mBridge Docking API for Batch Transaction Query
+         - Process the response and generate LFI-wise wallet balance
+         - Publish LFI wallet balances to Kafka reporting topic
+      inScope: true
+
+    - ID: MBC_TRANSLATING_SERVICE
+      title: mBridge Message Translator Service
+      type: system
+      description: |
+        This component is responsible for the following: 
+         - Convert CBCC JSON message to mBridge XML message
+         - Convert mBridge XML message to CBCC JSON message
+         - Store and apply any fixed constants 
+      inScope: true
+
+    - ID: MB_API_ENDPOINT
+      type: system
+      title: mBridge Docking API Module endpoint
+      description: |
+        This component is responsible for the following 
+         - Create the mBridge request/response from the message XML including the SOAP message 
+          and the HTTP Request Headers
+         - Generate signature for the mBridge request
+         - Receive the mBridge request/response on a web service endpoint and validate message 
+          signature
+         - Handle mBridge connectivity errors and pass wrapper exception to the Message Service 
+      inScope: true
+
+    - ID: MBC_HEALTH_METRICS
+      type: system
+      title: MBridge Connector Health Metrics
+      description: |
+        This component provides the health status (UP/DOWN) for the connector and 
+         publishes operational metrics of the connector
+      inScope: true
+
+    - ID: MBC_TRANSLATION_DATA
+      type: data
+      title: Business data used for message Translation
+      description: |
+        Business data used for message Translation from MBC to CBCC (CB Command Center) and back. 
+        The values are hardcoded and are art of the MBC process.
+      inScope: true
+
+    - ID: MBC_SOAP_MESSAGE_SIGNING_KEY
+      title: MBridge Connector SOAP message signing key
+      type: key
+      description: It is used to sign SOAP messages sent to the CB mBridge node.
+      inScope: true
+      properties:
+        location: VAULT
+        format: ECDSA key pair (secp256k1)
+        length: 256
+        type: Private authentication key
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: MB_CERTIFICATE
+      title: MBridge SOAP/XML Verification certificate
+      type: Certificate
+      description: This is the certificate holding the mBridge CBUAE node 
+        backend public key. It is used by the connector to verify the mBridge's 
+        signature.
+      properties:
+        location: |
+        Hashicorp VAULT (RFI: Mayank, how is this injected? as a K8s Secret)
+      inScope: true
+
+    # - ID: DF2_CBCC_KAFKA_MBRIDGECON
+    #   type: dataflow
+    #   title: CBCC to mBridge Connector communication
+    #   description: |
+    #     CBCC to mBridge Connector communication via Kafka
+    #   inScope: true
+    #   properties:
+    #     authorization: enforced by Kafka broker
+    #     authentication: client Kafka credentials
+    #     TLS: non mutual, Kafka server certificate checked
+    #     payload: JSON
+
+    - REFID: DF2_CBCC_KAFKA_MBRIDGECON
+      type: dataflow
+      title: CBCC to mBridge Connector communication
+      description: |
+        CBCC to mBridge Connector communication via Kafka. It comprises two topics; one for messages from the CBCC to the "inbox" topic of the 
+         mBridge Connector "mBridge-outbound". The second is for messages sent from the mBridge Connector to the "inbox" topic 
+         of the CBCC "mBridge-inbound". 
+      inScope: true
+      properties:
+        authorization: enforced by Kafka broker
+        authentication: client Kafka credentials
+        TLS: non mutual, Kafka server certificate checked
+        payload: JSON
+
+    # - ID: DF_MBC_KAFKA
+    #   type: dataflow
+    #   title: MBridge Connector to Kafka connection, CBCC topics
+    #   description: |
+    #     Mbridge Connector to Kafka connection, CBCC topics.
+    #     This is the dataflow between the Messaging service component inside the mBridge and the CBCC
+    #   inScope: true
+    #   properties:
+    #     authorization: enforced by Kafka broker
+    #     authentication: client Kafka credentials
+    #     TLS: non mutual, Kafka server certificate checked
+    #     payload: JSON
+    #  The DF_MBC_KAFKA is the MBC to KAFKA part of the DF2_CBCC_KAFKA_MBRIDGECON  
+
+
+
+    # - ID: DF_MBC_REPORTING_SERVICE_KAFKA
+    #   type: dataflow
+    #   title: MBridge Connector to the Kafka, reporting topic
+    #   description: |
+    #     This is the dataflow from the reporting service component inside the mBridge to the Kafka reporting topic
+    #   inScope: false
+    #   properties:
+    #     authorization: enforced by Kafka broker
+    #     authentication: client Kafka credentials
+    #     TLS: non mutual, Kafka server certificate checked
+    #     payload: JSON
+
+    # - ID: DF_MBC_DASHBOARD
+    #   type: dataflow
+    #   title: MBridge Connector operational metrics to the Dashboard
+    #   description: |
+    #     This is the dataflow from the HEALTH/METRIC component inside the mBridge to the Dashboard.
+
+    #   inScope: true
+    #   properties:
+    #     # authorization: 
+    #     # authentication: client credentials
+    #     # TLS: yes, only server authenticated
+    #     payload: |
+    #       JSON
+
+    # - ID: DF_MBC_MB_XML
+    #   type: dataflow
+    #   title: Docking API Module Endpoint to the mBridge API Endpoint
+    #   description: |
+    #     This is the dataflow from the Docking API Module Endpoint Connector to the mBridge API Endpoint
+    #   inScope: true
+    #   properties:
+    #     # authorization: TODO
+    #     # authentication: TODO
+    #     # TLS: yes, only server authenticated
+    #     payload: |
+    #       XML
+
+    - REFID: DF1_MBRIDGECON_MB
+      type: dataflow
+      title: mBridge Connector to mBridge communication
+      description: |
+        mBridge Connector server listening for mBridge Connector http client to send  SOAP messages
+      inScope: true
+      properties:
+        authentication: XML signature verification
+        TLS: yes
+        payload: SOAP (signed XML)
+
+    - REFID: DF1_MC_MBRIDGECON
+      type: dataflow
+      title: mBridge to mBridge Connector communication
+      description: |
+        mBridge Connector http client to mBridge Server communication via SOAP over HTTP
+      inScope: true
+      properties:
+        authentication: XML signature verification
+        TLS: yes
+        payload: SOAP (signed XML)
+
+    # - ID: DF_MS_API_XML
+    #   type: dataflow
+    #   title: Message Service to the Docking API Module Endpoint
+    #   description: |
+    #     This is the dataflow from the Message Service to the Docking API Module Endpoint Connector. 
+    #     This is an mBridge internal dataflow.
+
+      # inScope: true
+      # properties:
+        # authorization: TODO
+        # authentication: TODO
+        # TLS: yes, only server authenticated
+        # payload: |
+        #   XML
+        #  
+
+
+    # - ID: DF_RS_API_XML
+    #   type: dataflow
+    #   title: Reporting Service to the Docking API Module Endpoint
+    #   description: |
+    #     This is the dataflow from the Reporting Service to the Docking API Module Endpoint Connector. 
+    #     This is an mBridge internal dataflow.
+    #   inScope: true
+    #   properties:
+    #     # authorization: TODO
+    #     # authentication: TODO
+    #     # TLS: yes, only server authenticated
+    #     # payload: |
+    #     #   XML
+    # - ID: DF_MS_TRANS_XML
+    #   type: dataflow
+    #   title: Message Service to the Message Translator Service (XML)
+    #   description: |
+    #     This is the dataflow from the Message Service to the Translator service. 
+    #     This is an mBridge internal dataflow.
+    #   inScope: true
+    #   properties:
+    #     # authorization: TODO
+    #     # authentication: TODO
+    #     # TLS: yes, only server authenticated
+    #     payload: |
+    #       XML
+    # - ID: DF_MS_TRANS_JSON
+    #   type: dataflow
+    #   title: Message Service to the Message Translator Service (JSON)
+    #   description: |
+    #     This is the dataflow from the Message Service to the Translator service. 
+    #     This is an mBridge internal dataflow.
+    #   inScope: true
+    #   properties:
+    #     # authorization: TODO
+    #     # authentication: TODO
+    #     # TLS: yes, only server authenticated
+    #     payload: |
+    #       JSON
+    # - ID: DF_RS_TRANS
+    #   type: dataflow
+    #   title: Reporting Service to the Message Translator Service
+    #   description: |
+    #     This is the dataflow from the Reporting Service to the Translator service. 
+    #     This is an mBridge internal dataflow.
+    #   inScope: true
+    #   properties:
+    #     # authorization: TODO
+    #     # authentication: TODO
+    #     # TLS: yes, only server authenticated
+    #     payload: |
+    #       JSON
+
+
+
+
+analysis: |
+
+# STRIDE mainly external flows ( CBCC, MB, HEALTHDASHBOARD, REPORTING)
+# STRIDE on internal flows 
+# Keys management
+# DF_MBC_KAFKA: Forge issuance, redemption requests/ info disclosure/ repudiation/replay attacks/tampering/DoS
+#  countermeasure: kafka access controls?, integrity checks/digital signatures?, 
+#            support unavailability if the CBCC or the connector is down, scalable deplyment
+#   cm->1.  mBridge Connector interfaces with Kafka for its communication with the CBCC (Issuance Platform) services. 
+#        The Kafka broker is configured to accept connections from clients only over SSL / TLS 
+#        which ensures encrypted data communication. 
+#       2. The connection to Kafka is authenticated using SASL mechanism using access tokens that 
+#           are provided by the Secrets service i.e., Hashicorp
+
+# DF_MBC_MB_XML: spoofing, tampering, repudiation-> cm: Message layer signature, core element signature
+# DF_MBC_MB_XML: info. disc -> cm: TLS
+# DF_MBC_MB_XML: DoS -> cm : Firewalls, scalable deployment
+# DF_MBC_MB_XML: Elevation Of privileges, is this even applicable?
+# DF_MBC_MB_XML: support error handling and retries,
+#  cm - >1. The mBridge CBUAE node deployed in a separate mBridge network communicates with 
+#          the HTTPS Docking API of the mBridge Connector deployed in a Kubernetes cluster in the CBCC
+#            infrastructure over secure VPN
+#  cm -> 2. The message integrity is handled by a signature verification mechanism. 
+#            The signature is calculated by the sender by creating a hash of the entire XML body of the 
+#            message and then signing this hash with the sender private key. The signed hash is set in the
+#             HTTP request header. 
+#            The receiver extracts  and verifies the signature 
+#            using the corresponding public key stored in its keystore. 
+
+# DF_MBC_MB_XML: support deduplication -> This is handled by the CB MB node, not the MBC. 
+# The MBC will not check for duplicate messages
+
+# DF_MBC_REPORTING_SERVICE_KAFKA : forge reports, info disclosure, tampering, DoS, 
+#   -> cm: Kafka access controls, integrity checks/digital signature
+
+# DF_MBC_DASHBOARD: forge metrics, info disclosure-> cm: RBAC
+# What about internal DF? Are they immune to stride?
+# Threats to the translating service?
+# Is the institution’s digital certificate (private key) -p.26 LLD report- used to sign the signature element 
+#  string a different asset from the MBC_SOAP_MESSAGE_SIGNING_KEY?
+
+#  DOS attacks against extrtnal dataflows and components
+#   cm -> scalable implementation, error handling, log connections time out, firewalls 
+
+threats:
+  - ID: KAFKA_CONNECTION_VULNERABILITIES_MBC
+    title: Attacks against unsecured mBridge Connector Kafka connections
+    assets:
+      - REFID: DF2_CBCC_KAFKA_MBRIDGECON
+      # - REFID: DF_MBC_REPORTING_SERVICE_KAFKA
+    # attackers:
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L
+    threatType: Spoofing, Tampering, Repudiation, Information disclosure, DoS, 
+      Elevation of privilieges
+    attack: |
+      Misconfiguring or not securing the Kafka connection between the mBridge connector and the CBCC can expose the 
+      data in transit to a wide number of attacks including; forging and tampering of issuance and redemption requests and responses, disclosing 
+      data, and even affecting the availability of communication.
+
+    impactDesc: Attackers can send issuance requests, responses and 
+      acknowledgments for the MBC or the CBCC to consume. The attacker can 
+      instruct the CBCC to execute redemption requests. It can instruct the 
+      mBridge connector to send ussuance requests.
+    impactedSecObj:
+      - REFID: ISSUANCE_REDEMPTION_CONTROL
+      - REFID: NON_REPUDIATION
+      - REFID: MONETARY_INTEGRITY
+      - REFID: REPORTING_MONITORING
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: TLS_KAFKA_CONNECTION
+        title: TLS Connection between Kafka broker and clients
+        description: |
+          The Kafka broker is configured to accept connections from clients only over SSL / TLS 
+           which ensures encrypted data communication.
+        operational: false
+        inPlace: true
+        public: true
+      - ID: Access_Tokens_Authentication
+        title: Access tokens authentication
+        description: |
+          The connection to Kafka is authenticated using SASL mechanism using access tokens that 
+          are provided by the Secrets service i.e., Hashicorp.
+        operational: false
+        inPlace: true
+        public: true
+      - ID: ACCESS_CONTROL_KAFKA_TOPIC
+        title: Apply Access control for Kafka topic
+        description: |
+          Configure Kafka topics dedicated for the sole communication between the issuance platform and the mBridge Connector.
+          Apply access controls to prevent other entities from accessing these topics. 
+        operational: false
+        inPlace: true
+        public: true
+
+
+  # - ID: IMPERSONATING_CBCC_MBC
+  #   title: Impersonating CBCC or MBridge Connector over their connection
+  #   assets:
+  #     - REFID: DF2_CBCC_KAFKA_MBRIDGECON
+  #   attackers:
+  #     - REFID: ANONYMOUS
+
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L
+  #   threatType: Spoofing, tampering, repudiation, Elevation of priviliges
+  #   attack: |
+  #     An attacker is able to write access Kafka MBC_CBCC channels and sends fake messages posing as CBCC or MBC
+  #   impactDesc: Attackers can send issuance requests, responses and acknowledgments
+  #     for the MBC or the CBCC to consume
+  #   impactedSecObj:
+  #     - REFID: FULL_CIA
+
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: TLS_KAFKA_CONNECTION
+  #       title: TLS Connection between Kafka broker and clients
+  #       description: |
+  #         The Kafka broker is configured to accept connections from clients only over SSL / TLS 
+  #          which ensures encrypted data communication. The client verifies the identity of the server TLS certificate.
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+  #     - ID: Access_Tokens_Authentication
+  #       title: Access tokens authentication
+  #       description: |
+  #         The connection to Kafka is authenticated using SASL mechanism using access tokens that 
+  #         are provided by the Secrets service i.e., Hashicorp.
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+
+  # - ID: SNIFFING_CBCC_MBC_DF
+  #   title: Sniffing dataflow between the CBCC and the MBridge Connector
+  #   assets:
+  #     - REFID: DF2_CBCC_KAFKA_MBRIDGECON
+  #   attackers:
+  #     - REFID: ANONYMOUS
+
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N
+  #   threatType: Information disclosure
+  #   attack: |
+  #     An attacker is able to read access Kafka MBC_CBCC channels and view communications
+  #   impactDesc: Attackers can view issuance requests, responses and acknowledgments
+  #     between the MBC and the CBCC
+  #   impactedSecObj:
+  #     - REFID: CONFIDENTIALITY
+
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - REFID: TLS_KAFKA_CONNECTION
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+
+  - ID: SPOOFING_MBC_MB
+    title: Spoofing MBridge Connector or MBridge over their connection
+    assets:
+      - REFID: DF1_MBRIDGECON_MB
+    attackers:
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L
+    threatType: Spoofing, tampering
+    attack: |
+      An attacker is able to spoof the MBridge or MBridge Connector and send messages
+    impactDesc: Attackers can send redemption requests, responses and 
+      acknowledgments for the MBC or the MB to consume
+    impactedSecObj:
+      - REFID: FULL_CIA
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+
+      - ID: TLS_CONNECTION_MB_MBC
+        title: TLS Connection between the MBridge connector and the  MBridge
+        description: |
+          This connection uses TLS to ensure authentication, integrity and confidentiality.
+
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: SIGNATURE_VERIFICATION_MECHANSIM
+        title: Signature verification mechanism
+        description: |
+          The message integrity is handled by a signature verification mechanism. 
+           The signature is calculated by the sender by creating a hash of the entire XML body of the 
+           message and then signing this hash with the sender private key. The signed hash is set in the
+            HTTP request header. 
+           The receiver extracts  and verifies the signature 
+           using the corresponding public key stored in its keystore.
+           There are two types of digital signaures deployed; Message layer Signature and Core element signature.
+           The latter is used for certain important smart contract fields.
+
+        operational: false
+        inPlace: true
+        public: true
+
+
+
+  - ID: REPUDIATION_MBC_MB_DF
+    title: Repudiation by the participants on the MB and MBC dataflow
+    assets:
+      - REFID: DF1_MBRIDGECON_MB
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N
+    threatType: Repudiation
+    attack: |
+      Participants on the dataflow between the MBridge and MBridge Connector repudiate their messages.
+    impactDesc: Attackers can repudiate sending messages
+    impactedSecObj:
+      - REFID: ZERO_TRUST
+      - REFID: DEFENSE_IN_DEPTH
+      - REFID: MINIMAL_RISK_SURFACE
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: SIGNATURE_VERIFICATION_MECHANSIM
+        title: Signature verification mechanism
+        operational: false
+        inPlace: true
+        public: true
+        description: SIGNATURE_VERIFICATION_MECHANSIM
+  - ID: SNIFFING_MBC_MB_DF
+    title: Sniffing dataflow between the MBridge Connector and the MBridge
+    assets:
+      - REFID: DF1_MBRIDGECON_MB
+    attackers:
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N
+    threatType: Information disclosure
+    attack: |
+      An attacker is able to read the communication between the MBridge connector and MBridge
+    impactDesc: Attackers can view issuance requests, responses and 
+      acknowledgments between the MBC and the MB
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: TLS
+        title: TLS Connection between MBC and MB
+        description: |
+          TBC...        
+        operational: false
+        inPlace: true
+        public: true
+
+  # - ID: SPOOFING_REPORTING_SERVICE
+  #   title: Spoofing MBridge Connector over the reportig service
+  #   assets:
+  #     - REFID: DF_MBC_REPORTING_SERVICE_KAFKA
+  #   # attackers:
+  #   #   - REFID: ANONYMOUS
+
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N
+  #   threatType: Spoofing, tampering
+  #   attack: |
+  #     An attacker is able to spoof the MBridge Connector and send messages over the kafka topic
+  #   impactDesc: Attackers can tamper account details including balances
+  #   impactedSecObj:
+  #     - REFID: INTEGRITY
+
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - REFID: TLS_KAFKA_CONNECTION
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+  #     - REFID: Access_Tokens_Authentication
+  #       operational: false
+  #       inPlace: true
+  #       public: true
+

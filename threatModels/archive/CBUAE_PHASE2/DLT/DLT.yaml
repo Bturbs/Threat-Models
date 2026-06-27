@@ -1,0 +1,417 @@
+ID: DLT
+schemaVersion: 2
+parent: CBUAE_PHASE2
+
+
+scope:
+  description: |2
+
+    **Refs:** [HLD - 4.5 Solution Design/Corda DLT](#HLD), [LLD - 7 Corda Distributed Ledger Technology](#LLD)
+
+  assets:
+    - ID: TXS_BLOCK
+      type: data
+      title: Block
+      description: |
+        Ledger transaction on the DLT, between institutions 
+
+        **Refs:** [LLD - 7.3.3 Corda Distributed Ledger Technology/Solution design/Transaction data modeling](#LLD), [LLD - 7.3.3.1 Corda Distributed Ledger Technology/Solution design/Transaction data modeling/Block structure](#LLD)
+      inScope: true
+
+    - ID: RETAIL_TX
+      type: data
+      title: Retail DLT transaction
+      description: |
+        Retail transactions such as a payment between a consumer and a merchant.
+
+        **Refs:** [HLD - 4.2.1.2 Solution Design/Key business flows/Transfer flow](#HLD), [LLD - 7.3.2.2 Corda Distributed Ledger Technology/Solution design/API/Transfer API](#LLD)
+      inScope: true
+
+    - ID: DF_FIN_PAYEE_RCVBLCK
+      type: dataflow
+      title: Signed TXS_BLOCK from PAYER to PAYEE
+      description: |
+        Transfer of signed block of retail TXS from PAYER to PAYEE. These TXS are not checked yet notarized/checked for double spend.
+
+        **Refs:** [LLD - 7.3.5 Corda Distributed Ledger Technology/Solution design/Finality & consensus](#LLD), [LLD - 8.3.5 Corda Workflow SDK Overview/Solution design/Networking](#LLD)
+      inScope: true
+
+    - ID: DF_FIN_PAYEE_SIGN
+      type: dataflow
+      title: Signed TXS_BLOCK from PAYEE back to PAYER
+      description: |
+        Transfer of re-signed block of retail TXS from PAYEE to PAYER. These TXS are not checked yet notarized/checked for double spend.
+
+        **Refs:** [LLD - 7.3.6 Corda Distributed Ledger Technology/Solution design/Contract validation](#LLD)
+      inScope: true
+
+    - ID: DF_FIN_CB_FORW
+      type: dataflow
+      title: Signed TXS_BLOCK from PAYER to CB.
+      description: |
+        Transfer of re-signed block of retail TXS from PAYER to DB. These TXS are not checked yet notarized/checked for double spend.
+
+        **Refs:** [LLD - 7.3.5.2 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Notary implementation](#LLD)
+      inScope: true
+
+    - ID: DF_FIN_CB_SIGN_PAYER
+      type: dataflow
+      title: CB signed TXS_BLOCK sent back to PAYER
+      description: |
+        Transfer of signed by CB and notarized TXS_BLOCK back to PAYER.
+
+        **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+      inScope: true
+
+    - ID: DF_FIN_CB_SIGN_PAYEE
+      type: dataflow
+      title: CB signed TXS_BLOCK sent back to PAYEE
+      description: |
+        Transfer of signed by CB and notarized TXS_BLOCK back to PAYEE.
+
+        **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+      inScope: true
+
+analysis: |
+  As shown in the reference "The technology of retail central bank digital currency", graph 2:
+    <img src="img/CBDC_ARCHITECTURES.png"/>
+   the targeted Hybrid CBDC architecture implies that retail user CBDC are claims to the Central banks.
+  While the current proposal achieve the main use cases some emergent characteristic of this *Central Bank claim based system* 
+  are not achieved as a retail user can only claim CBDC values to the LFI/intermediary and not to the CB directly.
+   In this sense the solution has characteristic of a Indirect CBDC architecture (also known as `Synthetic CBDC`).
+   The proposed design also uses `identity and account` access (opposite to `knowledge/token based` access), 
+   this characteristic should be highlighted as one of the consequences is that there is not the possibility of 
+   peer-to-peer payment verification through Corda Ledger access.
+
+  **Refs:** [HLD - 4.5 Solution Design/Corda DLT](#HLD), [LLD - 7.3.4 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography](#LLD)
+
+   They proposed design requires trust in the LFI intermediaries (lack of retail to CB direct value claim), that is 
+   a characteristic of a non-cash-like digital money. In the current design, the Corda DLT token based claims are wholesale/from
+    LFI and frequently settled at this wholesale level (once per second). While this wholesale settlement frequency may achieve 
+    near-instant-settlement for a single payment, chained payment, requires multiple os the minimum settlement time, this may limit
+    transaction automation and programmability that, as today, are not defined.
+
+  **Refs:** [HLD - 4.5.1 Solution Design/Corda DLT/Blocks processing and lifecycle](#HLD), [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+
+  <img src="img/hybrid_analysis1.svg" />
+
+
+  **STRIDE analysis for DF_FIN_PAYEE_RCVBLCK**
+
+  - **Spoofing**: No, prevented by Block Signature at application protocol level
+  - **Tampering**: same as Spoofing
+  - **Repudiation**: Yes, no application level signed receipt is send back to the PAYER. PAYEE is able to wrongfully or maliciously repudiate a payment. 
+  - **Information Disclosure**: No (assumption: only payment to the target PAYEE are possible in the TXS_BLOCK)
+  - **Denial of Service**: Yes 1: limitless list of retail TX, 2: malformed data that breaks parsers
+  - **Tampering**: Yes by the PAYEE (arbitrary TXS, possible double spend etc., mitigated by notarization), No tampering by ANONYMOUS: prevented by Block Signature at application protocol level
+  - **Elevation of privileges**: Yes 
+      - 1: unauthorized TX type, mitigation only a minimal set of actions are authorized via this dataflow (receive retail payment)
+      - 2 (NOTE: out os scope for now, implementation dependant, only design is in scope now): malicious payload can exploit target via remote code execution, mitigated by: data validation and secure JVM runtime. 
+
+  **Refs:** [LLD - 7.3.4.3 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Cryptography](#LLD), [LLD - 7.3.6.1 Corda Distributed Ledger Technology/Solution design/Contract validation/Agreeing a block](#LLD)
+
+   TODO: unauthorized network participant (is it a fixe list of payers?, when does it changes?) 
+
+  **STRIDE analysis for DF_FIN_PAYEE_SIGN**
+
+  - **Spoofing**: No, prevented by Block Signature at application protocol level
+  - **Tampering**: No, same as Spoofing
+  - **Repudiation**: No, both Parties have each other signatures at this point in the workflow.
+  - **Information Disclosure**: No
+  - **Denial of Service**: Yes, unlimited or malformed data that breaks parsers, etc.
+  - **Tampering**: No, PAYEE can only sign the input TXS_BLOCK
+  -  **Elevation of privileges**: Yes 1: (NOTE: out os scope for now, implementation dependant) malicious payload can exploit target via remote code execution, mitigated by: data validation and secure JVM runtime. 
+
+  **Refs:** [LLD - 7.3.4.3 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Cryptography](#LLD)
+
+  **STRIDE analysis for DF_FIN_CB_FORW**
+
+  - **Spoofing**: No, prevented by Block Signature at application protocol level
+  - **Tampering**: No, same as Spoofing
+  - **Repudiation**: No, both Parties have each other signatures at this point in the workflow.
+  - **Information Disclosure**: No
+  - **Denial of Service**: Yes, unlimited or malformed data that breaks parsers etc.
+  - **Tampering**: No, PAYEE can only sign the input TXS_BLOCK
+  - **Elevation of privileges**: Yes 1: unauthorized TX type, mitigation only a minimal set of actions are authorized via this dataflow (receive retail payment)
+                                  2: malicious payload can exploit target via remote code execution, mitigated by: data validation and secure JVM runtime. 
+
+  **Refs:** [LLD - 7.3.5.2 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Notary implementation](#LLD)
+
+  <hr/>
+  **STRIDE analysis for DF_FIN_CB_SIGN_PAYER**
+
+  - **Spoofing**: No, prevented by Block Signatures at application protocol level
+  - **Tampering**: No, same as Spoofing
+  - **Repudiation**: Yes, the PAYER can claim that has not received the notarized block, there's not an signed receipt at this protocol level mitigating this threat. 
+  - **Information Disclosure**: No (CB is a trusted party)
+  - **Denial of Service**: No (CB is a trusted party)
+  - **Tampering**: No, same as Spoofing (signatures)
+  - **Elevation of privileges**: No (CB is a trusted party)
+
+  **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+
+  **STRIDE analysis for DF_FIN_CB_SIGN_PAYEE**
+
+  - **Spoofing**: No, prevented by Block Signatures at application protocol level
+  - **Tampering**: No, same as Spoofing
+  - **Repudiation**: Yes, the PAYEE can claim that has not received the notarized block, there's not an signed receipt at this protocol level mitigating this threat. 
+  - **Information Disclosure**: No (CB is a trusted party)
+  - **Denial of Service**: No (CB is a trusted party)
+  - **Tampering**: No, same as spoofing (signatures)
+  - **Elevation of privileges**: No (CB is a trusted party)
+
+  **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+
+threats:
+
+  - ID: PAYMENTS_REPUDIATION1
+    title: Repudiation by PAYEE of sent payment
+    attack: |
+      No application level signed receipt is sent back to the PAYER by the PAYEE, this way the receiver/PAYEE blocks the payment workflow.
+      At this level there is not cryptographic proof or Corda payment protocol logic usable at evidence of this.
+
+      **Refs:** [LLD - 8.3.4.5 Corda Workflow SDK Overview/Solution design/Workflow execution/Reliable execution model](#LLD)
+    threatType: Repudiation, Denial of Service
+    impactDesc: |
+      This repudiation looks like a missing payment. The PAYEE is able to
+      wrongfully or maliciously repudiate a payment.
+
+      **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+    assets:
+      - REFID: DF_FIN_PAYEE_RCVBLCK
+    attackers:
+      - REFID: PAYER
+    impactedSecObj:
+      - REFID: NON_REPUDIATION
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:L/A:L
+    fullyMitigated: true
+    public: true
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-1350
+    countermeasures:
+      - ID: CB_FLOW_BEFORE_PAYEE
+        title: PAYEE sends signed block to CB as well
+        description: |
+          PAYER sends signed block (unsigned by PAYEE) to CB as well as the PAYEE. The CB sends back a signed receipt (e.g. signed hash and timestamp of the TXS_BLOCK).
+           If the PAYEE for whatever reason do not process or hide the payment the PAYER can claim the payment attempt.
+
+          **Refs:** [LLD - 7.3.5.2 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Notary implementation](#LLD)
+        operational: false
+        inPlace: true
+        public: true
+
+
+  - ID: PAYER_BLOCK_DOS1
+    title: Limitless block data can affect PAYEE payment processing capability
+    attack: |
+      By not defining limits in the protocol, a TXS_BLOCK is not bound to a max size or number of transactions. The size of the TXS_BLOCK
+      can be so big (also realistically, not by a malicious action) that the receiver does not have the capability to process the block in a timely manner.
+
+      **Refs:** [LLD - 7.3.11 Corda Distributed Ledger Technology/Solution design/Performance and scalability](#LLD)
+    threatType: Denial of Service
+    impactDesc: |
+      Slow or blocked payment processing at the receiver side.
+
+      **Refs:** [LLD - 7.3.10 Corda Distributed Ledger Technology/Solution design/Resilience and disaster recovery](#LLD)
+    assets:
+      - REFID: DF_FIN_PAYEE_RCVBLCK
+    attackers:
+      - REFID: PAYER
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:L
+    fullyMitigated: true
+    public: true
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-1351
+    countermeasures:
+      - ID: MAX_TXS_BLOCK_SIZE
+        title: Define and validate TXS_BLOCK limits
+        description: |
+          PAYER sends signed block (unsigned by PAYEE) to CB as well as the PAYEE. The CB sends back a signed receipt (e.g. signed hash and timestamp of the TXS_BLOCK).
+          If the PAYEE for whatever reason do not process or hide the payment the PAYER can claim the payment attempt.
+
+          **Refs:** [LLD - 7.3.3.1 Corda Distributed Ledger Technology/Solution design/Transaction data modeling/Block structure](#LLD)
+        operational: false
+        inPlace: true
+        public: true
+
+  - ID: PAYER_BLOCK_TAMPERING
+    title: PAYER can craft any unauthorized transaction in a block
+    attack: |
+      The PAYER party can craft any transaction in the TXS_BLOCK, including those that are not allowed, for example, negative 
+      amounts in payments, payment containing other parties etc.
+
+      **Refs:** [LLD - 7.3.6 Corda Distributed Ledger Technology/Solution design/Contract validation](#LLD)
+    threatType: Tampering, Elevation of privileges
+    impactDesc: |
+      Compromised ledger transaction, monetary loss etc.
+
+      **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+    assets:
+      - REFID: DF_FIN_PAYEE_RCVBLCK
+    attackers:
+      - REFID: PAYER
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CB_EFFECTIVE_MONETARY_POLICIES
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:H/A:L
+    fullyMitigated: true
+    public: true
+    pentestTestable: true
+    countermeasures:
+      - ID: STRINGENT_TXS_BLOCK_VALIDATION
+        title: Syntactically and semantically validate TXS_BLOCK transaction
+        description: |
+          TXS_BLOCK validation by the PAYEE only accept specific expected kind of transaction (not generic valid transactions).
+          At this point, without notarization, double spending is still possible but this case is managed later on in the workflow.
+
+          **Refs:** [LLD - 7.3.6.1 Corda Distributed Ledger Technology/Solution design/Contract validation/Agreeing a block](#LLD), [LLD - 7.3.6.2 Corda Distributed Ledger Technology/Solution design/Contract validation/Use of Corda contracts](#LLD)
+        inPlace: true
+        public: true
+
+
+
+  - ID: NON_INSTANT_SETTLEMENT
+    title: Transaction finality has fixed minimum time of execution by design
+    attack: |
+      Whilst TX batching is a design optimization to address TX throughput, it also leads to the current design being unable
+      to achieve near-instant TX finality. Batching transactions between two parties and executing them once per second limits the speed of transaction finality.
+      This may be exacerbated for a chain of payments: A pays to B that pays to C etc. would require a multiple of the time 
+      of a single payment, in the order of several seconds in the current design (NOTE: in this example parties have wallets in 3 or more different LFIs). The threat condition (not achieving
+      near-instant transaction finality) occurs due to retail transactions being processed in batches.
+
+      **Refs:** [HLD - 4.5.1 Solution Design/Corda DLT/Blocks processing and lifecycle](#HLD), [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+    threatType: Denial of Service
+    impactDesc: |
+      It limits the potential functionality of retail CBDCs in more complex and automated payment systems like payment streams,
+      time dependent trading execution, longer chained payments...
+
+      **Refs:** [LLD - 7.3.11 Corda Distributed Ledger Technology/Solution design/Performance and scalability](#LLD)
+    impactedSecObj:
+      - REFID: INSTANT_SETTLEMENT
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L
+    fullyMitigated: false
+    public: false
+    pentestTestable: true
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4252
+    countermeasures:
+      - ID: NON_QUEUING_BATCHING_DELAY_TX
+        title: Do not impose a lower boundary of TX time execution
+        description: |
+          Batching, queuing and any fixed time delay is not *by design* in the system and potentially the
+          transaction executes in near real-time.
+
+          **Refs:** [LLD - 7.3.11 Corda Distributed Ledger Technology/Solution design/Performance and scalability](#LLD)
+        inPlace: false
+        public: true
+
+
+  - ID: QUADRATIC_TX_GROWTH
+    title: The number of DLT TXs grows quadratically with additional LFIs
+    attack: |
+      Although transaction "blocks" are a design optimization for Corda DLT, the number of DLT TXs grows quadratically with LFI participants, 
+      rather than proportionally with TXs.
+      The maximum number of TX that needs to be supported per time frame (1s) has an  non=linear (quadratic) formula
+      `n(n-1)/2`. The threat conditions are always present; no explicit attack vector is required to exploit this vulnerability. 
+      Rather, the normal network conditions are enough to trigger availability issues when the number of LFIs exceeds
+      a known threshold.
+
+      **Refs:** [LLD - 7.3.11 Corda Distributed Ledger Technology/Solution design/Performance and scalability](#LLD)
+    threatType: Denial of Service
+    impactDesc: |
+      This will limit the upper boundary of wallet intermediaries/LFIs.
+
+      **Refs:** [LLD - 7.3.10 Corda Distributed Ledger Technology/Solution design/Resilience and disaster recovery](#LLD)
+    impactedSecObj:
+      - REFID: INSTANT_SETTLEMENT
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H
+    fullyMitigated: true
+    public: true
+    pentestTestable: false
+    countermeasures:
+      - ID: FAST_PAYMENT_CHANNELS
+        title: Fast Payment Channels
+        description: |
+          Layer-2 style payment channels are an existing design solution to mitigate availability issues
+          associated with network participant growth.
+
+          **Refs:** [LLD - 7.3.11 Corda Distributed Ledger Technology/Solution design/Performance and scalability](#LLD)
+        inPlace: false
+        public: false
+
+      - ID: LIMITED_PARTICIPANTS
+        title: Limit the number of participants
+        description: |
+          Limit the number of participants in the network to avoid growth of TXs.
+
+          **Refs:** [HLD - 4.1.5 Solution Design/System overview/Organizations assumptions and responsibilities](#HLD)
+        inPlace: true
+        public: true
+
+
+  - ID: PII_DISCL_CB
+    title: PII data disclosed to CB
+    attack: |
+      The [TXS_BLOCK](#TXS_BLOCK) contains Personal Identifiable or linkable Data that will be accessible by the Central Bank
+      due to this information being stored at the DLT layer.
+
+      **Refs:** [LLD - 7.3.4.2 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Privacy at rest](#LLD), [LLD - 7.3.8 Corda Distributed Ledger Technology/Solution design/Data storage & management](#LLD)
+    threatType: Information Disclosure
+    impactDesc: |
+      Compliance can be breached and this data concentration will increase incentives for attacks.
+
+      **Refs:** [LLD - 7.3.4 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography](#LLD)
+    impactedSecObj:
+      - REFID: AVOID_EXCESSIVE_DATA_EXPOSURE
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:N/A:N
+    fullyMitigated: true
+    public: true
+    pentestTestable: true
+    countermeasures:
+      - ID: MASKED_PII_TX_DATA
+        title: Make PII data unavailable to CB
+        description: |
+          Mask TX Data to not make it accessible to CB.
+
+          **Refs:** [LLD - 7.3.4.2 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Privacy at rest](#LLD)
+        inPlace: true
+        public: true
+      - ID: PARTIAL_TXDATA_ENCRYPTION
+        title: Partially encrypt TX data
+        description: |
+          Encrypt sensitive transaction data while keeping other parts of the transactions accessible.
+
+          **Refs:** [LLD - 7.3.4.1 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Privacy in transit](#LLD), [LLD - 7.3.4.3 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Cryptography](#LLD)
+        inPlace: false
+        public: true
+
+## TODO retail tx data to the CB, still too much data
+
+## TODO security objective: resilience to LFI failure (not in this model)
+
+## TODO trade off in analysis between payment repudiation, receiver consent, and fewer cycles/steps of signatures (efficiency)... cannot have all 3
+
+## PLATFORM (not CB) enforced integrity, security objective form https://jor3cev.sharepoint.com/:v:/r/sites/CBUAE_Project/Shared%20Documents/Phase%202%20CBUAE%20Program%20(Internal%20Only)/05%20Integration%20Team/Analysis%20%26%20Design/Recordings%20and%20Transcripts/Retail%20CBDC%20Proposed%20Solution%20Overview%20Workshop%2008-Oct-24/Retail%20CBDC%20Proposed%20Solution%20Overview%20Workshop%20Meeting%20Recording%2009-Oct-24.mp4?csf=1&web=1&e=RIb5Un&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifSwicGxheWJhY2tPcHRpb25zIjp7InN0YXJ0VGltZUluU2Vjb25kcyI6MzgwMC45M319
+## this may be in contrast with current attacker classification in the TM (only proof of work kind of ensures integrity without centrality)
+## CB is more like a proof of stake system with some degree of centrality (due to notarization, and CA management)
+
+
+
+## centralization essie discussion (standards accounting backed by CBDC): https://jor3cev.sharepoint.com/:v:/r/sites/CBUAE_Project/Shared%20Documents/Phase%202%20CBUAE%20Program%20(Internal%20Only)/05%20Integration%20Team/Analysis%20%26%20Design/Recordings%20and%20Transcripts/Retail%20CBDC%20Proposed%20Solution%20Overview%20Workshop%2008-Oct-24/Retail%20CBDC%20Proposed%20Solution%20Overview%20Workshop%20Meeting%20Recording%2009-Oct-24.mp4?csf=1&web=1&e=GOV4J3&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifSwicGxheWJhY2tPcHRpb25zIjp7InN0YXJ0VGltZUluU2Vjb25kcyI6NDM2OC44fX0%3D 
+
+
+
+## TODO: a threat aboout excessive data disclosure on the dlt: even if "anonyized" retail entries in the 
+## DLT are still a privacy concern (e.g. a CB can track a user by the amount of transactions, or correlate wallets ID
+## with other data sources and services like lookups on walletds ID etc.). The concern is that aggregating so much retail data in the CB UTXO database 
+## it creates incentives for attacks, data breaches and potential privacy violations. a mitigation may be 
+## encryption of retail TXs data or a better indirection (not using always the same WALLET ID) of wallet ID to the TX data in the blocks. 
+
+## RFI: how are account IDs (identities) anonymized?
+
+title: Dlt

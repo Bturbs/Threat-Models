@@ -1,0 +1,99 @@
+@startuml C2SBridge_stockDemo
+title Stock Token Bridging to Solana - Demo Sequence
+
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+box "Stock CorDapp Parties" #LightPink
+actor "WayneCo\n(Stock Issuer)" as WayneCo
+actor "Shareholder\n(Token Holder)" as Shareholder
+participant "Observer" as Observer
+end box
+
+box "Corda Bridge Infrastructure" #LightGreen
+participant "Bridge Authority\n<Corda Node>" as BA
+participant "Locking Identity\n(Confidential)" as LockID
+participant "General Notary" as GN
+participant "Solana Notary\n<Corda Node>" as SN
+end box
+
+box "Solana Network" #LightBlue
+participant "Solana Network" as SOL
+end box
+
+== Phase 0: Stock Issuance and Distribution ==
+autonumber "<b>(S##)"
+
+WayneCo -> WayneCo: IssueStock(TEST, 500 shares)
+WayneCo -> GN: Notarize issuance
+GN --> WayneCo: Confirmed
+WayneCo -> Observer: Notify stock creation
+
+WayneCo -> Shareholder: MoveStock(TEST, 100 shares)
+WayneCo -> GN: Notarize transfer
+GN --> Shareholder: Confirmed
+
+note over Shareholder: Shareholder now owns\n100 TEST shares on Corda
+
+== Phase 1: Initiate Bridging ==
+autonumber "<b>(B##)"
+
+Shareholder -> BA: MoveStock(TEST, 60 shares)\nTransfer to Bridge Authority
+
+note right of BA: Bridge Authority receives\nstock tokens to bridge
+
+== Phase 2: Lock Phase ==
+BA -> BA: Lookup/create Locking Identity\n(confidential identity)
+BA -> LockID: Move tokens to locking identity
+BA -> BA: Create BridgedFungibleTokenProxy\n(contains Solana mint metadata)\n[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/BridgedFungibleTokenProxy.kt BridgedFungibleTokenProxy]]
+BA -> GN: FinalityFlow (Lock transaction)
+GN --> BA: Notarized
+
+note over LockID: Tokens locked in escrow\nProxy state created
+
+== Phase 3: Notary Change ==
+BA -> GN: NotaryChangeFlow\n(Proxy: General → Solana Notary)
+GN --> BA: Notary changed
+
+== Phase 4: Mint on Solana ==
+BA -> SN: FinalityFlow + Token2022.mintTo instruction\n[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt FungibleTokenBridgeContract.MintToSolana]]
+SN -> SN: Build Solana TX\n(commit + mintTo)
+SN -> SN: Sign with mint authority key
+SN -> SOL: Submit Solana transaction
+SOL --> SN: Transaction confirmed
+SN --> BA: Notarized + Solana confirmation
+
+note over SOL: SPL tokens minted to\nShareholder's Solana wallet
+
+BA -> Shareholder: Notify bridging complete
+SOL -> Shareholder: Tokens visible in wallet
+
+== Phase 5: (Optional) Solana Token Transfer ==
+autonumber "<b>(T##)"
+
+Shareholder -> SOL: Transfer/Swap SPL tokens\n(e.g., for USDC)
+
+note over SOL: Tokens now held by\nnew Solana party
+
+== Phase 6: Redemption (Solana → Corda) ==
+autonumber "<b>(R##)"
+
+SOL -> BA: WebSocket: Balance detected\non redemption address
+note right of BA: [[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/BridgingService.kt BridgingService]]
+BA -> BA: Query vault for\nmatching locked tokens
+BA -> SN: BurnTokensOnSolanaFlow\n+ Token2022.burn instruction\n[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt FungibleTokenRedemptionContract.BurnOnSolana]]
+SN -> SOL: Submit burn transaction
+SOL --> SN: Burn confirmed
+SN --> BA: FungibleTokenBurnReceipt issued\n[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/states/FungibleTokenBurnReceipt.kt FungibleTokenBurnReceipt]]
+
+BA -> GN: NotaryChangeFlow\n(Receipt: Solana → General Notary)
+GN --> BA: Notary changed
+
+BA -> LockID: Unlock tokens
+BA -> Shareholder: Transfer redeemed tokens
+BA -> GN: FinalityFlow
+GN --> Shareholder: Tokens received
+
+note over Shareholder: Original Corda tokens\nreturned to holder
+
+@enduml

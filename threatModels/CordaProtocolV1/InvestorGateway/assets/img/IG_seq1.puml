@@ -1,0 +1,229 @@
+@startuml
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+
+title Investor Gateway — Attestation Flow (Threat Model View)
+
+' skinparam sequenceMessageAlign center
+' skinparam responseMessageBelowArrow true
+' skinparam wrapWidth 260
+' skinparam sequenceGroupBorderColor #666666
+' skinparam noteBorderColor #CC6600
+' skinparam noteBackgroundColor #FFF3E0
+' skinparam sequenceDividerBorderColor #333333
+' skinparam sequenceDividerBackgroundColor #E8E8E8
+
+actor "Investor\n(Browser / Wallet)" as Investor
+participant "Upstream\nAPI Gateway / WAF" as WAF #LightGray
+box "Investor Gateway (trusted zone)" #e0F4eF
+  participant "Ktor HTTP\nRouting" as Ktor
+  participant "Compliance\nAttestation Signer" as Signer
+actor "Vault Admin" as Admin
+database "Secret Manager\n(KMS / Vault)" as SM #Wheat
+end box
+participant "Hypernative\nMonitor (SaaS)" as HN #LightGray
+participant "Solana\nVault Program" as Vault #LightSalmon
+
+== INITIALISATION — Keypair Provisioning & On-Chain Registration ==
+
+note over SM #FFE0E0
+  **KEYPAIR_SECRET_MANAGER**
+  Keypair stored in managed secret store
+  with IAM access control, audit logging,
+  encryption at rest, rotation support.
+end note
+
+Admin -> SM : Generate or import Ed25519 keypair
+activate SM
+SM --> Admin : Keypair stored\nPublic key returned
+deactivate SM
+
+Admin -> Vault : set_compliance_authority(\n  vault, new_pubkey )
+activate Vault
+
+note over Admin, Vault
+  **Trust anchor binding**
+  vault.compliance_authority = signer pubkey.
+  Only attestations signed by this key will
+  be accepted. Requires vault admin authority.
+end note
+
+Vault -> Vault : require signer == vault.admin
+Vault -> Vault : vault.compliance_authority\n  := new_pubkey
+Vault --> Admin : Tx success
+deactivate Vault
+
+note over Admin, Vault #FFCCCC
+  **COMPLIANCE_AUTHORITY_ROTATION**
+  On suspected compromise: rotate keypair
+  in Secret Manager + update on-chain
+  compliance_authority atomically.
+  Only mechanism to invalidate leaked keys.
+end note
+
+== BOOT — Secret Loading & Self-Test ==
+
+note over SM, Signer #FFCCCC
+  **SIGNER_KEYPAIR_COMPROMISE**
+  Keypair provisioned from Secret Manager
+  into env var GATEWAY_ATTESTATION_SIGNER_KEYPAIR.
+  Compromise → unlimited forgery of
+  compliance attestations.
+end note
+
+SM -> Signer : Inject Ed25519 keypair\nvia env var at deploy time
+' activate Signer
+' Signer -> Signer : Parse 64-byte Solana keypair\n(JSON array or base64)
+' Signer -> Signer : keypairIsConsistent()\nSign fixed challenge → verify\nagainst embedded pubkey
+' alt Mismatch
+'   Signer ->x Signer : **FAIL STARTUP**\nCorrupted or malformed keypair
+' else Consistent
+'   Signer --> Signer : Boot OK — signer ready
+' end
+' deactivate Signer
+
+' note over Ktor #FFCCCC
+'   **PERMISSIVE_CORS_EXPOSURE**
+'   CORS: anyHost() allows any
+'   origin to call attestation
+'   endpoints from a malicious page.
+' end note
+
+SM -> Ktor : Inject Hypernative credentials\n(client-id, secret, bearer)\nvia env vars at deploy time
+' Ktor -> Ktor : Configure CORS (anyHost()),\nroutes, Ktor CIO HTTP client
+
+== ATTESTATION FLOW — Happy Path ==
+
+Investor -> WAF : Request compliance attestation\n(investment or redemption)
+
+note right of WAF #FFCCCC
+  **OPEN_ATTESTATION_ORACLE_ABUSE**
+  Gateway has NO inbound auth.
+  If WAF is bypassed, attacker
+  can request attestations for
+  any Approve'd address.
+end note
+
+WAF -> Ktor : Forward (after auth + rate-limit)
+activate Ktor
+
+Ktor -> Ktor : Investor validation\n(auth investor matches\ncompliance request)
+
+' note over Ktor, HN #FFCCCC
+'   **SCREENING_VERDICT_TAMPERING**
+'   DNS hijack, cert injection, or
+'   HYPERNATIVE_BASE_URL tampering
+'   can forge an "Approve" verdict.
+' end note
+
+Ktor -> HN : Screen investor wallet address
+activate HN
+
+alt Hypernative unreachable / non-2xx / decode failure
+
+  note over Ktor, HN #FFE0E0
+    **HYPERNATIVE_OUTAGE_DOS**
+    Fail-closed by design: no attestation
+    issued. All investment / redemption flows
+    halt until reachability restored.
+  end note
+
+  HN --> Ktor : Error / timeout / malformed
+
+  note over Ktor #FFCCCC
+    **VERBOSE_ERROR_PII_LEAK**
+    502 echoes upstream request body,
+    response body, headers to caller.
+    Leaks Hypernative internals + investor
+    address correlation.
+  end note
+
+  Ktor --> WAF : 502 Bad Gateway\n(verbose error in non-prod)
+  WAF --> Investor : 502
+
+else recommendation != "Approve"
+
+  HN --> Ktor : Deny (+ severity, flags)
+  deactivate HN
+  Ktor -> Ktor : Log blocked request
+  Ktor --> WAF : 403 Forbidden
+  WAF --> Investor : 403
+
+else recommendation == "Approve"
+
+  HN --> Ktor : Approve
+  deactivate HN
+
+  note over Ktor #FFE0E0
+    **COMPLIANCE_DECISION_REPUDIATION**
+    Hypernative verdict is NOT durably persisted.
+    After-the-fact audits cannot reconstruct
+    why a given attestation was issued.
+  end note
+
+  Ktor -> Signer : Sign compliance attestation
+  activate Signer
+
+  Signer -> Signer : Build canonical message:\n"CORDA_COMPLIANCE_ATTESTATION_V1" (31B)\n++ programId(32) ++ vault(32)\n++ investor(32) ++ action(1)\n++ amount_LE(8) ++ requestId_LE(8)\n++ expiresAt_LE(8) ++ nonce(32, CSPRNG)
+
+  note over Signer
+    **Countermeasure: CANONICAL_DOMAIN_TAGGED_MESSAGE**
+    Fixed-layout, domain-tagged, no varints.
+    Defeats ATTESTATION_BINDING_MALLEABILITY.
+  end note
+
+  Signer -> Signer : Ed25519.sign(message)\nwith in-memory private key
+  Signer --> Ktor : Signed attestation\n(message + signature + pubkey)
+  deactivate Signer
+
+  Ktor --> WAF : 200 OK — signed attestation
+  deactivate Ktor
+  WAF --> Investor : Signed attestation
+
+  == ON-CHAIN VERIFICATION ==
+
+'   note over Investor, Vault #FFCCCC
+'     **ATTESTATION_REPLAY_WITHIN_TTL**
+'     Attestation observable in browser memory /
+'     telemetry / malicious extension. Replayable
+'     for 300 s TTL. Replay safety depends on
+'     vault request_id state machine.
+'   end note
+
+  Investor -> Vault : Solana Tx:\n[ Ed25519SigVerify ix\n  (msg, sig, pubkey),\n  vault.invest(\n  amount, requestId,\n  attestation { expiresAt, nonce }) ]
+  activate Vault
+
+  Vault -> Vault : require expiresAt >= clock.now
+  Vault -> Vault : Rebuild expected message from\ntx args (programId, vault account,\ninvestor account, action byte,\namount, requestId, expiresAt, nonce)
+
+  note over Vault
+    **Countermeasure: ON_CHAIN_MESSAGE_RECONSTRUCTION**
+    Vault rebuilds canonical message from its own
+    instruction inputs. Any parameter divergence
+    between signed msg and actual tx → reject.
+  end note
+
+  Vault -> Vault : Load Ed25519 sigverify ix\nfrom instructions sysvar
+  Vault -> Vault : require sigverify.pubkey\n  == vault.compliance_authority
+  Vault -> Vault : require sigverify.message\n  == expected_message
+
+  alt Verification fails
+    Vault --> Investor : Tx failure
+  else Verification passes
+    Vault -> Vault : Consume request_id\n(single-use state machine)
+    Vault --> Investor : Tx success
+  end
+  deactivate Vault
+
+end
+
+== LEGACY FORWARDER (out of standard UI flow) ==
+
+note over Ktor #FFCCCC
+  **LEGACY_FORWARDER_INTERNAL_PROBE**
+  /api/investment, /api/redemption forward
+  raw body to VAULT_BASE_URL. If env var
+  is tampered → internal network probe.
+  No in-repo consumer exists.
+end note
+
+@enduml

@@ -1,0 +1,53 @@
+@startuml
+actor "Application Publisher/\nLibrary Developer" as APP_PUB order 10 #LightGreen 
+actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 30 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+actor "VNode\n Operator" as VNODE_OP order 1 #LightPink 
+actor "Cluster\n Operator" as CLUSTER_OP order 2 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 50 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "Certificate Authority \n +OSCP" as CA order 100
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+' actor "Cluster Operator" as CLUSTER_OP
+' actor "VNode Operator" as VNODE_OP
+' actor "NETWORK OPERATOR" as NET_OP
+' participant "MGM Cluster" as MGM
+' participant "Corda Member Cluster" as MEMBER
+' participant "Certificate Authority \n +OSCP" as CA
+
+skinparam sequenceMessageAlign center
+hide unlinked
+
+
+group PRE_AUTH_TOKEN \n REGISTRATION
+VNODE_OP -> NET_OP : <font color=blue><b>DF_PRE_AUTH_OOB1\nRequest Registration for an X500 name\n(out of band and scope) 
+hnote over VNODE_OP, MEMBER  #LightGray: \n<size:14> ** SESSION_KEY certificate signing (optional) ** </size> \n
+NET_OP -> MGM ++ :<font color=blue><b>DF_PRE_AUTH_TOKEN1\nCreate PRE_AUTH Token (X500 name, TTL) 
+MGM --> NET_OP --: return PRE_AUTH Token
+NET_OP -> VNODE_OP : <font color=blue><b>DF_PRE_AUTH_OOB_SHARE1\nShare PRE_AUTH_TOKEN out of band (out of scope)
+hnote over VNODE_OP, MEMBER  #LightGray: \n<size:14> ** Build Registration Context and Submit Registration Request ** </size> \n
+
+hnote over MEMBER, MGM  #LightGray: <font color=blue><b>DF_GET_REGISTRATION_PROT\n<size:14> ** Registration protocol execution (p2p gateways) with PRE_AUTH_TOKEN CHECK ** </size> \n
+MGM -> MGM ++-- : Auto approval rules: \nreqex on X500 name
+group Optional Manual Approval
+NET_OP ->  MGM ++: <font color=blue><b>DF_GET_REGISTRATIONS_REQS1\nGET pending/historic registration requests "{mgmHoldingIdentityShortHash}/requests/"  
+MGM --> NET_OP -- : Collection<RegistrationRequestStatus>
+NET_OP -> NET_OP ++-- : Review Join Request(out of scope)  
+NET_OP ->  MGM ++: <font color=blue><b>DF_REVIEW_REGISTRATIONS_REq1\nReview (approve/decline) a pending request\n POST "{mgmHoldingIdentityShortHash}/requests/{requestId}"  
+MGM --> NET_OP -- : 200 OK
+end
+MGM -> MGM ++--: request status to \n FINALISING_APPROVAL \n and APPROVED 
+MGM -> NET_OP:  <font color=blue><b>DF_P2P_APPROVED_MSG\np2p ApproveRegistration Message
+NET_OP -> NET_OP ++-- : Update Approval status locally = APPROVED
+VNODE_OP -> MEMBER ++:  <font color=blue><b>DF_CHECK_REG_STATUS\nCheck registration status GET /membership/$HOLDING_ID/$REGITRATION_ID 
+MEMBER --> VNODE_OP --: return APPROVED
+end
+@enduml

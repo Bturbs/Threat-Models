@@ -1,0 +1,28 @@
+@startuml
+
+actor Initiator
+participant "LedgerTransaction" as LedgerTransaction
+participant "Encumbered State" as EncumberedState
+participant "Encumbrance State (Lock/Marker)" as EncumbranceState
+participant "Notary" as Notary
+
+== State Issuance ==
+Initiator -> LedgerTransaction: Propose creation of Asset State
+LedgerTransaction -> EncumbranceState: Create lock/marker
+LedgerTransaction -> EncumberedState: Create asset, link encumbrance to lock/marker
+LedgerTransaction -> Notary: Request notarization
+Notary -> LedgerTransaction: Notarizes transaction
+
+== Attempt to Spend Asset ==
+Initiator -> LedgerTransaction: Propose spending Encumbered State
+alt Encumbrance not included
+LedgerTransaction -> EncumberedState: Encumbrance check fails
+LedgerTransaction -> Initiator: Transaction rejected
+else Encumbrance included
+LedgerTransaction -> EncumberedState: Encumbrance check passes
+LedgerTransaction -> EncumbranceState: Consumed with asset
+LedgerTransaction -> Notary: Notarizes transaction
+Notary -> LedgerTransaction: Transaction finalized
+end
+
+@enduml

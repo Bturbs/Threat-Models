@@ -1,0 +1,139 @@
+@startuml
+' ExampleFlow Detailed Sequence with Notary Expansion
+
+!define GH_SAMPLE_BASE https://github.com/corda/samples-java/blob/9651d369827ec05ed4b8a0a0b86b58e976cf2ca3/Basic/cordapp-example/workflows/src/main/java/net/corda/samples/example/flows/ExampleFlow.java
+!define CORDA_CORE_BASE https://github.com/corda/corda/blob/06e24e2a3b429628b16dcfe966c2678f12e818fe/core/src/main/kotlin/net/corda/core/flows
+!define CORDA_NOTARY_BASE https://github.com/corda/corda/blob/06e24e2a3b429628b16dcfe966c2678f12e818fe/core/src/main/kotlin/net/corda/core/internal/notary
+
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 250
+
+title ExampleFlow with Core Flow and Expanded Notary Interactions
+
+' box NODE A #red
+participant "PartyA Node RPC" as RPC #LightBlue
+participant "PartyA Node" as PA_Node 
+participant "[[{GH_SAMPLE_BASE}#L47]] ExampleFlow.Initiator" as InitFlow <<Flow>>
+participant "[[{CORDA_CORE_BASE}/CollectSignaturesFlow.kt#L56]] CollectSignaturesFlow" as CSF <<Core Flow>>
+participant "[[{CORDA_CORE_BASE}/FinalityFlow.kt#L50]] FinalityFlow" as FF <<Core Flow>>
+' end box
+' box NODE B #green
+
+participant "PartyB Node" as PB_Node #LightCoral
+participant "[[{GH_SAMPLE_BASE}#L107]] ExampleFlow.Responder" as RespFlow <<Flow>>
+participant "[[{CORDA_CORE_BASE}/CollectSignaturesFlow.kt#L215]] SignTransactionFlow" as STF <<Core Flow>>
+participant "[[{CORDA_CORE_BASE}/FinalityFlow.kt#L179]] ReceiveFinalityFlow" as RFF <<Core Flow>>
+' end box
+' box NOTARY #Blue
+participant "Notary Node" as N_Node #LightGreen
+participant "[[{CORDA_CORE_BASE}/NotaryFlow.kt#L108]] NotaryFlow.Service" as NFService <<Notary Flow>>
+participant "[[{CORDA_NOTARY_BASE}/NotaryService.kt#L25]] NotaryService" as NService <<Component>>
+' end box
+activate PA_Node
+RPC -> PA_Node : startFlow(ExampleFlow.Initiator(iouValue, otherParty=PartyB))
+PA_Node -> InitFlow : [[{GH_SAMPLE_BASE}#L52 call()]]
+activate InitFlow
+
+' --- Transaction Building and Signing ---
+InitFlow -> InitFlow : [[{GH_SAMPLE_BASE}#L55 Get Notary]]
+InitFlow -> InitFlow : [[{GH_SAMPLE_BASE}#L58-L66 Build Transaction]]
+InitFlow -> InitFlow : [[{GH_SAMPLE_BASE}#L69 Verify Transaction]]
+InitFlow -> InitFlow : [[{GH_SAMPLE_BASE}#L72 Sign Transaction]] -> partSignedTx
+
+' --- Signature Collection ---
+InitFlow -> CSF : [[{GH_SAMPLE_BASE}#L76 subFlow(CollectSignaturesFlow(...))]]
+activate CSF
+CSF -> PB_Node : Initiate Flow Session & Send(partSignedTx)
+activate PB_Node
+PB_Node -> RespFlow : <<Create>> [[{GH_SAMPLE_BASE}#L109 Session Handler]]
+activate RespFlow
+RespFlow -> STF : [[{GH_SAMPLE_BASE}#L111 subFlow(SignTransactionFlow)]]
+activate STF
+STF -> STF : [[{GH_SAMPLE_BASE}#L112 Execute checkTransaction]] \n (defined at [[{GH_SAMPLE_BASE}#L136 L136]])
+alt Transaction is Valid
+    STF -> STF : Sign Transaction
+    STF --> CSF : Send Signature
+    deactivate STF
+    RespFlow -> RespFlow : SignTransactionFlow returns
+else Transaction is Invalid (Error path omitted for brevity, see previous diagrams)
+    destroy STF
+    destroy RespFlow
+    deactivate PB_Node
+    destroy CSF
+    destroy InitFlow
+    destroy PA_Node
+end
+CSF -> CSF : Assemble Signatures -> fullySignedTx
+CSF --> InitFlow : Return fullySignedTx
+deactivate CSF
+
+' --- Finality and Notarisation ---
+InitFlow -> FF : [[{GH_SAMPLE_BASE}#L86 subFlow(FinalityFlow(fullySignedTx,...))]]
+activate FF
+note right of FF : FinalityFlow uses NotaryServiceFlow internally\n to talk to the Notary node. [[{CORDA_NOTARY_BASE}/NotaryServiceFlow.kt#L41 Client Flow]]
+
+FF -> N_Node : Send Notarisation Request (containing fullySignedTx)
+activate N_Node
+
+N_Node -> NFService : <<Create>> [[{CORDA_CORE_BASE}/NotaryFlow.kt#L114 Handler for NotaryServiceFlow]]
+activate NFService
+note right of NFService : Receives NotarisationPayload
+
+NFService -> NService : [[{CORDA_CORE_BASE}/NotaryFlow.kt#L123 commitTransaction(stx)]]
+activate NService
+NService -> NService : Resolve Input States (if validating notary)
+NService -> NService : Verify Transaction (if validating notary)
+NService -> NService : Check for Conflicts (Double Spend)
+alt Transaction Valid and No Conflict
+    NService -> NService : [[{CORDA_NOTARY_BASE}/NotaryService.kt#L34 Record Commited States (Input Keys)]]
+    NService -> NService : [[{CORDA_NOTARY_BASE}/NotaryService.kt#L35 Sign Transaction Inputs/Timestamp]] -> Notary Signature(s)
+    NService --> NFService : Return Signature(s)
+else Conflict or Invalid Transaction
+    NService -> NService : Generate Notary Error
+    NService --> NFService : Return Error
+end
+deactivate NService
+
+alt Notarisation Successful
+    NFService --> FF : Send Notary Signature(s)
+    deactivate NFService
+    deactivate N_Node
+
+    FF -> PB_Node : Send Notarised Tx (Tx + Notary Sig)
+    note right of FF: Initiates ReceiveFinalityFlow on PartyB
+
+    activate PB_Node
+    PB_Node -> RespFlow : [[{GH_SAMPLE_BASE}#L122 Session Handler for ReceiveFinalityFlow]]
+    activate RespFlow
+    RespFlow -> RFF : subFlow(ReceiveFinalityFlow(...))
+    activate RFF
+    RFF -> RFF : Record Finalised Transaction
+    RFF --> RespFlow : Return Success
+    deactivate RFF
+    RespFlow --> PB_Node : Responder Flow Success
+    deactivate RespFlow
+    deactivate PB_Node
+
+    FF -> FF : Record Finalised Transaction (Initiator Side)
+    FF --> InitFlow : Return Finalised Transaction
+    deactivate FF
+    InitFlow --> PA_Node : Flow Success
+    deactivate InitFlow
+    PA_Node --> RPC : Flow Outcome (Finalised Tx)
+    deactivate PA_Node
+
+else Notarisation Failed (Error)
+    NFService --> FF : Send Notary Error
+    deactivate NFService
+    deactivate N_Node
+    FF --> InitFlow : Propagate Notary Exception
+    deactivate FF
+    InitFlow --> PA_Node : Propagate Exception
+    deactivate InitFlow
+    PA_Node --> RPC : Flow Outcome (Exception)
+    deactivate PA_Node
+end
+
+@enduml

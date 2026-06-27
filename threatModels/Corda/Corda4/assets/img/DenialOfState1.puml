@@ -1,0 +1,156 @@
+@startuml
+' DenialOfState Attack Sequence (Corrected Syntax v2)
+
+!define GH_SAMPLE_BASE https://github.com/corda/samples-java/blob/9651d369827ec05ed4b8a0a0b86b58e976cf2ca3/Basic/cordapp-example/workflows/src/main/java/net/corda/samples/example/flows/ExampleFlow.java
+!define CORDA_CORE_BASE https://github.com/corda/corda/blob/06e24e2a3b429628b16dcfe966c2678f12e818fe/core/src/main/kotlin/net/corda/core/flows
+!define CORDA_NOTARY_BASE https://github.com/corda/corda/blob/06e24e2a3b429628b16dcfe966c2678f12e818fe/core/src/main/kotlin/net/corda/core/internal/notary
+
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 250
+
+title Denial of State Attack (Non-Validating Notary)
+
+participant "PartyA Node RPC" as RPC_A
+participant "PartyA Node" as PA_Node
+participant "MaliciousIOUConsumeFlow" as MalicFlow <<Flow>>
+participant "FinalityFlow (Partial)" as FF_Malic <<Core Flow>>
+
+
+' Note: Party B is unaware during the attack phase
+
+participant "PartyB Node RPC" as RPC_B
+participant "PartyB Node" as PB_Node
+participant "LegitimateSpendFlow" as LegitFlow <<Flow>> 
+participant "FinalityFlow (Full)" as FF_Legit <<Core Flow>>
+
+
+participant "Notary Node\n(Non-Validating)" as N_Node
+participant "[[{CORDA_CORE_BASE}/NotaryFlow.kt#L108]] NotaryFlow.Service" as NFService <<Notary Flow>>
+participant "[[{CORDA_NOTARY_BASE}/NotaryService.kt#L25]] NotaryService" as NService <<Component>>
+
+
+
+group Attack Phase: Party A notarises an invalid transaction
+
+    activate PA_Node
+    RPC_A -> PA_Node : startFlow(MaliciousIOUConsumeFlow(iouStateRef))
+    PA_Node -> MalicFlow : call()
+    activate MalicFlow
+
+    MalicFlow -> MalicFlow : Get IOU StateRef (from previous tx)
+    MalicFlow -> MalicFlow : Get Notary reference
+    MalicFlow -> MalicFlow : Build **Invalid** Transaction Builder\n(uses IOU input, maybe fake output,\n **missing PartyB signature requirement**)
+    MalicFlow -> MalicFlow : Sign **only** with Party A key -> invalidSignedTx
+    note right of MalicFlow : Transaction is invalid according to contract rules\n(e.g., ObligationContract needs signatures from both parties to spend).
+
+    ' Party A directly invokes FinalityFlow targeting ONLY the notary
+    MalicFlow -> FF_Malic : subFlow(FinalityFlow(invalidSignedTx, sessions=[]))
+    note right of MalicFlow : No sessions initiated with Party B.\nFinalityFlow configured to only notarise.
+    activate FF_Malic
+
+    FF_Malic -> N_Node : Send Notarisation Request (invalidSignedTx)
+    activate N_Node
+    N_Node -> NFService : <<Create>> Handler
+    activate NFService
+
+    NFService -> NService : commitTransaction(invalidSignedTx)
+    activate NService
+    NService -> NService : Check for Conflicts (Input IOU StateRef)
+    note right of NService : StateRef is NOT currently marked as consumed.
+    alt Input State Not Consumed (Non-Validating Notary)
+        NService -> NService : **Mark Input IOU StateRef as Consumed**
+        note right of NService : Non-validating: Does NOT check contract logic or signatures!
+        NService -> NService : Sign Transaction -> Notary Signature
+        NService --> NFService : Return Signature(s)
+    else Input State Already Consumed (Should not happen first time)
+        NService -> NService : Generate Notary Error
+        NService --> NFService : Return Error
+    end
+    deactivate NService
+
+    alt Notarisation Successful (Invalid Tx)
+        NFService --> FF_Malic : Send Notary Signature(s)
+        deactivate NFService
+        deactivate N_Node
+
+        FF_Malic -> FF_Malic : Optionally record locally (Attacker might skip/ignore)
+        FF_Malic --> MalicFlow : Return Finalised (but invalid) Tx Signature
+        deactivate FF_Malic
+        note right of MalicFlow : Party A now knows the state is marked consumed by the notary,\nbut does not share this invalid tx with Party B.
+        MalicFlow --> PA_Node : Flow Success (Attack Planted)
+        deactivate MalicFlow
+        PA_Node --> RPC_A : Flow Outcome (Success/Attack Done)
+        deactivate PA_Node
+    else Notarisation Failed (e.g., previous conflict)
+        ' Error path - attack might fail if state was already spent
+        NFService --> FF_Malic : Send Notary Error
+        deactivate NFService
+        deactivate N_Node
+        FF_Malic --> MalicFlow : Propagate Notary Exception
+        deactivate FF_Malic
+        MalicFlow --> PA_Node : Flow Failure
+        deactivate MalicFlow
+        PA_Node --> RPC_A: Flow Outcome (Exception)
+        deactivate PA_Node
+    end
+
+end group
+
+note across
+... time passes ...
+end note
+
+group Consequence Phase Legitimate attempt to spend IOU fails
+
+    activate PB_Node
+    RPC_B -> PB_Node : startFlow(LegitimateSpendFlow(iouStateRef, ...)) ' Party B tries to settle/use IOU
+    PB_Node -> LegitFlow : call()
+    activate LegitFlow
+
+    LegitFlow -> LegitFlow : Build **Valid** Transaction Builder\n (Correct inputs, outputs, commands)
+    ' Legitimate flow would involve collecting signatures from required parties (A and B)
+    LegitFlow -> PA_Node : Request Signature (CollectSignaturesFlow etc.)
+    activate PA_Node
+    PA_Node -> LegitFlow : Send Signature
+    deactivate PA_Node
+    LegitFlow -> LegitFlow : Assemble Fully Signed Valid Tx -> validSignedTx
+
+    LegitFlow -> FF_Legit : subFlow(FinalityFlow(validSignedTx, sessions=[PartyA]))
+    activate FF_Legit
+
+    FF_Legit -> N_Node : Send Notarisation Request (validSignedTx)
+    activate N_Node
+    N_Node -> NFService : <<Create>> Handler
+    activate NFService
+
+    NFService -> NService : commitTransaction(validSignedTx)
+    activate NService
+    NService -> NService : Check for Conflicts (Input IOU StateRef)
+    note right of NService : StateRef IS NOW marked as consumed\n(by the previous malicious tx).
+    alt Input State Already Consumed
+        NService -> NService : **Generate Notary Error (Conflict/Double Spend)**
+        NService --> NFService : Return Error
+    else Input State Not Consumed (Should not happen in this scenario)
+        NService --> NFService : Return Signature(s) ' Path not expected here
+    end
+    deactivate NService
+
+    NFService --> FF_Legit : Send Notary Error
+    deactivate NFService
+    deactivate N_Node
+
+    FF_Legit --> LegitFlow : Propagate NotaryException
+    deactivate FF_Legit
+
+    note left of LegitFlow : Legitimate transaction fails due to Notary Error!
+    LegitFlow --> PB_Node : Flow Failure (NotaryException: Conflict)
+    deactivate LegitFlow
+
+    PB_Node --> RPC_B : Flow Outcome (Exception - Denial of State Achieved)
+    deactivate PB_Node
+
+end group
+
+@enduml

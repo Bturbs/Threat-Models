@@ -1,0 +1,122 @@
+@startuml
+!pragma teoz true
+
+skinparam BoxPadding 10
+skinparam BoxBorderColor black
+skinparam BoxBorderStyle dashed
+
+box "Internet" #LightCoral
+participant "Consumer App" as USER_APP
+end box
+
+participant "federated IdM\nUAE Pass" as FED_IDM
+
+box "LFI1 DMZ" #Orange
+    participant "Firewall/LB" as FWLB
+    note over FWLB: RFI: RULES? \nTLS termination?
+
+    activate FWLB
+end box
+
+box "LFI1 Trusted Zone" #LightYellow
+    participant "API Gateway" as APIGW1
+    activate APIGW1
+    note over APIGW1: Checks every \nrequest against\nsecurity policies (URL based)
+
+    participant "IDM" as IDM1
+
+
+    participant "Wallet CSB" as CSB
+    participant "Wallet Service" as WS1
+    
+    participant "OPA Agent" as OPA_AGENT
+    participant "Cryptography Service " as Crypto1
+    participant "DLT Service " as DLT1
+end box 
+
+box "Central Bank Hub Network" #LightGreen
+    participant "Central Bank Hub" as CBH
+end box
+
+box "LFI2 Trusted Zone" #LightYellow
+    participant "Wallet Service \n(LFI2)" as WS2
+    participant "Cryptography Service \n(LFI2)" as Crypto2
+    participant "DLT Service \n(LFI2)" as DLT2
+end box
+
+activate CBH
+
+== PKI Root certificate and CRL initialization [...] ==
+== Kubernetes service account initialization ==
+
+
+group Secure pod initialization
+
+activate WS1
+activate WS2
+
+WS1 -> Crypto1: Generate AppliUSER_APPtion Identity Token
+& WS2 -> Crypto2: Generate AppliUSER_APPtion Identity Token
+Crypto1 --> WS1: Signed JWT-SVID Token
+note right: Ensures trusted sender identity
+& Crypto2 --> WS2: Signed JWT-SVID Token
+Crypto1 --> WS1: Initiate Token Verification (Root cert)
+& Crypto2 --> WS2: Initiate Token Verification (Root cert)
+
+deactivate WS1
+deactivate WS2
+end 
+
+
+
+group User Authentication 
+
+USER_APP -> IDM1: Authenticate
+IDM1 --> USER_APP: redirect to FED_IDM
+USER_APP -> FED_IDM: Authenticate
+IDM1 --> USER_APP: Authenticated (JWT OIDC)
+' note right: OIDC Token included
+end
+
+USER_APP -> CSB: Initiate Transfer Request\n(JWT OIDC Bearer Token)
+
+
+
+group fine grained authorization checks
+CSB -> OPA_AGENT: Check Policy
+note right: TODO: move this to the actualk service
+OPA_AGENT --> CSB: Policy info 
+note right: "PIP (policy information point ) e.g. can user transfer to user X  
+note over CSB: PEP success
+CSB -> WS1: Initiate Transfer Request\n(JWT OIDC Bearer Token)
+end
+
+WS1 -> WS1: Select/create the right JWT SVID Token
+WS1 -> CBH: Send Transfer Request with App Token (JWT SPIFFE Verifiable Identity Document)
+note right: CB hub relays the message to recipient LFI
+
+activate CBH
+CBH -> WS2: Forward Transfer Request
+deactivate CBH
+
+WS2 -> WS2: Verify Token Signature
+' Crypto2 --> WS2: Token Validated
+note right #pink: Confirm message origin from trusted LFI\n but NEEDS TO CHECK AUDIENCE token field \n at app level (SPOOFINF)
+
+WS2 -> WS2: Process Transfer Request
+
+WS2 -> DLT2: Create DLT Transaction
+DLT2 -> Crypto2: Sign Transaction
+Crypto2 --> DLT2: Signed Transaction
+DLT2 -> CBH: Notify CB Hub
+
+CBH -> DLT1: Forward Transaction NotifiUSER_APPtion
+DLT1 -> Crypto1: Verify DLT Signatures
+Crypto1 --> DLT1: Verified
+note right: Ensuring sender authenticity
+
+DLT1 -> WS1: Notify Transaction Completion
+WS1 -> USER_APP: Transfer Successful
+note right: Wallet update confirmed
+
+@enduml

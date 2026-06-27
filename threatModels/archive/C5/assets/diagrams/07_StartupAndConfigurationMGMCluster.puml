@@ -1,0 +1,44 @@
+@startuml
+'title CorDapp Lifecycle
+' !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+actor "Application Publisher/\nLibrary Developer" as APP_PUB order 10 #LightGreen 
+actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 1 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+actor "VNode\n Operator" as VNODE_OP order 3 #LightPink 
+actor "Cluster\n Operator" as CLUSTER_OP order 2 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 4 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "Certificate Authority \n +OSCP" as CA order 100
+participant "HTTPS RPC Gateway" as RPC_GW order 21
+participant "Database service" as DB_S order 26
+participant "Database" as DB order 31
+participant "any worker" as any_worker order 36
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+
+skinparam sequenceMessageAlign center
+hide unlinked
+autonumber 1
+group Startup and Configuration \n MGM cluster
+NET_OP -> RPC_GW ++ : /api/v1/config (section = configSection, config=(JSON encoded\n inside JSON: key=val, key=val...), optimistic lock version???)
+RPC_GW -> DB_S ++ : configuration management Kafka topic, method configWriter()
+DB_S -> DB ++ : updates the configuration tables\n (no defaults applied)
+DB --> DB_S -- : return
+DB_S -> DB_S ++-- : applies default values for the config \n based on the JSON schema\n definition for the config section 
+note left : ...where is the def? 
+DB_S -> any_worker ++ : Kafka configuration topic: ConfigReader() method\n Workers are notfied of the new or updated configuration 
+DB_S --> RPC_GW ++-- : configuration management response topic, readResponse()
+RPC_GW --
+RPC_GW --> NET_OP -- : 200 OK{"section":"configSection",\n"config":"\"key1\"=val1 "key2\"=val2", \n "schemaVersion": {"major": 1, "minor": 0}, "version": 0}
+
+any_worker --
+end
+@enduml

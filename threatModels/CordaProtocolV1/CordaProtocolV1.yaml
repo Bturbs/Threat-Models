@@ -1,0 +1,1894 @@
+ID: CordaProtocolV1
+schemaVersion: 2
+title: Corda Protocol V1
+version: '0.1'
+status: Draft
+
+children:
+  - REFID: UI
+  - REFID: SolanaProgramsLifecycle
+  # - REFID: Infrastructure
+  - REFID: AsyncInvestmentFlows
+  - REFID: AsyncRedemptionFlows
+  # - REFID: VaultPrograms
+  - REFID: SupplyChain
+  # - REFID: Operations
+  - REFID: UserAuth
+  - REFID: SignOps
+  - REFID: InvestorGateway
+  - REFID: InvestorBFF
+  - REFID: DFNS
+  - REFID: MarketingSite
+
+authors: |
+  Security Research team at R3
+
+scope:
+  description: |
+    Threat model for the Corda Protocol MVP (V1), a Solana-based tokenized vault
+    implementing investment and redemption flows with integrated on-chain compliance controls.
+
+    **Key Changes from V0:**
+    - On-chain wallet whitelisting via VaultWhitelistEntry PDAs
+    - Vault-native whitelist enforcement in investment and redemption entrypoints
+    - Admin instructions for whitelist and account freeze/thaw management
+
+    **Core Architecture:**
+    - Vault Program: Async investments/redemptions, batch snapshot settlement,
+      oracle-wrapper-backed pricing, and emergency-stop controls
+    - Batch pricing split: snapshots are now sealed first, then priced via
+      `set_deposit_snapshot_totals` / `set_redemption_snapshot_totals`
+      with on-chain oracle tolerance checks before batch settlement
+    - vToken: Vault shares held by investors and escrowed during redemptions
+    - Whitelist System: PDA-based access control for vToken recipients
+    - Child model split: `AsyncInvestmentFlows` owns async deposit-side proposal,
+      offboard, batch-deposit, and settlement flows; `AsyncRedemptionFlows`
+      owns async redemption proposal, batch-redemption, cancel, matching, and
+      settlement flows
+
+    **Current Code State Note:**
+
+    - The standalone Liquidity Program and related sync-swap routes were removed
+      from `corda-protocol-mvp` in commit `a85d60c5`.
+
+    **Repository:** corda-protocol-mvp
+
+  securityObjectives:
+    - ID: USER_FUNDS_SAFETY
+      title: User Funds Safety and Custody
+      description: |
+        Ensure user deposits are properly accounted for and redemptions honor settlement terms.
+      group: Data Security
+      treeImage: false
+
+    - ID: INTEGRITY
+      title: System Integrity
+      description: |
+        Ensure all system components — infrastructure, programs, and data — operate
+        as intended and have not been tampered with or unauthorised.
+      group: System Integrity
+      treeImage: false
+
+    - ID: PROGRAM_INTEGRITY
+      title: Program Integrity and Authorization
+      description: |
+        Only authorized programs and signers can execute critical operations.
+        Prevent unauthorized state transitions and CPI attacks.
+      group: System Integrity
+      treeImage: false
+      contributesTo:
+        - REFID: INTEGRITY
+
+    - ID: COMPLIANCE
+      title: Regulatory Compliance and Access Control
+      description: |
+        Enforce KYC/AML controls via on-chain whitelist to prevent unauthorized participation.
+      group: Legal and Compliance
+      treeImage: false
+
+    - ID: AVAILABILITY
+      title: Availability of Core Operations
+      description: |
+        Ensure investment and redemption operations remain accessible under normal conditions.
+      group: Operational Security
+      treeImage: false
+
+    - ID: AUDITABILITY
+      title: Auditability and Traceability
+      description: |
+        Maintain verifiable on-chain audit trail for all critical operations.
+      group: Legal and Compliance
+      treeImage: false
+
+    - ID: CONFIDENTIALITY
+      title: Data and Credential Confidentiality
+      description: |
+        Protect secrets, credentials, keys, and sensitive data from unauthorised
+        disclosure across all layers of the system.
+      group: Data Security
+      treeImage: false
+
+    - ID: SIGNING_TRANSACTION_INTEGRITY
+      title: Signing Transaction Integrity (WYSIWYS)
+      description: |
+        Ensure that the transaction content approved by each signer
+        accurately reflects the intended action. What the signer sees
+        (via verification tools) must match what the signer signs
+        (the on-chain proposal payload).
+      treeImage: false
+      group: System Integrity
+      contributesTo:
+        - REFID: INTEGRITY
+
+  attackers:
+    - ID: EXTERNAL_ATTACKER
+      description: |
+        Unauthenticated adversary attempting to exploit program logic, bypass whitelist,
+        or manipulate account state via crafted transactions.
+      inScope: true
+
+    - ID: MALICIOUS_USER
+      description: |
+        Authenticated but malicious user (e.g. investor) attempting to bypass whitelist controls,
+        extract unauthorized value, or violate access controls.
+      inScope: true
+
+    # - ID: COMPROMISED_ADMIN
+    #   description: |
+    #     Vault administrator with compromised credentials attempting to abuse
+    #     whitelist management or emergency controls.
+    #   inScope: true
+
+    - ID: COMPROMISED_TOKENIZER
+      description: |
+        The tokenizer (asset issuer) acting maliciously or failing to fulfil
+        obligations. Controls aToken minting and PermanentDelegate burn authority.
+        Could withhold USDC deposits, burn incorrect aToken amounts, or default
+        on settlement obligations.
+      inScope: true
+
+    - ID: UPGRADE_AUTHORITY
+      description: |
+        Vault Upgrade Authority. Actions: program upgrade.
+      inScope: true
+
+    - ID: PROTOCOL_CONFIG_AUTHORITY
+      description: |
+        Authority responsible for protocol-level vault configuration. Actions:
+        transfer vault ownership, appoint/change curator, add/remove guardians,
+        set vault name and symbol, set timelocks.
+      inScope: true
+    
+    - ID: PROTOCOL_MANAGER
+      description: |
+        Authority responsible for protocol operations. Actions: set protocol fees,
+        trigger protocol fee collection, pause vault, resume vault,
+        revoke pending time-locked actions, blacklist user.
+      inScope: true
+
+    - ID: VAULT_GUARD
+      description: |
+        Monitors the vault and responds to suspicious activity. Actions:
+        pause vault, resume vault, revoke pending time-locked actions.
+      inScope: true
+
+    - ID: VAULT_MANAGER
+      description: |
+        Manages vault operations via RBAC permission grants. Actions:
+        pause vault, resume vault, settle investments, settle redemptions,
+        transfer to tokenizer, match deposit/redemption, batch snapshot
+        operations.
+      inScope: true
+
+    - ID: CURATOR_CONFIG_AUTHORITY
+      description: |
+        Authority responsible for curator configuration. Actions:
+        configure off-ramp destination.
+      inScope: true
+
+    - ID: CURATOR
+      description: |
+        Settlement/operations role granted per-instruction permissions via
+        RBAC. Actions: settle investments/redemptions, reject proposals,
+        transfer to offboard destination, match deposit/redemption, manage
+        batch snapshots, pause vault.
+      inScope: true
+
+    - ID: ACL_AUTHORITY
+      description: |
+        Authority controlling wallet whitelist for vToken transfers. Actions:
+        whitelist users.
+      inScope: true
+
+    - ID: FREEZE_AUTHORITY
+      description: |
+        Authority that can freeze token accounts in response to incidents.
+        Actions: not yet specified.
+      inScope: true
+
+    - ID: UNFREEZE_AUTHORITY
+      description: |
+        Authority that can unfreeze previously frozen token accounts.
+        Actions: not yet specified.
+      inScope: true
+
+    - ID: DEVELOPER
+      description: |
+        Compromised developer — either a malicious insider with legitimate repository
+        access or an external attacker who has compromised a developer's credentials
+        (GitHub account, SSH keys, workstation access). Can push code, review/approve
+        PRs, trigger Jenkins builds, and potentially access CI/CD credentials.
+      inScope: true
+
+    - ID: TOKENIZER_ISSUER
+      description: |
+        Asset tokenizer/issuer role. Does not exist for soft/public launch.
+        Actions: TODO.
+      inScope: false
+    
+    - ID: LIQUIDITY_POOL_MANAGER
+      description: |
+        Legacy manager role for the removed Liquidity Program. Retained only as
+        a historical attacker identifier for traceability.
+      inScope: false
+
+    - ID: SIGNER_COMMITTEE
+      description: |
+        Organisational body responsible for managing the humans behind
+        multisig signing keys. Covers key custody, rotation ceremonies,
+        signer onboarding/offboarding, succession planning, hardware
+        wallet procurement, and signer identity protection. Not an
+        on-chain entity — operates the governance layer above the
+        individual signing roles.
+      inScope: false
+
+  assets:
+    - ID: VAULT_PROGRAM
+      type: system
+      title: Vault Program
+      description: |
+        On-chain program managing proposal flows, settlements, whitelist controls,
+        pause and emergency-stop state, and oracle-backed pricing consumption.
+        Program ID: EMDZftqHQgUkj2WB5zGDsGdShWu2GKG8qkhq8AwwSGxa
+      inScope: true
+
+    - ID: VTOKEN_MINT
+      type: credential
+      title: vToken Mint (Vault Shares)
+      description: |
+        SPL token mint representing vault shares.
+      inScope: true
+
+    - ID: WHITELIST_ENTRY_PDA
+      type: system
+      title: VaultWhitelistEntry PDA
+      description: |
+        PDA storing whitelist status per (vtoken_mint, owner) pair.
+        Seeds: ["vault_whitelist_entry", vtoken_mint, owner]
+      inScope: true
+
+    - ID: INVESTOR_VTOKEN_ACCOUNT
+      type: system
+      title: Investor vToken Account
+      description: |
+        SPL token account holding investor vault shares.
+      inScope: true
+
+    - ID: DF_INVESTMENT_SETTLEMENT
+      type: dataflow
+      title: Investment Settlement Flow
+      description: |
+        Curator settles an accepted investment proposal, minting vTokens to the
+        whitelisted investor at the current vault price.
+      inScope: true
+
+    - ID: DF_WHITELIST_MANAGEMENT
+      type: dataflow
+      title: Whitelist Management Flow
+      description: |
+        Admin adds/removes wallets from vToken whitelist and can freeze/thaw accounts.
+      inScope: true
+
+    # --- Deployed Programs ---
+
+    - ID: RBAC_PROGRAM
+      type: system
+      title: RBAC Program
+      description: |
+        On-chain program that mediates all privileged vault operations via a
+        per-instruction permission table. Holds a VaultAuthority PDA that
+        becomes the vault's sole `authority`. Each vault instruction discriminator
+        maps to an allowed signer pubkey; the RBAC program verifies the signer
+        then CPIs into the vault with PDA authority seeds.
+        Program ID: 4nuAcGWtRWa6gTN1kc9jEX5u3HmbbnnZZ9u8wW8FKJPs
+      inScope: true
+
+    - ID: LIQUIDITY_PROGRAM
+      type: system
+      title: Liquidity Program (Removed)
+      description: |
+        Legacy on-chain program that previously provided instant sync swaps and
+        vault CPI routing. Removed from `corda-protocol-mvp` in commit `a85d60c5`.
+        Program ID: AYjrCpUAH2iPsyPykFvQhmPMcReotps8mX4moFY2DDkK
+      inScope: false
+
+    - ID: ORACLE_WRAPPER_PROGRAM
+      type: system
+      title: Oracle Wrapper Program
+      description: |
+        On-chain program that wraps the configured price feed and exposes
+        `fetch_price` to vault instructions.
+        Program ID: HExrWEj2rBHut6KJjsRSmP1WxWA1BtVRmSf3FmPcJcob
+      inScope: true
+
+    # --- Vault Program State (PDAs) ---
+
+    - ID: VAULT_PDA
+      type: system
+      title: Vault PDA
+      description: |
+        Core vault state account holding all configuration: authority, mints,
+        fee parameters, pause and emergency-stop flags, pinned fee and offboard
+        destinations, oracle-wrapper addresses, pending balance tracking,
+        compliance_authority, `price_tolerance_bps`, and monitoring counters.
+        The `authority` field (formerly separate `admin`/`curator` fields) is
+        expected to be set to the RBAC program's VaultAuthority PDA after
+        bootstrap via `set_authority`.
+        Seeds: [b"vault", usdc_mint]
+      inScope: true
+
+    - ID: VAULT_AUTHORITY_PDA
+      type: system
+      title: VaultAuthority PDA (RBAC)
+      description: |
+        Zero-copy PDA owned by the RBAC program. Stores the per-instruction
+        permission table (`permissions: [Pubkey; 64]`), RBAC admin pubkey,
+        and rent-destination address. Each vault instruction discriminator
+        maps to one allowed signer.
+        Seeds: [b"vault_authority", vault.key()]
+      inScope: true
+
+    - ID: ORACLE_WRAPPER_CONFIG_PDA
+      type: system
+      title: Oracle Wrapper Config PDA
+      description: |
+        Wrapper configuration account pinned from the vault at initialization.
+        Stores the selected feed address, wrapper admin, test-mode flag, and
+        staleness threshold used by `fetch_price`.
+      inScope: true
+
+    - ID: VTOKEN_PRICE_FEED_ACCOUNT
+      type: system
+      title: vToken Price Feed Account
+      description: |
+        Feed account read through the oracle wrapper for live vToken pricing.
+        This may be a production oracle feed or a local test-mode feed account,
+        depending on wrapper configuration.
+      inScope: true
+
+    - ID: INVESTMENT_PROPOSAL_PDA
+      type: system
+      title: InvestmentProposal PDA
+      description: |
+        Tracks investment proposal state (Pending → Accepted/Rejected → Settled/Cancelled).
+        Seeds: [b"investment_proposal", vault, investor, proposal_id]
+      inScope: true
+
+    - ID: REDEMPTION_PROPOSAL_PDA
+      type: system
+      title: RedemptionProposal PDA
+      description: |
+        Tracks redemption state (Pending/Cancelled/Settled). vTokens are escrowed
+        at creation and can be returned on cancellation while pending.
+        Seeds: [b"redemption_proposal", vault, investor, proposal_id]
+      inScope: true
+
+    # --- Liquidity Pool State ---
+
+    - ID: LIQUIDITY_POOL_PDA
+      type: system
+      title: LiquidityPool PDA (Removed)
+      description: |
+        Legacy liquidity pool state PDA from the removed Liquidity Program.
+        Retained in the model only for historical traceability.
+        Seeds: [b"pool", ...]
+      inScope: false
+
+    - ID: INVESTOR_SYNC_USAGE_PDA
+      type: system
+      title: InvestorSyncUsage PDA (Removed)
+      description: |
+        Formerly tracked rolling 24h per-investor daily sync swap limits.
+        Removed — daily limit enforcement moved to the indexer.
+        Seeds: [b"sync_usage", ...]
+      inScope: false
+
+    # --- Token Mints ---
+
+    - ID: ATOKEN_MINT
+      type: credential
+      title: External Reference Asset Mint
+      description: |
+        Legacy reference to an external fund or underlying asset mint used by
+        earlier vault designs. The current proposal-based flow does not custody
+        this asset directly inside the vault program.
+      inScope: false
+
+    - ID: RECEIPT_TOKEN_MINT
+      type: credential
+      title: Legacy Receipt Token Mint
+      description: |
+        Legacy receipt-token mint from the superseded receipt-based investment
+        flow. Current investment proposals do not mint receipt tokens.
+      inScope: false
+
+    - ID: USDC_MINT
+      type: credential
+      title: USDC Mint
+      description: |
+        Stablecoin mint used for investments and redemptions.
+      inScope: false
+
+    # --- Token Accounts (ATAs) ---
+
+    - ID: USDC_VAULT_ATA
+      type: system
+      title: Vault USDC Account (ATA)
+      description: |
+        Vault's USDC token account. Receives investor deposits, sends USDC to
+        tokenizer and to investors at redemption. MemoTransfer extension.
+      inScope: true
+
+    - ID: ATOKEN_VAULT_ATA
+      type: system
+      title: Legacy External Asset Account Reference
+      description: |
+        Legacy vault token-account reference from the earlier underlying-asset
+        custody design. The current proposal-based flow does not use this
+        account for settlement.
+      inScope: false
+
+    - ID: INVESTOR_RECEIPT_TOKEN_ACCOUNT
+      type: system
+      title: Legacy Investor Receipt Token Account (ATA)
+      description: |
+        Legacy investor token account from the superseded receipt-token flow.
+        Current investment proposals no longer mint or freeze receipt tokens.
+      inScope: false
+
+    - ID: INVESTOR_USDC_ACCOUNT
+      type: system
+      title: Investor USDC Account (ATA)
+      description: |
+        Source for investments, destination for redemptions.
+      inScope: true
+
+    - ID: VTOKEN_VAULT_ATA
+      type: system
+      title: Vault vToken Escrow Account (ATA)
+      description: |
+        Vault's vToken escrow account. Holds investor vTokens locked during
+        pending redemption proposals. vTokens are transferred here at proposal
+        creation and burned at settlement.
+      inScope: true
+
+    - ID: TOKENIZER_USDC_ATA
+      type: system
+      title: Offboard Destination USDC Account (ATA)
+      description: |
+        External USDC token account pinned as `vault.offboard_destination`.
+        `transfer_to_tokenizer` sends vault USDC only to this address.
+        Pinning prevents a compromised authority from redirecting funds.
+        Updated via `update_vault_config` (authority-gated).
+      inScope: true
+
+  assumptions:
+    - ID: ADMIN_TRUST_BOUNDARY
+      description: |
+        Vault admin has authority to manage whitelist but is assumed to follow
+        operational procedures. Compromise of admin keys is in-scope threat.
+
+    - ID: TOKEN_PROGRAM_TRUST
+      description: |
+        SPL token program behavior is assumed correct.
+        Bugs in token program internals are out of scope.
+
+analysis: |
+  This V1 threat model focuses on the newly implemented access control mechanisms:
+
+  **Key Attack Surfaces:**
+  1. Whitelist bypass attempts during settlement
+  2. Unauthorized whitelist modification
+  3. Whitelist PDA validation logic
+  4. Admin credential compromise
+  5. Freeze/thaw operational misuse
+
+  **Analysis Approach:**
+  - STRIDE analysis on whitelist management and settlement flows
+  - Access control validation at each enforcement point
+  - Admin privilege escalation scenarios
+
+  **Architecture Diagrams**
+
+  <a id="architecture"></a>
+  **System Architecture Overview**
+
+  <object type="image/svg+xml" data="img/architecture.svg" style="width:100%; height:auto;">
+  <img src="img/architecture.svg"/>
+  </object>
+
+  <a id="vaultDataModel"></a>
+  **Vault Data Model (Complete)**
+
+  <object type="image/svg+xml" data="img/vaultDataModel.svg" style="width:100%; height:auto;">
+  <img src="img/vaultDataModel.svg"/>
+  </object>
+
+  <a id="vaultDataModel"></a>
+  **Vault Data Model: Curator Settle Redemption**
+
+  <object type="image/svg+xml" data="img/vaultDataModel-curator-settleRedemption.svg" style="width:100%; height:auto;">
+  <img src="img/vaultDataModel-curator-settleRedemption.svg"/>
+  </object>
+
+  **Flow Diagrams**
+
+  <a id="investmentSettlement"></a>
+  **Investment Settlement Flow (with Whitelist Enforcement)**
+
+  This diagram shows the critical settlement flow where whitelist validation occurs.
+  Note: whitelist is checked at **proposal creation time only** — it is NOT re-checked
+  at settle, match, batch, or cancel. Removal after creation freezes the investor's
+  vToken account via the ACL Gate mechanism.
+
+  <object type="image/svg+xml" data="img/investmentSettlement.svg" style="width:100%; height:auto;">
+  <img src="img/investmentSettlement.svg"/>
+  </object>
+
+  <a id="whitelistManagement"></a>
+  **Whitelist Management Flow**
+
+  Admin operations for adding and removing investors from the whitelist, including the
+  freeze/thaw mechanics.
+
+  <object type="image/svg+xml" data="img/whitelistManagement.svg" style="width:100%; height:auto;">
+  <img src="img/whitelistManagement.svg"/>
+  </object>
+
+  <a id="aclGateValidation"></a>
+  **Whitelist and Account Control Validation**
+
+  Detailed view of whitelist entry validation and admin freeze/thaw controls
+  in the current vault code path.
+
+  <object type="image/svg+xml" data="img/aclGateValidation.svg" style="width:100%; height:auto;">
+  <img src="img/aclGateValidation.svg"/>
+  </object>
+
+threats:
+  - ID: WHITELIST_BYPASS_VIA_SETTLEMENT
+    title: Bypass Whitelist Check During Investment Settlement
+    attack: |
+      Attacker attempts to receive vTokens during settlement without being whitelisted by:
+
+      - Providing forged or incorrect whitelist_entry PDA account
+      - Exploiting account validation gaps in settlement flows
+      - Manipulating PDA derivation to pass whitelist constraint with false data
+
+      The settlement instructions require whitelist_entry PDA with:
+      - Seeds: [VaultWhitelistEntry::SEED_PREFIX, vtoken_mint, investor]
+      - Constraint: whitelist_entry.whitelisted == true
+
+      If this validation can be bypassed, non-KYC'd investors could receive vault shares.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Successful bypass allows unauthorized wallet to receive vTokens, leading to:
+
+      - KYC/AML compliance violations
+      - Sanctioned wallets participating in vault
+      - Regulatory enforcement risk
+      - Undermining of entire compliance framework
+
+    impactedSecObj:
+      - REFID: COMPLIANCE
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: WHITELIST_ENTRY_PDA
+      - REFID: DF_INVESTMENT_SETTLEMENT
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: ONCHAIN_WALLET_WHITELISTING
+        title: On-chain wallet whitelisting for vToken recipients
+        description: |
+          Vault program enforces whitelist via VaultWhitelistEntry PDA during settlements.
+
+          **Implementation:**
+          - PDA structure: VaultWhitelistEntry { mint, owner, whitelisted: bool, bump }
+          - Seeds: ["vault_whitelist_entry", vtoken_mint, investor.key()]
+          - Constraint in settle instructions: `whitelist_entry.whitelisted @ VaultError::NotWhitelisted`
+          - Admin-only instructions: add_to_vtoken_whitelist, remove_from_vtoken_whitelist
+
+          **Location:** programs/vault/src/instructions/investments/settle_investment.rs
+          **Enforcement:** Programs prevents vToken minting to non-whitelisted addresses
+        inPlace: true
+        public: true
+
+      - ID: PDA_DERIVATION_VALIDATION
+        title: Strict PDA seed validation in settlement accounts
+        description: |
+          Anchor's seeds constraint automatically validates PDA derivation:
+          - Checks seeds match expected pattern
+          - Verifies bump is correct
+          - Ensures account is owned by vault program
+
+          This prevents forged whitelist_entry accounts from passing validation.
+        inPlace: true
+        public: true
+
+  - ID: UNAUTHORIZED_WHITELIST_MODIFICATION
+    title: Unauthorized Modification of Whitelist Entries
+    attack: |
+      Attacker attempts to add themselves to whitelist or remove others by:
+
+      - Exploiting missing has_one = admin constraint on whitelist instructions
+      - Forging admin signature or PDA authority
+      - Direct account data manipulation (if account ownership not enforced)
+      - CPI from malicious program if whitelist instructions lack signer checks
+
+      If whitelist can be modified without proper admin authorization, the entire
+      compliance framework is compromised.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Unauthorized whitelist modification enables:
+
+      - Self-whitelisting without KYC/AML verification
+      - Denial-of-service by removing legitimate investors
+      - Complete bypass of compliance controls
+      - Regulatory violations and legal liability
+
+    impactedSecObj:
+      - REFID: COMPLIANCE
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: WHITELIST_ENTRY_PDA
+      - REFID: DF_WHITELIST_MANAGEMENT
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: ADMIN_AUTHORIZATION_CHECKS
+        title: Enforce admin authorization on whitelist management
+        description: |
+          Both add_to_vtoken_whitelist and remove_from_vtoken_whitelist require:
+
+          ```rust
+          #[account(
+              has_one = admin @ VaultError::Unauthorized
+          )]
+          pub vault: Account<'info, Vault>,
+
+          #[account(mut)]
+          pub admin: Signer<'info>,
+          ```
+
+          This ensures only the vault's designated admin can modify whitelist.
+          **Location:** programs/vault/src/instructions/acl/whitelist.rs
+        inPlace: true
+        public: true
+
+      - ID: WHITELIST_PDA_OWNERSHIP
+        title: Whitelist PDA owned by vault program
+        description: |
+          VaultWhitelistEntry PDAs are created with vault program as owner via
+          Anchor's init_if_needed constraint. Only vault program can write to these
+          accounts, preventing external manipulation.
+        inPlace: true
+        public: true
+
+  - ID: ADMIN_KEY_COMPROMISE
+    title: Compromise of Vault Admin Private Key
+    attack: |
+      Attacker gains access to vault admin private key through:
+
+      - Phishing or social engineering of admin
+      - Malware on admin's device
+      - Insider threat or credential theft
+      - Weak key management practices
+
+      With admin key, attacker can:
+      - Add unauthorized wallets to whitelist
+      - Remove legitimate investors from whitelist
+      - Modify vault configuration
+      - Potentially trigger emergency controls
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Compromised admin key allows attacker to:
+
+      - Bypass all KYC/AML controls via whitelist manipulation
+      - Deny service to legitimate investors by removing from whitelist
+      - Manipulate vault parameters
+      - Create regulatory compliance violations
+      - Damage reputation and user trust
+
+    impactedSecObj:
+      - REFID: COMPLIANCE
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-860'
+    countermeasures:
+      - ID: MULTISIG_ADMIN_AUTHORITY
+        title: Implement multisig for vault admin operations
+        description: |
+          Replace single admin keypair with multisig authority (e.g., Squads/Goki):
+          - Require M-of-N signatures for whitelist changes
+          - Separate roles for different admin functions
+          - Time-delayed execution for critical changes
+
+          This limits impact of single key compromise.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+      - ID: HARDWARE_KEY_STORAGE
+        title: Hardware wallet or HSM for admin key storage
+        description: |
+          Store admin private keys in hardware security modules:
+          - Ledger/Trezor for key custody
+          - No key extraction capability
+          - Physical confirmation for signing
+
+          Significantly raises bar for key compromise.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+      - ID: OPERATIONAL_MONITORING
+        title: Monitor and alert on whitelist modifications
+        description: |
+          Implement off-chain monitoring for admin operations:
+          - Alert on add/remove whitelist events
+          - Anomaly detection for unusual whitelist patterns
+          - Regular audit of whitelist state vs. KYC records
+          - Transaction replay analysis for unauthorized changes
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Team
+
+  - ID: WHITELIST_ENUMERATION
+    title: Privacy Leak via Whitelist Enumeration
+    attack: |
+      Attacker enumerates all whitelisted wallets by:
+
+      - Deriving VaultWhitelistEntry PDAs for known wallet addresses
+      - Checking account existence and whitelisted flag
+      - Building database of KYC'd participants
+      - Correlating with on-chain activity
+
+      While whitelist data is public (on-chain), systematic enumeration reveals
+      which wallets have completed KYC, potentially exposing participant identities.
+
+    threatType: Information Disclosure
+    impactDesc: |
+      Enumeration enables:
+
+      - Privacy violation for vault participants
+      - Targeted phishing based on KYC status
+      - Competitive intelligence gathering
+      - Regulatory scrutiny if participant list is sensitive
+
+      Impact is moderate as on-chain data is inherently public, but enumeration
+      makes privacy invasion easier.
+
+    impactedSecObj:
+      - REFID: COMPLIANCE
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: WHITELIST_ENTRY_PDA
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N
+    pentestTestable: true
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-884'
+    countermeasures:
+      - ID: ACCEPT_PUBLIC_WHITELIST
+        title: Accept whitelist visibility as inherent to blockchain design
+        description: |
+          Acknowledge that on-chain whitelists are publicly readable by design.
+          Document this in terms of service and privacy policy. Blockchain transparency
+          is a feature, not a bug.
+        inPlace: true
+        public: true
+
+      - ID: PRIVACY_ENHANCING_ALTERNATIVES
+        title: Consider privacy-preserving whitelist mechanisms (future)
+        description: |
+          Explore alternatives for privacy-sensitive deployments:
+          - Zero-knowledge whitelist proofs (zkSNARKs)
+          - Commitment-based whitelist with reveal-on-use
+          - Encrypted whitelist with validator-side decryption
+
+          These add significant complexity and are not implemented in V1.
+        inPlace: false
+        public: true
+
+  - ID: INSUFFICIENT_SETTLEMENT_VALIDATION
+    title: Missing Validation in Settlement Instructions
+    attack: |
+      Attacker exploits gaps in settlement instruction validation:
+
+      - settle_investment with incorrect whitelisting checks
+      - Amount manipulation in settlement calculations
+      - vToken-price-based pricing vulnerabilities
+
+      Settlement is critical point where vTokens are minted based on:
+      - Investment amount (USDC deposited)
+      - Current `vtoken_price`
+      - Whitelist status
+
+      Insufficient validation could allow unauthorized minting or incorrect amounts.
+
+    threatType: Tampering
+    impactDesc: |
+      Successful exploitation enables:
+
+      - Unauthorized vToken minting
+      - Incorrect share pricing
+      - Insolvency through over-issuance
+      - Theft of user funds via dilution
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: COMPLIANCE
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: DF_INVESTMENT_SETTLEMENT
+      - REFID: VTOKEN_MINT
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: SETTLEMENT_ACCOUNT_CONSTRAINTS
+        title: Comprehensive Anchor constraints on settlement accounts
+        description: |
+          Both settlement instructions enforce via Anchor constraints:
+
+          ```rust
+          #[account(
+              seeds = [VaultWhitelistEntry::SEED_PREFIX, vtoken_mint.key(), investor.key()],
+              bump,
+              constraint = whitelist_entry.whitelisted @ VaultError::NotWhitelisted
+          )]
+          pub whitelist_entry: Box<Account<'info, VaultWhitelistEntry>>,
+
+          #[account(
+              mut,
+              token::mint = vtoken_mint,
+              token::authority = investor
+          )]
+          pub investor_vtoken: InterfaceAccount<'info, TokenAccount>,
+          ```
+
+          Prevents account substitution and ensures whitelist + ownership checks.
+        inPlace: true
+        public: true
+
+      - ID: NAV_BASED_PRICING
+        title: Vault-price-based share pricing with curator authorization
+        description: |
+          Settlement uses dynamically computed vToken price to calculate shares:
+          - vtoken_price = total vault value divided by supply using checked arithmetic
+          - Curator-signed settlement (authorized role)
+          - Price updated via authorized vault pricing flow
+          - Entry/exit fees applied at settlement time
+
+          Prevents arbitrary minting; ties issuance to vault value.
+        inPlace: true
+        public: true
+
+  # ──────────────────────────────────────────────────────
+  # Vault-Wide Systemic Threats (from Threat Taxonomy)
+  # ──────────────────────────────────────────────────────
+
+  - ID: ORACLE_WRAPPER_MISCONFIGURATION
+    title: Oracle wrapper misconfiguration or stale feed distorts settlement pricing
+    attack: |
+      Vault pricing depends on `Vault::get_vtoken_price`, which CPI-calls the
+      pinned `oracle_wrapper_program` and reads the pinned wrapper config and
+      feed accounts.
+
+      If initialization points the vault at the wrong wrapper, the wrong config,
+      or the wrong feed account, or if the wrapper admin later updates the feed or
+      staleness threshold incorrectly, live settlement pricing can drift away from
+      the intended market source.
+
+      A bad configuration can also keep the wrapper in local test mode or disable
+      freshness checks, allowing stale or operator-written prices to flow into
+      investment settlement and redemption settlement.
+
+      An attacker or compromised operator could then:
+
+      - Route pricing to an unintended oracle feed
+      - Keep using stale prices beyond the expected freshness window
+      - Push operator-controlled test prices into otherwise real settlement flows
+      - Misprice vault settlements across multiple instructions
+
+    threatType: Tampering
+    impactDesc: |
+      Incorrect oracle-wrapper configuration can corrupt settlement pricing across
+      the system:
+
+      - Investors can receive too many or too few vTokens for a deposit
+      - Redeemers can receive too much or too little USDC
+      - Fee calculations and monitoring events embed the wrong price basis
+      - Misconfiguration at initialization can persist because the vault does not
+        rotate oracle-wrapper addresses through normal config updates
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: VAULT_PDA
+      - REFID: ORACLE_WRAPPER_PROGRAM
+      - REFID: ORACLE_WRAPPER_CONFIG_PDA
+      - REFID: VTOKEN_PRICE_FEED_ACCOUNT
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-866'
+    countermeasures:
+      - ID: PINNED_ORACLE_ADDRESSES
+        title: Vault stores pinned oracle-wrapper program, config, and feed addresses
+        description: |
+          `initialize_vault` persists the oracle-wrapper program address, wrapper
+          config PDA, and feed account on the vault. `get_vtoken_price` resolves
+          those exact accounts from `remaining_accounts` rather than trusting an
+          arbitrary caller-supplied ordering.
+        inPlace: true
+        public: true
+
+      - ID: ORACLE_WRAPPER_FEED_VALIDATION
+        title: Oracle wrapper validates feed identity, freshness, and decimals
+        description: |
+          `fetch_price` checks that the provided feed matches the wrapper config,
+          enforces 6-decimal pricing, and can reject stale prices when
+          `staleness_threshold_seconds` is configured.
+        inPlace: true
+        public: true
+
+      - ID: ORACLE_WRAPPER_GOVERNANCE
+        title: Govern oracle-wrapper initialization and feed changes
+        description: |
+          Protect wrapper initialization, `update_price_feed`, and
+          `update_staleness_threshold` behind strong governance controls. Test-mode
+          wrappers should never be used for production vaults.
+        inPlace: false
+        public: true
+
+  - ID: STABLECOIN_DEPEG
+    title: Stablecoin depeg propagates into vault pricing and liquidity
+    attack: |
+      The vault ultimately settles in USDC. If USDC depegs, the oracle-wrapper
+      can correctly report the lower price, but the protocol is still
+      economically exposed to that event.
+
+      During a depeg, attackers or opportunistic users can:
+
+      - Arbitrage between external markets and oracle-priced vault flows
+      - Trigger redemptions that accelerate liquidity stress
+      - Exploit operational lag between depeg detection and defensive actions
+
+      The price oracle mitigates the specific "undetected depeg" failure mode,
+      but it does not eliminate the market event itself.
+
+    threatType: Tampering, Denial of Service
+    impactDesc: |
+      A depeg can still harm users and operations even when priced correctly:
+
+      - Deposits and redemptions reprice sharply against investor expectations
+      - Redemptions can surge and worsen liquidity stress
+      - Treasury, fee, and accounting assumptions tied to a stable unit of account degrade
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: USDC_VAULT_ATA
+      - REFID: VAULT_PDA
+      - REFID: VTOKEN_PRICE_FEED_ACCOUNT
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-866'
+    countermeasures:
+      - ID: ORACLE_PRICE_FEED
+        title: Oracle wrapper surfaces depeg into live settlement pricing
+        description: |
+          The oracle-wrapper path prevents the protocol from blindly assuming a
+          fixed $1.00 price during a depeg. Live vault pricing can therefore
+          reflect the feed rather than a hardcoded nominal value.
+        inPlace: true
+        public: true
+
+      - ID: DEPEG_CIRCUIT_BREAKER
+        title: Depeg-triggered operational halt
+        description: |
+          Define and enforce a depeg response policy, such as pausing deposits,
+          or redemptions when the feed deviates beyond an acceptable
+          threshold until operators review conditions.
+        inPlace: false
+        public: true
+
+  - ID: VAULT_BANK_RUN
+    title: Coordinated redemption drain with no liquidity backstop
+    attack: |
+      Multiple investors simultaneously create redemption proposals. Each
+      proposal creates a pending USDC obligation, but there is no limit on how
+      many proposals can be Pending simultaneously, no reserve ratio requirement,
+      and no redemption queue or priority ordering.
+
+      If many redemptions arrive at once, the vault's USDC balance can be
+      insufficient to settle them all. The curator must settle sequentially,
+      creating first-come-first-served dynamics where later investors may never
+      receive USDC.
+
+    threatType: Denial of Service
+    impactDesc: |
+      A bank run scenario where:
+
+      - Total pending redemptions exceed vault USDC balance
+      - Early settlers receive full payout; late settlers receive nothing
+      - No pro-rata or fair queuing mechanism exists
+      - Liquidity stress can cascade into confidence collapse
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: MALICIOUS_USER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: REDEMPTION_PROPOSAL_PDA
+      - REFID: USDC_VAULT_ATA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-873'
+    countermeasures:
+      - ID: REDEMPTION_QUEUE_WITH_PRIORITY
+        title: On-chain redemption queue with pro-rata settlement
+        description: |
+          Implement a fair redemption queue: when vault USDC is insufficient to
+          settle all Pending proposals, settle pro-rata (proportional to each
+          proposal's share of total pending) rather than first-come-first-served.
+          This prevents unfair advantage for early settlers.
+        inPlace: false
+        public: true
+
+      - ID: RESERVE_RATIO_REQUIREMENT
+        title: Minimum USDC reserve ratio
+        description: |
+          Enforce a minimum USDC reserve ratio (e.g., vault must hold at least
+          10% of AUM in liquid USDC). Block new investments that would push the
+          ratio below the minimum. This ensures a liquidity buffer for redemptions.
+        inPlace: false
+        public: true
+
+      - ID: MAX_PENDING_REDEMPTIONS
+        title: Cap on maximum pending redemption volume
+        description: |
+          Limit the total vtoken_amount across all Pending redemptions to a
+          percentage of total_shares (e.g., 25%). Once the cap is reached, new
+          redemption proposals are rejected until existing ones settle.
+        inPlace: false
+        public: true
+
+  - ID: LIVE_PRICE_TIMING_MANIPULATION
+    title: Settlement input and oracle timing manipulation within tolerance band
+    attack: |
+      Settlement paths now accept caller-supplied economic totals and verify
+      them against the live oracle using `price_tolerance_bps`:
+
+      - `settle_investment(investor_vtokens)` derives implied price and checks
+        tolerance vs. oracle
+      - `settle_redemption(gross_usdc)` derives implied price and checks
+        tolerance vs. oracle
+      - Batch paths seal proposal membership first, then bind totals in
+        `set_deposit_snapshot_totals` / `set_redemption_snapshot_totals`
+
+      A privileged operator can still time execution around oracle moves and,
+      if tolerance is configured too wide, choose settlement inputs that remain
+      in-band but economically favor one side of the trade.
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-659
+    threatType: Tampering
+    impactDesc: |
+      Attackers or privileged operators can extract value from timing discretion:
+
+      - Investors are exposed to curator-selected inputs bounded by tolerance,
+        not automatically fixed proposal-time pricing
+      - Curator-controlled execution timing remains economically sensitive
+      - A wide tolerance band can hide meaningful value drift while still
+        passing on-chain checks
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: VAULT_PDA
+      - REFID: DF_INVESTMENT_SETTLEMENT
+      - REFID: ORACLE_WRAPPER_CONFIG_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: IMPLIED_PRICE_TOLERANCE_CHECK
+        title: On-chain implied-price tolerance check against oracle
+        description: |
+          `settle_investment`, `settle_redemption`, and batch totals-setting
+          instructions derive an implied price from caller inputs and reject
+          values outside `vault.price_tolerance_bps` relative to oracle price.
+        inPlace: true
+        public: true
+
+      - ID: PRICE_TOLERANCE_HARD_CAP
+        title: Protocol-level maximum cap on tolerance values
+        description: |
+          Vault configuration enforces `price_tolerance_bps <=
+          PRICE_TOLERANCE_MAX_BPS` at initialization and config updates.
+
+          This prevents extreme tolerance settings even if a privileged
+          operator attempts a risky reconfiguration.
+        inPlace: true
+        public: true
+
+      - ID: SNAPSHOT_PRICED_PRECONDITION
+        title: Batch settlement requires priced snapshots
+        description: |
+          Batch settlement instructions require `snapshot.priced == true`
+          (`SnapshotNotPriced` otherwise), forcing totals to be bound and
+          oracle-checked before per-proposal settlement proceeds.
+        inPlace: true
+        public: true
+
+      - ID: STRICT_TOLERANCE_GOVERNANCE
+        title: Govern `price_tolerance_bps` with strict limits and approvals
+        description: |
+          Keep `price_tolerance_bps` conservative, protect updates with
+          multi-party approval, and alert on tolerance changes.
+
+          Wide tolerance values increase discretion for settlement input
+          selection and should be treated as high-risk configuration changes.
+        inPlace: false
+        public: true
+
+  - ID: ROUNDING_DUST_ACCUMULATION
+    title: Systematic Rounding Exploitation via Small Transactions
+    attack: |
+      All vault arithmetic uses integer division that truncates (rounds down).
+      An attacker creates many small transactions to systematically accumulate
+      rounding dust in their favour:
+
+      - Many 1-vToken redemptions where USDC payout rounds to 0
+      - Small investments where vTokens minted round up relative to USDC spent
+      - Fee calculations that round down, understating liabilities
+
+      The minimum redemption check is only vtoken_amount > 0(no meaningful floor).
+      A 1-vToken redemption at low NAV could yield 0 USDC but still reduce
+      proposal balances — wasting curator settlement gas for zero value.
+
+    threatType: Tampering
+    impactDesc: |
+      Over many transactions:
+
+      - Rounding dust accumulates in the vault (not claimable by investors)
+      - Attacker extracts fractional value via asymmetric rounding
+      - Settlement gas wasted on zero-value redemptions
+      - Fee calculations systematically understate liability
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: VAULT_PDA
+      - REFID: REDEMPTION_PROPOSAL_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-894'
+    countermeasures:
+      - ID: MINIMUM_REDEMPTION_AMOUNT
+        title: Enforce Meaningful Minimum Redemption Amount
+        description: |
+          Replace the vtoken_amount > 0 check with a minimum that ensures a
+          non-zero USDC payout at current vault price (for example, deriving a
+          minimum vToken amount from the live wrapper-backed price so redemption output is
+          at least 1 USDC). This
+          prevents zero-value redemptions and reduces rounding exploitation.
+        inPlace: false
+        public: true
+
+      - ID: CHECKED_ARITHMETIC_U128
+        title: All Calculations Use u128 Checked Arithmetic
+        description: |
+          All fee, price, and allocation calculations use u128 intermediates with
+          checked_mul, checked_div, checked_add, checked_sub. Integer overflow
+          returns VaultError::MathOverflow. This prevents overflow exploits but
+          does not address truncation-direction rounding.
+
+          **Location:** programs/vault/src/vault_operations/accounting.rs
+        inPlace: true
+        public: true
+
+  - ID: MISSING_CIRCUIT_BREAKERS
+    title: No on-chain circuit breakers or settlement deviation checks
+    attack: |
+      The vault lacks automated safety controls for detecting and blocking
+      anomalous operations:
+
+      **No volume circuit breakers:**
+
+      Following removal of the 24h rolling-window monitoring fields,
+      the vault no longer tracks cumulative inbound/outbound volume at all.
+      It records only the most recent transaction markers (last_inbound_at,
+      last_inbound_volume_usdc, last_outbound_at, last_outbound_volume_usdc)
+      via record_last_inbound() / record_last_outbound(). A compromised curator
+      could settle unlimited redemptions in a single session, draining the
+      vault's entire USDC balance.
+
+      **No settlement deviation checks:**
+
+      Settlement instructions do not validate that the number of vTokens minted
+      (or USDC paid out) is plausible relative to the sealed batch expectations.
+      A corrupted oracle price or implementation bug could cause wildly incorrect
+      mint/payout amounts with no on-chain rejection.
+
+      **No price-swing auto-pause:**
+
+      A large vToken price movement (e.g., >20% in 24h) does not trigger any
+      automatic pause on proposal acceptance. Investors can continue creating
+      proposals during extreme price volatility with no cooling-off period.
+
+      The only enforcement mechanisms are vault.redemptions_paused (admin toggle)
+      and the emergency stop kill switch, both of which require manual
+      intervention by privileged signers.
+
+    threatType: Denial of Service, Tampering
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-658
+    impactDesc: |
+      Without enforced circuit breakers and deviation checks:
+
+      - A compromised curator can drain the vault in one session
+      - No automatic response to anomalous volume spikes
+      - Settlement can mint/pay wildly incorrect amounts without on-chain rejection
+      - Off-chain monitoring has reaction-time lag
+      - Manual pause or emergency stop still depends on signer availability
+      - All incidents documented in the threat taxonomy (Resolv, Mango, Cashio)
+        would have been limited by on-chain enforcement
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AVAILABILITY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: CURATOR
+      - REFID: VAULT_MANAGER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_PDA
+      - REFID: USDC_VAULT_ATA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: OUTBOUND_VOLUME_RATE_LIMITS
+        title: Outbound volume tracking, rate limits, and TVL drain guard
+        description: |
+          **Current state (passive — not enforced):**
+
+          The vault records the timestamp and USDC amount of the most recent
+          outbound transaction via record_last_outbound(). Fields:
+          last_outbound_at, last_outbound_volume_usdc. The former 24h rolling
+          window and lifetime totals were removed. Only single-tx markers
+          remain — insufficient for anomaly detection without off-chain indexer
+          aggregation. Markers are written but never validated — no require!()
+          checks.
+
+          **Proposed enforcement:**
+
+          - Re-introduce cumulative outbound tracking (rolling window or epoch
+            counter) and add require!() checks to settle_redemption that block
+            settlement when outbound volume exceeds a configurable threshold.
+            The previous monitoring fields were removed; new enforcement would
+            require adding state back or using a separate PDA.
+
+          - If cumulative outbound volume in a window exceeds a percentage of
+            total AUM (e.g., >10% in 24 hours), automatically set
+            vault.redemptions_paused = true. Requires admin to investigate
+            and manually resume (TVL drain guard).
+
+          **Location:** programs/vault/src/vault_operations/mutations.rs
+        inPlace: false
+        public: true
+
+      - ID: VTOKEN_PRICE_CIRCUIT_BREAKER
+        title: vToken price swing circuit breaker — auto-pause proposals
+        description: |
+          If vToken price changes by more than 20% within a 24h window, the
+          vault automatically pauses acceptance of new proposals (both investment
+          and redemption) for 8 hours. The pause can be lifted early by the
+          Curator role (not by the NAV/oracle updater).
+
+          This prevents investors from entering or exiting during extreme
+          volatility without operator review.
+
+          **Note:** Legal review required for economic consequences of
+          non-availability during the cooling-off period.
+        inPlace: false
+        public: true
+
+      - ID: SETTLEMENT_DEVIATION_CHECKS
+        title: Reject settlement if mint or payout deviates from sealed-batch expectation
+        description: |
+          At settlement, the instruction compares actual token/USDC amounts
+          against values derived from the sealed batch price and rejects
+          settlement when deviation exceeds a configurable threshold (e.g., ±5%).
+
+          **Investment settlement (mint check):**
+
+          - expected_tokens = usdc_amount / vtoken_price
+          - Reject if actual vTokens to mint falls outside (expected ± 5%)
+
+          **Redemption settlement (payout check):**
+
+          - expected_usdc = vtoken_amount × vtoken_price
+          - Reject if actual USDC payout falls outside (expected ± 5%)
+
+          **Recovery paths (both directions):**
+
+          - Retry with corrected amount
+          - Retry with an additional override signature from a higher-privilege
+            key (e.g., SPC — Settlement Price Committee)
+
+        inPlace: false
+        public: true
+
+      - ID: EMERGENCY_STOP_CONTROLS
+        title: Manual pause, emergency stop kill switch, and lift timelock
+        description: |
+          Three layers of manual emergency intervention:
+
+          **1. Vault Guard pause toggle:**
+
+          vault.redemptions_paused boolean can be toggled by admin to halt all
+          redemption operations. Requires manual intervention.
+
+          **2. Emergency stop kill switch (engage_emergency_stop):**
+
+          The admin or compliance authority can freeze all vault activity
+          immediately. Only the admin can lift the stop after investigation.
+          Exempt instructions (runnable while stopped): initialize_vault,
+          engage_emergency_stop, lift_emergency_stop, update_vault_config,
+          set_authority. This exempt set enables incident response (key rotation,
+          destination updates) without lifting the stop first. Pinned by
+          `programs/vault/tests/vault_active_contract.rs`.
+
+          **3. Lift timelock (30 minutes):**
+
+          lift_emergency_stop is subject to a 30-minute timelock ensuring the
+          action is deliberate and gives the support team a window to verify
+          conditions before the vault resumes operations.
+
+          **Location:** programs/vault/src/vault_operations/mutations.rs
+        inPlace: true
+        public: true
+        operational: true
+        operator: Vault Admin Team
+
+  - ID: CIRCUIT_BREAKER_TRIGGERED_DOS
+    title: Attacker manipulates conditions to trigger circuit breakers as denial of service
+    attack: |
+      Once circuit breakers are implemented, an attacker can deliberately
+      trigger them to halt vault operations:
+
+      **Price manipulation to trigger price-swing breaker:**
+
+      An attacker manipulates the oracle feed (or waits for genuine market
+      volatility) to push vToken price beyond the 20% threshold. This triggers
+      the auto-pause on new proposals for 8 hours, effectively denying service
+      to all investors.
+
+      **Settlement deviation to block settlements:**
+
+      An attacker or corrupted oracle causes the live price to drift from the
+      sealed batch price, making settlement deviation checks fail repeatedly.
+      Settlements are blocked until the override key is used, creating a
+      dependency on higher-privilege signer availability.
+
+      **Repeated triggering:**
+
+      An attacker repeatedly creates conditions that trip circuit breakers,
+      keeping the vault in a semi-permanent paused state. Each trigger requires
+      operator intervention to resume, creating operational fatigue and
+      potential for human error during recovery.
+
+    threatType: Denial of Service
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-658
+    impactDesc: |
+      Circuit breakers become a DoS vector:
+
+      - Vault proposals paused for 8h+ per trigger event
+      - Settlements blocked until override key is available
+      - Operational team fatigued by repeated false-positive triggers
+      - Investors unable to enter or exit during extended pause windows
+      - Attacker can time triggers to coincide with market events for
+        maximum economic impact
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: VAULT_PDA
+      - REFID: ORACLE_WRAPPER_CONFIG_PDA
+      - REFID: VTOKEN_PRICE_FEED_ACCOUNT
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: CIRCUIT_BREAKER_OVERRIDE_KEY
+        title: Circuit breaker override requires separate higher-privilege key
+        description: |
+          Any action that triggers a circuit breaker (price deviation, settlement
+          deviation) can only be overridden by calling a different function with
+          a different key. This override key can be configured with higher signer
+          thresholds in the key custody solution (e.g., higher multisig quorum
+          than normal operations).
+
+          Ensures rapid recovery from false-positive triggers without
+          compromising the safety guarantees of the breakers.
+        inPlace: false
+        public: true
+
+      - ID: CIRCUIT_BREAKER_COOLDOWN_LIMITS
+        title: Limit consecutive circuit breaker triggers
+        description: |
+          After a circuit breaker has been triggered and overridden N times
+          within a window (e.g., 3 times in 24h), escalate to a different
+          response (e.g., require higher-threshold override, notify security
+          team, or extend pause duration). This prevents indefinite DoS via
+          repeated triggering.
+        inPlace: false
+        public: true
+
+      - ID: CURATOR_UNPAUSE_AUTHORITY
+        title: Curator can lift price-swing pause without full governance ceremony
+        description: |
+          The 8h auto-pause on proposals can be lifted early by the Curator
+          role (not by the NAV/oracle updater). This provides a fast recovery
+          path when the price movement is legitimate and operations should
+          resume. The Curator is a BAU role with appropriate accountability.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Curator
+
+  - ID: ORACLE_WRAPPER_ADMIN_ABUSE
+    title: Oracle-wrapper admin abuse or immutable bad initialization corrupts pricing
+    attack: |
+      Vault initialization permanently pins the oracle-wrapper program, wrapper
+      config PDA, and feed account used for live pricing, but those addresses are
+      not rotated through `update_vault_config`.
+
+      Separately, the oracle-wrapper admin can update the wrapper's feed account
+      and staleness threshold. A compromised or careless operator can therefore:
+
+      - Initialize the vault against the wrong wrapper or feed account
+      - Disable freshness checks by setting a permissive staleness threshold
+      - Repoint the wrapper to a different feed source after deployment
+      - Preserve a production wrapper in test mode during deployment mistakes
+
+      Because settlement instructions consume the wrapper output directly,
+      this can distort every price-sensitive path until governance intervenes.
+
+    threatType: Tampering
+    impactDesc: |
+      A compromised oracle-wrapper control path can manipulate or disable pricing:
+
+      - Deposits and redemptions execute at an unintended price source
+      - Operations can fail closed if required oracle accounts go missing
+      - A bad initialization can become a long-lived incident because the vault
+        does not expose normal post-init rotation for oracle addresses
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+      - REFID: DEVELOPER
+    assets:
+      - REFID: VAULT_PDA
+      - REFID: ORACLE_WRAPPER_PROGRAM
+      - REFID: ORACLE_WRAPPER_CONFIG_PDA
+      - REFID: VTOKEN_PRICE_FEED_ACCOUNT
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-875'
+    countermeasures:
+      - ID: ORACLE_WRAPPER_ADDRESS_PINNING
+        title: Oracle-wrapper addresses are fixed at vault initialization
+        description: |
+          The vault writes `price_oracle_program`, `vtoken_oracle_wrapper_config`,
+          and `vtoken_feed` during `initialize_vault`, preventing casual account
+          substitution after deployment.
+        inPlace: true
+        public: true
+
+      - ID: ORACLE_WRAPPER_ADMIN_MULTISIG
+        title: Put oracle-wrapper admin actions behind multisig and ceremony checks
+        description: |
+          Protect wrapper initialization and follow-up admin actions such as
+          `update_price_feed` and `update_staleness_threshold` with multisig,
+          peer review, and environment-specific deployment checks.
+        inPlace: false
+        public: true
+
+      - ID: DISALLOW_PRODUCTION_TEST_MODE
+        title: Prohibit test-mode oracle wrappers in production environments
+        description: |
+          Production vault ceremonies should reject local-test-mode wrapper
+          configs and require explicit validation of the configured feed account
+          before the vault is initialized.
+        inPlace: false
+        public: true
+
+  - ID: FEE_PARAMETER_MANIPULATION
+    title: Admin Changes Fee Parameters Post-Initialization
+    attack: |
+      The admin can update entry_fee_bps and exit_fee_bps at any time via
+      update_vault_config. While bounded (entry ≤ 1000 bps / 10%,
+      exit ≤ 1000 bps / 10%), changes take effect immediately with no
+      announcement period or investor notification.
+
+      A compromised admin could:
+
+      - Increase entry_fee_bps to 1000 (10%) to extract value from new investors
+      - Increase exit_fee_bps to 1000 (10%) to penalise departing investors
+      - Time fee increases before a batch settlement to maximize extraction
+      - Change fees between when a proposal is created and when it is settled
+
+      Note: The current vault has NO management fee, performance fee,
+      high-water-mark, or AUM-based fee accrual. Only entry/exit fees exist.
+
+    threatType: Tampering
+    impactDesc: |
+      Investors' returns are silently reduced. Fee changes are not announced
+      on-chain and there is no opt-out window. An investor who entered at
+      200 bps management fee could find themselves paying 1000 bps without
+      notice. Over time, this represents significant value extraction.
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: PROTOCOL_MANAGER
+      - REFID: CURATOR
+    assets:
+      - REFID: VAULT_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-888'
+    countermeasures:
+      - ID: FEE_BOUNDS_ENFORCEMENT
+        title: Fee Parameter Upper Bounds
+        description: |
+          update_vault_config enforces:
+
+          - entry_fee_bps ≤ 1000 (10% max)
+          - exit_fee_bps ≤ 1000 (10% max)
+
+          Note: management_fee_bps and performance_fee_bps do not exist in
+          the current vault. Only entry/exit fees are implemented.
+
+          **Location:** programs/vault/src/instructions/config/update_vault_config.rs
+        inPlace: true
+        public: true
+
+      - ID: FEE_CHANGE_TIMELOCK
+        title: Timelock on Fee Parameter Changes
+        description: |
+          Implement a timelock (e.g., 7 days) between announcing a fee change
+          and it taking effect. During the timelock, investors can review and
+          exit (redeem) before the new fees apply. This is standard practice
+          in traditional fund management (notice period for fee changes).
+        inPlace: false
+        public: true
+
+      - ID: FEE_CHANGE_EVENT_LOG
+        title: Emit On-Chain Event for Fee Changes
+        description: |
+          Emit a Solana event/log when fee parameters are updated, including
+          old and new values. Off-chain monitoring can alert investors to
+          fee changes. This provides auditability even without a timelock.
+        inPlace: false
+        public: true
+
+  - ID: WHITELIST_REMOVAL_NO_NOTICE
+    title: Abrupt Whitelist Removal — No Investor Exit Window
+    attack: |
+      remove_from_vtoken_whitelist atomically removes the investor from the
+      whitelist AND freezes their vToken account in a single transaction.
+      The investor has no advance notice and no window to exit (redeem or
+      transfer) before their account is frozen.
+
+      While atomicity is good from a compliance enforcement perspective
+      (no gap to exploit), it creates a risk of abuse:
+
+      - A compromised admin freezes an investor's account, then manipulates
+        NAV downward before unfreezing, reducing their redemption value
+      - Admin uses freeze as extortion leverage
+      - Legitimate compliance action with no appeal or exit mechanism
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-660
+    threatType: Denial of Service
+    impactDesc: |
+      Investor's capital is frozen without notice or appeal. If combined
+      with NAV manipulation, the investor's redemption value can be
+      degraded while they are unable to act. No on-chain dispute
+      resolution exists.
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: COMPLIANCE
+    attackers:
+      - REFID: ACL_AUTHORITY
+      - REFID: FREEZE_AUTHORITY
+    assets:
+      - REFID: WHITELIST_ENTRY_PDA
+      - REFID: INVESTOR_VTOKEN_ACCOUNT
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: ATOMIC_WHITELIST_FREEZE
+        title: Atomic Whitelist Removal and Account Freeze
+        description: |
+          remove_from_vtoken_whitelist sets whitelisted = false and
+          calls freeze_permissionless in the same transaction. No gap
+          exists between removal and freeze — the investor cannot
+          race a transfer between steps.
+
+          **Location:** programs/vault/src/instructions/acl/whitelist.rs
+        inPlace: true
+        public: true
+
+      - ID: WHITELIST_REMOVAL_GRACE_PERIOD
+        title: Grace Period Before Whitelist Freeze
+        description: |
+          For non-emergency removals, implement a two-step process:
+
+          1. Announce removal (on-chain, publicly visible)
+          2. After grace period (e.g., 48 hours), execute freeze
+
+          During the grace period, the investor can redeem their vTokens.
+          Emergency removals (e.g., sanctions compliance) bypass the
+          grace period via a separate admin instruction requiring multisig.
+        inPlace: false
+        public: true
+
+  # - ID: BATCH_REDEMPTION_MANIPULATION
+  #   title: Batch Redemption Pipeline Manipulation by Curator
+  #   attack: |
+  #     The batch redemption pipeline (create_redemption_snapshot → add_to_snapshot →
+  #     seal_snapshot → settle_from_snapshot → finalize_redemption_snapshot) is
+  #     entirely curator-controlled across all 5 steps. The curator can:
+
+  #     - Selectively include or exclude redemption proposals when adding to snapshot
+  #     - Delay sealing the snapshot to manipulate which proposals are included
+  #     - Settle proposals from the snapshot in a preferred order (favouritism)
+  #     - Delay finalization to keep USDC locked in the vault
+  #     - Create multiple snapshots to split and reorder settlement priority
+
+  #     All 5 instructions require only `has_one = curator`, with no investor
+  #     input or oversight.
+
+  #   threatType: Tampering, Denial of Service
+  #   impactDesc: |
+  #     The curator can systematically favour certain investors over others
+  #     during batch settlement. Excluded investors' redemptions remain pending
+  #     while favoured investors receive prompt settlement. The batch pipeline
+  #     creates additional timing windows for AUM manipulation between snapshot
+  #     creation and settlement.
+
+  #   impactedSecObj:
+  #     - REFID: USER_FUNDS_SAFETY
+  #     - REFID: AVAILABILITY
+  #     - REFID: COMPLIANCE
+  #   attackers:
+  #     - REFID: CURATOR
+  #     - REFID: VAULT_MANAGER
+  #   assets:
+  #     - REFID: REDEMPTION_PROPOSAL_PDA
+  #     - REFID: VAULT_PDA
+  #     - REFID: USDC_VAULT_ATA
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:L'
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: SNAPSHOT_INCLUSION_COMPLETENESS
+  #       title: Enforce Complete Proposal Inclusion in Snapshots
+  #       description: |
+  #         Require that a snapshot includes ALL eligible Pending redemption proposals
+  #         at the time of sealing (not a curator-selected subset). The seal_snapshot
+  #         instruction should verify that no eligible Pending proposals were omitted.
+  #         This prevents selective inclusion/exclusion.
+  #       inPlace: false
+  #       public: true
+
+  #     - ID: BATCH_SETTLEMENT_MONITORING
+  #       title: Monitor Batch Settlement Fairness
+  #       description: |
+  #         Implement off-chain monitoring to verify that batch settlements include
+  #         all eligible proposals and that settlement timing does not correlate
+  #         with AUM changes. Alert on partial snapshots or delayed finalization.
+  #       inPlace: false
+  #       public: true
+  #       operational: true
+  #       operator: Security Team
+
+  # - ID: TVL_SWEEP_FEE_EXTRACTION
+  #   title: TVL Excess Sweep Enables Silent Fee Extraction
+  #   attack: |
+  #     The sweep_excess_tvl function automatically parks any TVL exceeding
+  #     the target (supply × vtoken_price / 1e6) into fees_owed. This runs
+  #     at every redemption settlement. A compromised admin or curator could:
+
+  #     - Inflate AUM temporarily via update_aum to increase TVL
+  #     - Trigger a redemption settlement that calls sweep_excess_tvl
+  #     - The excess TVL is silently moved to fees_owed
+  #     - Call accrue_fees to withdraw the excess as curator/protocol fees
+  #     - Reset AUM to the original value
+
+  #     The sweep mechanism is designed to maintain price stability after
+  #     redemptions, but it creates a new extraction vector when combined
+  #     with AUM manipulation.
+
+  #   threatType: Tampering
+  #   impactDesc: |
+  #     Silent conversion of investor capital into fees. The sweep function
+  #     runs automatically without explicit admin action, making this difficult
+  #     to detect. The extracted value is distributed via the normal fee
+  #     accrual mechanism, providing plausible deniability.
+
+  #   impactedSecObj:
+  #     - REFID: USER_FUNDS_SAFETY
+  #     - REFID: INTEGRITY
+  #   attackers:
+  #     - REFID: CURATOR
+  #     - REFID: VAULT_MANAGER
+  #   assets:
+  #     - REFID: VAULT_PDA
+  #     - REFID: USDC_VAULT_ATA
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:N'
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: SWEEP_EVENT_LOG
+  #       title: Emit On-Chain Event for TVL Sweep
+  #       description: |
+  #         Emit a Solana event/log whenever sweep_excess_tvl moves funds to
+  #         fees_owed, including the sweep amount, pre/post TVL, and target TVL.
+  #         Off-chain monitoring can flag anomalous sweeps.
+  #       inPlace: false
+  #       public: true
+
+  #     - REFID: AUM_MAX_DELTA_BOUND
+
+  # - ID: LIQUIDITY_POOL_NAV_DEPENDENCY
+  #   title: Liquidity Pool Pricing Depends on Manipulable Vault Price
+  #   attack: |
+  #     The Liquidity Program prices sync swaps using the vault share price directly:
+
+  #     - invest_sync: vtoken_out = usdc_amount × 1e6 / (nav × (1 + markup_bps))
+  #     - redeem_sync: usdc_out = vtoken_amount × nav × (1 - spread_bps) / 1e6
+
+  #     Since vault price is admin-set and unbounded (see ADMIN_NAV_UNBOUNDED), a
+  #     compromised admin can manipulate pool pricing by changing vault price. The
+  #     pool has no independent price feed or oracle.
+
+  #     Additionally, markup_bps and spread_bps are admin-configurable, adding
+  #     another vector for extraction. The pool does have per-investor daily
+  #     limits, but these only restrict volume, not price manipulation.
+
+  #   threatType: Tampering
+  #   impactDesc: |
+  #     A compromised admin can:
+
+  #     - Set price high, then redeem_sync to extract excess USDC from the pool
+  #     - Set price low, then invest_sync to acquire cheap vTokens from the pool
+  #     - Adjust markup/spread to extract value from every swap
+  #     - The pool acts as a secondary extraction point for vault price manipulation
+
+  #   impactedSecObj:
+  #     - REFID: USER_FUNDS_SAFETY
+  #     - REFID: INTEGRITY
+  #   attackers:
+  #     - REFID: COMPROMISED_ADMIN
+  #   assets:
+  #     - REFID: LIQUIDITY_PROGRAM
+  #     - REFID: LIQUIDITY_POOL_PDA
+  #     - REFID: VAULT_PDA
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N'
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: POOL_DAILY_LIMITS
+  #       title: Per-Investor Daily Sync Limits
+  #       description: |
+  #         The liquidity pool enforces per-investor rolling 24-hour limits via
+  #         InvestorSyncUsage PDA:
+
+  #         - sync_invest_limit / daily_sync_invest_limit
+  #         - sync_redeem_limit / daily_sync_redeem_limit
+
+  #         These limit volume per investor but do not protect against price
+  #         manipulation or admin abuse.
+
+  #         **Location:** programs/liquidity/src/instructions/investor/invest_sync.rs#L120-L130
+  #       inPlace: true
+  #       public: true
+
+  #     - ID: POOL_INDEPENDENT_PRICE_GUARD
+  #       title: Pool Price Sanity Check Against Independent Source
+  #       description: |
+  #         Add a check in sync swap instructions that compares the vault price
+  #         against a pool-stored reference value (updated independently, e.g., via
+  #         oracle or TWAP). If the deviation exceeds a threshold, reject the swap.
+  #         This prevents the pool from acting as a secondary extraction point
+  #         for vault price manipulation.
+  #       inPlace: false
+  #       public: true
+
+

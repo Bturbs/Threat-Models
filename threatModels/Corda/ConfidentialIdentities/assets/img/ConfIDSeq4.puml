@@ -1,0 +1,125 @@
+@startuml
+
+skinparam note {
+  BackgroundColor #FFFF88
+  BorderColor black
+}
+skinparam note {
+  BackgroundColor #FFE0E0
+  BorderColor #FF8080
+  condition note_Threat
+}
+
+actor Alice
+actor Bob
+actor Charlie
+actor Auditor
+participant Notary as "Non-Validating Notary"
+
+== 🔄 Identity Setup ==
+Bob -> Alice : RequestKeyFlow
+note over Bob, Alice
+Bob requests confidential identity  
+Alice returns a signed challenge response  
+Bob maps Alice’s PublicKey → CordaX500Name  
+Stored locally in Bob’s IdentityService
+end note
+
+== 💼 Optional: Bob’s Account Key ==
+note over Bob
+Bob uses internal KeyManagementService  
+→ freshKey(UUID) for account identity  
+→ maps PublicKey → externalId (UUID)
+end note
+
+== 💸 Alice Pays Token to Bob ==
+note over Alice, Bob
+Alice builds a transaction:  
+Spends token owned by her conf. identity  
+Creates output to Bob’s conf. identity
+end note
+
+Alice -> Bob : SyncKeyMappingsFlow
+note over Alice, Bob
+Alice shares: PublicKey → CordaX500Name  
+Bob can now validate input state ownership
+end note
+
+Bob -> Alice : SignTransactionFlow
+note over Bob, Alice
+Bob signs using his conf. key  
+→ Indicates acceptance of inputs/outputs  
+→ Ensures trustless collaboration
+end note
+
+Alice -> Notary : Submit signed transaction (with input hashes)
+note over Notary
+Non-validating notary:  
+Sees only input hashes  
+No identity mappings
+end note
+Notary --> Alice : OK
+
+== 🩸 Threat: Alice Refuses to Share Mappings ==
+alt Mapping omitted
+note over Bob <<note_Threat>>
+Bob cannot validate Alice’s input states  
+→ Refuses to sign transaction  
+→ Causes soft denial-of-service
+end note
+else Mapping shared
+note over Bob
+Bob validates backchain  
+→ Signs using conf. key  
+→ Transaction proceeds
+end note
+end alt
+
+== 💸 Bob Pays Token to Charlie ==
+note over Bob, Charlie
+Bob builds new transaction:  
+Spends received token  
+Outputs to Charlie's conf. identity
+end note
+
+Bob -> Charlie : SyncKeyMappingsFlow
+note over Bob, Charlie
+Bob shares his PublicKey → CordaX500Name  
+Charlie can validate Bob’s input state  
+→ But NOT Alice's unless Bob includes it
+end note
+
+Charlie -> Bob : SignTransactionFlow
+note over Charlie, Bob
+Charlie signs using conf. key  
+→ Accepts token state  
+→ Validates sender (Bob), but not full backchain
+end note
+
+Bob -> Notary : Submit signed transaction
+Notary --> Bob : OK
+
+== 🧠 Functional Requirement: Backchain Validation ==
+note over Charlie
+Charlie must validate token backchain  
+→ Sees Bob’s conf. key + mapping  
+→ Can trust state origin and ownership  
+→ Does NOT learn Alice's identity
+end note
+
+== 🩸 Threat: Hidden Originator Identity ==
+note over Charlie <<note_Threat>>
+Alice’s identity not mapped  
+→ Charlie cannot validate full history  
+→ Privacy preserved, verification limited
+end note
+
+== 🛡️ Auditor Node Resolution ==
+Charlie -> Auditor : SyncKeyMappingsFlow
+note over Auditor
+Auditor receives all mappings  
+→ Verifies Alice → Bob → Charlie token path  
+→ Enables full compliance without public exposure
+end note
+
+@enduml

@@ -1,0 +1,133 @@
+@startuml indexer_seq1
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+
+title Indexer: Transaction Indexing & Live Activity Feed — Sequence
+
+autonumber
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam wrapWidth 220
+
+box "UI" #pink
+actor "Vault / Client UI" as TXUI
+participant "Indexer UI\n(React)" as IUI
+end box
+
+
+box "Indexer Backend" #f0f4ff
+    participant "API Gateway" as APIGW #lightgreen
+note over APIGW #lightgreen
+    (if implemented) forwards all UI calls, handles authentication,
+    rate limiting, and route policies
+end note
+    participant "Transaction\nIndexer Service" as IDX
+    entity "PostgreSQL" as DB
+    participant "Secrets Store" as SECRETS #lightgreen
+end box
+
+participant "Solana RPC" as RPC
+
+== Initialization ==
+
+IDX -> SECRETS : Load credentials
+note over SECRETS
+e.g. K8s secrets
+- Postgres connection string
+- Solana RPC credentials (LaserStream)
+end note
+SECRETS --> IDX : credentials
+
+== Transaction Submission & Indexing ==
+
+' TXUI -> RPC : sendTransaction
+' RPC --> TXUI : Signature and pending status
+
+RPC --> IDX : logsSubscribe\n(signature, slot)
+
+activate IDX
+
+IDX -> RPC : getTransaction(signature)
+RPC --> IDX : Transaction meta and logs
+
+note right of IDX
+    Internal step:
+    decode vault instructions into
+    normalized activity records
+end note
+
+IDX -> DB : W — Upsert by\n(signature, instruction_index, inner_index)
+IDX -> DB : W — Advance cursor\n(slot / signature)
+
+deactivate IDX
+
+== REST: Initial Table Load ==
+
+IUI -> IDX : GET /api/activities?limit=…
+activate IDX
+
+IDX -> DB : R — Read recent activities
+DB --> IDX : Activity rows
+
+IDX --> IUI : Initial table data
+deactivate IDX
+
+== WebSocket: Backlog Delivery ==
+
+IUI -> IDX : WebSocket /ws/activities?afterId=…
+activate IDX
+
+IDX -> DB : R — listActivitiesAfterId(afterId)
+DB --> IDX : Backlog rows
+
+IDX --> IUI : Backlog activity events
+deactivate IDX
+
+== WebSocket: Live Push ==
+
+loop Live push after indexing
+        note right of IDX
+            Internal step:
+            decode vault instructions into
+            normalized activity records
+        end note
+
+    IDX -> DB : W — Upsert and load persisted rows
+    IDX --> IUI : WebSocket activity events
+end
+
+== Startup Catch-Up ==
+
+alt Startup catch-up
+    IDX -> DB : R — Load last cursor
+    IDX -> RPC : getSignaturesForAddress\n(before cursor)
+
+    loop For each missing signature
+        IDX -> RPC : getTransaction(signature)
+        RPC --> IDX : Transaction meta and logs
+
+                note right of IDX
+                    Internal step:
+                    decode vault instructions into
+                    normalized activity
+                end note
+
+        IDX -> DB : W — Upsert and advance cursor
+    end
+end
+
+== Periodic Reconciliation ==
+
+alt Periodic reconciliation (if enabled)
+    IDX -> RPC : getSignaturesForAddress\n(since cursor)
+    IDX -> RPC : getTransaction\n(for each signature)
+
+        note right of IDX
+            Internal step:
+            decode vault instructions into
+            normalized activity records
+        end note
+
+    IDX -> DB : W — Upsert and advance cursor
+end
+
+@enduml

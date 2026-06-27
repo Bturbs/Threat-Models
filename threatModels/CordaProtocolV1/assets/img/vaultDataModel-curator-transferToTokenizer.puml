@@ -1,0 +1,25 @@
+@startuml
+' REVIEWED_MAIN_2026_05_18: aligned to RBAC fast-forward 63739244; authority via RBAC program.
+
+title Curator: Transfer To Tokenizer
+
+scale max 3200 width
+skinparam wrapWidth 220
+allowmixing
+
+!include common-styles.puml
+!include onchain_data_module.puml
+
+INSTRUCTION TransferToTokenizer <<Instruction>> [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/investments/transfer_to_tokenizer.rs]] {
+    --
+    Transfer USDC from vault to
+    external tokenizer destination.
+    Sets proposal status = Accepted.
+    Idempotent for Accepted proposals.
+    **Authorization:** Authority (via RBAC)
+}
+
+TransferToTokenizer --> InvestmentProposal : W (accept)
+TransferToTokenizer --> VaultUSDCAccount : W (transfer)
+
+@enduml

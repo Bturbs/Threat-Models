@@ -1,0 +1,268 @@
+<featuresCategories>
+  <category>Process integration</category>
+  <features>
+    <ID>FPI1</ID>
+    <description>maintenance and review frequency</description>
+    <scoringQuestions>
+      <ID>QFPI1.1</ID>
+      <question>How often the threat models are reviewed and maintained?</question>
+      <answers>
+        <answer>No defined frequency</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>Periodically</answer>
+        <weight>0.33</weight>
+      </answers>
+      <answers>
+        <answer>At least annually</answer>
+        <weight>0.66</weight>
+      </answers>
+      <answers>
+        <answer>At least annually and before every release</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+  <features>
+    <ID>FPI2</ID>
+    <description>Threat Modeling process engagement</description>
+    <scoringQuestions>
+      <ID>QFPI2.1</ID>
+      <question>On what occasions threat modeling is performed during SSDL?</question>
+      <answers>
+        <answer>Never performed</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>on ad-hoc basis</answer>
+        <weight>0.33</weight>
+      </answers>
+      <answers>
+        <answer>Modelling performed as part of standard process that is loosely aligned to release processes.</answer>
+        <weight>0.66</weight>
+      </answers>
+      <answers>
+        <answer>Integration into software delivery management (e.g. Agile) and using formal quality gates (Def of Done, Def of Ready) for change management and release criteria.​</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+  <features>
+    <ID>FPI3</ID>
+    <description>SSDL and TM features synergies</description>
+    <scoringQuestions>
+      <ID>QFPI3.1</ID>
+      <question>How current threat modeling enables and improves other aspects of security and development?</question>
+      <answers>
+        <answer>Threat Models are not present or if present are mostly ignored and unused to improve other aspects of development</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>on ad-hoc basis threat models are used (for example as a reference documentation, or for customers request, or as compliance evidence)</answer>
+        <weight>0.33</weight>
+      </answers>
+      <answers>
+        <answer>Threat Models are the main reference for securing software architecture and design</answer>
+        <weight>0.66</weight>
+      </answers>
+      <answers>
+        <answer>Threat Models findings and the identified mitigations feed at least some specific secure development practices, 
+for example, dynamic testing, manual regression testing, penetration testing, static/dynamic/composition/interactive analysis       
+</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+
+  <category>Methodology &amp;​ granularity</category>
+  <name>Methodology &amp;​ granularity</name>
+  <features>
+    <ID>FM1</ID>
+    <description>methodology and analysis consistency</description>
+    <scoringQuestions>
+      <ID>QFM1.1</ID>
+      <question>what methodologies are used for threat modeling?</question>
+      <answers>
+        <answer>No use of any methodologies or no analysis</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>Standard methodologies for example:data flow analysis, STRIDE, attack trees, trust boundaries definition, etc.</answer>
+        <weight>0.66</weight>
+      </answers>
+      <answers>
+        <answer>Standard and custom methodologies that takes into account specific system threats</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+  <features>
+    <ID>FM2</ID>
+    <description>granularity and level of abstraction</description>
+    <scoringQuestions>
+      <ID>QFM2.1</ID>
+      <question>what granularity and level of abstraction are the system analyzed at?</question>
+      <answers>
+        <answer>No analysis at all</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>Mostly high level of abstraction, for example Data Flow Diagrams and high level architecture and system views</answer>
+        <weight>0.5</weight>
+      </answers>
+      <answers>
+        <answer>Mostly high and Medium level of abstraction, for example single processes and their communications, microservices, 
+individual storage of sensitive information detailed
+</answer>
+        <weight>0.75</weight>
+      </answers>
+      <answers>
+        <answer>Both high level and single features level (single API endpoints, sequence diagrams, feature abuse cases)</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+  <features>
+    <ID>FM3</ID>
+    <description>threat model scalability and composability</description>
+    <scoringQuestions>
+      <ID>QFM3.1</ID>
+      <question>How scalable are the threat models?</question>
+      <answers>
+        <answer>every threat model is logically not compatible with the others threat models</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>bigger systems are divided into multiple threat models but there is not clear boundaries among them and assets and scope definition consistency</answer>
+        <weight>0.5</weight>
+      </answers>
+      <answers>
+        <answer>bigger systems are divided into multiple threat models and there is clear boundaries among them and assets definition consistency</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+
+  <category></category>
+  <name>Staff enablement</name>
+  <features>
+    <ID>FSE1</ID>
+    <description>Security expertise availability (SME/training/sec champions)</description>
+    <scoringQuestions>
+      <ID>QFSE1.1</ID>
+      <question>what security expertise is available to perform threat modeling?</question>
+      <answers>
+        <answer>security expertise for threat modeling mostly unavailable and difficult to find in the organization</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>there are SMEs for ad-hoc threat modeling</answer>
+        <weight>0.33</weight>
+      </answers>
+      <answers>
+        <answer>there are SMEs for ad-hoc threat modeling and training available</answer>
+        <weight>0.66</weight>
+      </answers>
+      <answers>
+        <answer>there are SMEs and consistent training (for example security champions)</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+
+  <category></category>
+  <name>Measurements and metrics</name>
+  <features>
+    <ID>FMM2</ID>
+    <description>threat modeling metrics</description>
+    <scoringQuestions>
+      <ID>QFMM2.1</ID>
+      <question>what metrics the TM process produces?</question>
+      <answers>
+        <answer>no metrics</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>TM completion for every system that needs analysis</answer>
+        <weight>0.5</weight>
+      </answers>
+      <answers>
+        <answer>TM outcomes contributes to the overall system risk management/evaluation</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+
+  <category></category>
+  <name>Threat model lifecycle and capabilities</name>
+  <features>
+    <ID>FENLC1</ID>
+    <description>threat model storage, format, template and tracking</description>
+    <scoringQuestions>
+      <ID>QFENLC1.1</ID>
+      <question>how are TM stored and available?</question>
+      <answers>
+        <answer>not defined, and no consistent way to retrieve threat models</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>standard storage location</answer>
+        <weight>0.66</weight>
+      </answers>
+      <answers>
+        <answer>TM are stored and versioned using compliant tools and access control</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+    <scoringQuestions>
+      <ID>QFENLC1.2</ID>
+      <question>what file format and template are threat models on?</question>
+      <answers>
+        <answer>not defined</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>standard format and templates available</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+  <features>
+    <ID>FIT1</ID>
+    <description>issue tracking/gates</description>
+    <scoringQuestions>
+      <ID>QFIT1.1</ID>
+      <question>how TM outcomes and security issue management are related?</question>
+      <answers>
+        <answer>not defined</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>on ad-hoc basis and not consistently TM findings are added to the issue tracking system</answer>
+        <weight>.5</weight>
+      </answers>
+      <answers>
+        <answer>TM outcomes are part of the security issue bucket and prioritized</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+    <scoringQuestions>
+      <ID>QFIT1.2</ID>
+      <question>how TM analysis and its outcomes impact the release condition and gates?</question>
+      <answers>
+        <answer>TM practices do not affect releases status</answer>
+        <weight>0</weight>
+      </answers>
+      <answers>
+        <answer>on ad-hoc basis and not consistently TM findings are affecting releases status</answer>
+        <weight>.5</weight>
+      </answers>
+      <answers>
+        <answer>TM analysis and outcomes are part of the release gating capabilities</answer>
+        <weight>1</weight>
+      </answers>
+    </scoringQuestions>
+  </features>
+</featuresCategories>
+

@@ -1,0 +1,231 @@
+@startuml
+' DenialOfState Prevention with HashLock v3 (Corrected Comments)
+
+!define GH_SAMPLE_BASE https://github.com/corda/samples-java/blob/9651d369827ec05ed4b8a0a0b86b58e976cf2ca3/Basic/cordapp-example/workflows/src/main/java/net/corda/samples/example/flows/ExampleFlow.java
+!define CORDA_CORE_BASE https://github.com/corda/corda/blob/06e24e2a3b429628b16dcfe966c2678f12e818fe/core/src/main/kotlin/net/corda/core/flows
+!define CORDA_NOTARY_BASE https://github.com/corda/corda/blob/06e24e2a3b429628b16dcfe966c2678f12e818fe/core/src/main/kotlin/net/corda/core/internal/notary
+
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 250
+
+title DoS Prevention via Hash Lock (Non-Validating Notary)
+
+' == Participants ==
+participant "PartyA Node RPC" as RPC_A
+participant "PartyA Node" as PA_Node
+participant "PartyB Node RPC" as RPC_B
+participant "PartyB Node" as PB_Node
+
+participant "IOUCreateFlow" as IOU_Create_Flow <<Flow>>
+participant "[[{CORDA_CORE_BASE}/CollectSignaturesFlow.kt#L56]] CollectSignaturesFlow" as CSF_Create <<Core Flow>>
+participant "[[{CORDA_CORE_BASE}/FinalityFlow.kt#L50]] FinalityFlow" as FF_Create <<Core Flow>>
+
+participant "MaliciousIOUConsumeFlow" as Malic_Consume_Flow <<Flow>>
+participant "FinalityFlow (Partial)" as FF_Malic <<Core Flow>>
+
+participant "LegitimateSpendFlow" as Legit_Spend_Flow <<Flow>>
+participant "[[{CORDA_CORE_BASE}/CollectSignaturesFlow.kt#L56]] CollectSignaturesFlow" as CSF_Legit <<Core Flow>>
+participant "FinalityFlow (Full)" as FF_Legit <<Core Flow>>
+
+participant "Notary Node\n(Non-Validating, HashLock Aware)" as N_Node
+participant "[[{CORDA_CORE_BASE}/NotaryFlow.kt#L108]] NotaryFlow.Service" as NFService <<Notary Flow>>
+participant "[[{CORDA_NOTARY_BASE}/NotaryService.kt#L25]] NotaryService" as NService <<Component>>
+
+' == Phase 1: IOU Creation with Hash Lock ==
+group IOU Creation with Hash Lock
+    activate PB_Node
+    ' Assume Party B generates the secret for the state they will receive/control
+    PB_Node -> PB_Node : Generate `secret`
+    PB_Node -> PB_Node : Calculate `hash = H(secret)`
+    deactivate PB_Node
+
+    activate PA_Node
+    RPC_A -> PA_Node : startFlow(IOUCreateFlow(iouValue, otherParty=PartyB, hashLock=hash))
+    PA_Node -> IOU_Create_Flow : call(hashLock = hash)
+    activate IOU_Create_Flow
+
+    IOU_Create_Flow -> IOU_Create_Flow : Build IOU Transaction Builder\n(Output state includes `hash` or ref to it)
+    note right of IOU_Create_Flow: Hash `H(secret)` is included in the tx,\n visible to Notary during finalization.
+
+    IOU_Create_Flow -> CSF_Create : subFlow(CollectSignaturesFlow(...))
+    activate CSF_Create
+    CSF_Create -> PB_Node : Request Signature (Tx includes hash)
+    activate PB_Node
+    PB_Node -> PB_Node : Verify Tx, Sign
+    PB_Node --> CSF_Create : Send Signature
+    deactivate PB_Node
+    CSF_Create -> CSF_Create : Assemble Fully Signed Tx -> signedTxWithHash
+    CSF_Create --> IOU_Create_Flow : Return signedTxWithHash
+    deactivate CSF_Create
+
+    IOU_Create_Flow -> FF_Create : subFlow(FinalityFlow(signedTxWithHash,...))
+    activate FF_Create
+    FF_Create -> N_Node : Send Notarisation Request (signedTxWithHash)
+    activate N_Node
+    N_Node -> NFService : <<Create>> Handler
+    activate NFService
+    NFService -> NService : commitTransaction(signedTxWithHash)
+    activate NService
+    NService -> NService : Check Conflicts (Inputs - None here)
+    NService -> NService : **Store Hash Lock (Output StateRef -> hash)**
+    note right of NService: Notary records the hash associated with the new output state's ref.
+    NService -> NService : Record Consumed States (Inputs - None here)
+    NService -> NService : Sign Transaction -> Notary Signature
+    NService --> NFService : Return Signature(s)
+    deactivate NService
+    NFService --> FF_Create : Send Notary Signature(s)
+    deactivate NFService
+    deactivate N_Node
+
+    FF_Create -> PB_Node : Distribute Finalised Tx
+    activate PB_Node
+    PB_Node -> PB_Node : Record Finalised Tx & State
+    deactivate PB_Node
+
+    FF_Create -> FF_Create : Record Finalised Tx (Initiator)
+    FF_Create --> IOU_Create_Flow : Return Finalised Tx
+    deactivate FF_Create
+    IOU_Create_Flow --> PA_Node : Flow Success
+    deactivate IOU_Create_Flow
+    PA_Node --> RPC_A : Flow Outcome (Success)
+    deactivate PA_Node
+end group
+
+note across
+... Time passes ...
+end note
+
+' == Phase 2: DoS Attack Attempt (Blocked by Hash Lock) ==
+group Attack Phase: Party A attempts DoS (Blocked)
+    activate PA_Node
+    RPC_A -> PA_Node : startFlow(MaliciousIOUConsumeFlow(iouStateRef))
+    PA_Node -> Malic_Consume_Flow : call()
+    activate Malic_Consume_Flow
+
+    Malic_Consume_Flow -> Malic_Consume_Flow : Get IOU StateRef (from previous tx)
+    Malic_Consume_Flow -> Malic_Consume_Flow : Build **Invalid** Transaction Builder\n(Consumes IOU, **LACKS `secret` pre-image**)
+    Malic_Consume_Flow -> Malic_Consume_Flow : Sign **only** with Party A key -> invalidSignedTxWithoutSecret
+    note right of Malic_Consume_Flow : Attacker does not know the `secret`.
+
+    Malic_Consume_Flow -> FF_Malic : subFlow(FinalityFlow(invalidSignedTxWithoutSecret, sessions=[]))
+    activate FF_Malic
+
+    FF_Malic -> N_Node : Send Notarisation Request (invalidSignedTxWithoutSecret)
+    activate N_Node
+    N_Node -> NFService : <<Create>> Handler
+    activate NFService
+    NFService -> NService : commitTransaction(invalidSignedTxWithoutSecret)
+    activate NService
+    NService -> NService : Retrieve Stored Hash Lock for Input StateRef
+    NService -> NService : **Verify Hash Lock Pre-image (`secret`) in Tx**
+    note right of NService : Checks if `H(secret_in_tx)` matches stored `hash`.
+    alt Pre-image Missing or Invalid
+        NService -> NService : **Generate Notary Error (Invalid Hash Lock)**
+        NService --> NFService : Return Error
+    else Pre-image Valid (Should not happen for attacker)
+        NService -> NService : Check for Conflicts (Double Spend)
+        ' ... normal notary logic ...
+    end
+    deactivate NService
+
+    NFService --> FF_Malic : Send Notary Error (Invalid Hash Lock)
+    deactivate NFService
+    deactivate N_Node
+
+    FF_Malic --> Malic_Consume_Flow : Propagate Notary Exception
+    deactivate FF_Malic
+    note left of Malic_Consume_Flow : **Attack Prevented!** Notary rejected the tx.\n The IOU state is **NOT** consumed.
+    Malic_Consume_Flow --> PA_Node : Flow Failure (NotaryException: Invalid Hash Lock)
+    deactivate Malic_Consume_Flow
+    PA_Node --> RPC_A : Flow Outcome (Exception)
+    deactivate PA_Node
+
+end group
+
+note across
+... Time passes ...
+end note
+
+' == Phase 3: Legitimate Spend Succeeds with Hash Lock ==
+group Consequence Phase: Legitimate spend uses pre-image (Succeeds)
+    activate PB_Node
+    RPC_B -> PB_Node : startFlow(LegitimateSpendFlow(iouStateRef, secret, ...))
+    PB_Node -> Legit_Spend_Flow : call(secret = secret)
+    activate Legit_Spend_Flow
+
+    Legit_Spend_Flow -> Legit_Spend_Flow : Build **Valid** Transaction Builder\n (Correct inputs, outputs, commands)\n (**INCLUDES `secret` pre-image**)
+    note right of Legit_Spend_Flow: The `secret` is added, perhaps in a Command.
+
+    Legit_Spend_Flow -> CSF_Legit : subFlow(CollectSignaturesFlow(...))
+    activate CSF_Legit
+    CSF_Legit -> PA_Node : Request Signature (Tx includes secret)
+    activate PA_Node
+    PA_Node -> PA_Node : Verify Tx (incl. secret), Sign
+    PA_Node --> CSF_Legit : Send Signature
+    deactivate PA_Node
+    CSF_Legit -> CSF_Legit : Assemble Fully Signed Valid Tx -> validSignedTxWithSecret
+    CSF_Legit --> Legit_Spend_Flow : Return validSignedTxWithSecret
+    deactivate CSF_Legit
+
+    Legit_Spend_Flow -> FF_Legit : subFlow(FinalityFlow(validSignedTxWithSecret, sessions=[PartyA]))
+    activate FF_Legit
+
+    FF_Legit -> N_Node : Send Notarisation Request (validSignedTxWithSecret)
+    activate N_Node
+    N_Node -> NFService : <<Create>> Handler
+    activate NFService
+
+    NFService -> NService : commitTransaction(validSignedTxWithSecret)
+    activate NService
+    NService -> NService : Retrieve Stored Hash Lock for Input StateRef
+    NService -> NService : **Verify Hash Lock Pre-image (`secret`) in Tx**
+    note right of NService : Checks if `H(secret_in_tx)` matches stored `hash`.
+    alt Pre-image Valid and Matches Stored Hash
+        NService -> NService : **Check for Conflicts (Double Spend)**
+        note right of NService : StateRef is NOT marked consumed (attack failed). Check passes.
+        NService -> NService : Mark Input IOU StateRef as Consumed
+        NService -> NService : Sign Transaction -> Notary Signature
+        NService --> NFService : Return Signature(s)
+    else Pre-image Missing or Invalid (Should not happen here)
+        NService -> NService : Generate Notary Error (Invalid Hash Lock)
+        NService --> NFService : Return Error
+    else Conflict Detected (Should not happen if first legit spend)
+         NService -> NService : Generate Notary Error (Conflict)
+         NService --> NFService : Return Error
+    end
+    deactivate NService
+
+    alt Notarisation Successful
+        NFService --> FF_Legit : Send Notary Signature(s)
+        deactivate NFService
+        deactivate N_Node
+
+        FF_Legit -> PA_Node : Distribute Finalised Tx
+        activate PA_Node
+        PA_Node -> PA_Node: Record Finalised Tx
+        deactivate PA_Node
+
+        FF_Legit -> FF_Legit : Record Finalised Tx (Initiator - PB)
+        FF_Legit --> Legit_Spend_Flow : Return Finalised Transaction
+        deactivate FF_Legit
+        note left of Legit_Spend_Flow : Legitimate spend successful!
+        Legit_Spend_Flow --> PB_Node : Flow Success
+        deactivate Legit_Spend_Flow
+        PB_Node --> RPC_B : Flow Outcome (Finalised Tx)
+        deactivate PB_Node
+    else Notarisation Failed (Error from Notary)
+         NFService --> FF_Legit : Send Notary Error
+         deactivate NFService
+         deactivate N_Node
+         FF_Legit --> Legit_Spend_Flow : Propagate NotaryException
+         deactivate FF_Legit
+         Legit_Spend_Flow --> PB_Node : Flow Failure (NotaryException)
+         deactivate Legit_Spend_Flow
+         PB_Node --> RPC_B : Flow Outcome (Exception)
+         deactivate PB_Node
+    end
+end group
+
+@enduml

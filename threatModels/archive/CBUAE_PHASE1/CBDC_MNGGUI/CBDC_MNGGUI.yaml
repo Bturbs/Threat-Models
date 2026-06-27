@@ -1,0 +1,383 @@
+parent: CBUAE_PHASE1
+ID: CBDC_MNGGUI
+schemaVersion: 2
+title: Central Bank Digital Currency Management GUI
+
+scope:
+  description: |
+    The application is an Single Page Javascript (SPA) that will be loaded from a static content provider
+     on a specified https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html
+    The application (AKA public client in OAuth terminology) will be implemented using authorization flow with PKCE. 
+
+    Example of SPA, PKCE auth with Keycloak and Spring Boot API checking JTWs: 
+    [REF1](https://frameworks.readthedocs.io/en/latest/spring-boot/spring-boot2/keycloakOAuth2PKCE.html)
+    [REF2](https://blog.ordina-jworks.io/security/2019/08/22/Securing-Web-Applications-With-Keycloak.html)
+
+    In case https://datatracker.ietf.org/doc/html/rfc7636 PKCE cannot be implemented or 
+    activated implicit flow could be used. In this case, another CSRF mechanism and 
+    a limit on how mani client can register on Keycloak would be necessary; 
+    it is also assumed that the login flows are over TLS.
+
+
+  assets:
+    # - REFID: DF5_CBCC_MNGGUI
+    # - REFID: DF6_ADMIN_MNGGUI
+    # - REFID: DF7_USER_MNGGUI
+
+  # attackers:
+  #   - REFID: ANONYMOUS
+  #     # title: Anonymous Internet User
+  #     # description: |
+  #     #   Anonymous internet user
+  #     # inScope: true
+
+  #   - REFID: CBCC_USER
+  #     # title: CB Control center User
+  #     # description: |
+  #     #   TODO description
+  #     #   **Main use cases:**
+  #     #   - todo
+  #     # inScope: true
+
+  #   - ID: CBCC_ADMIN
+  #     # title: CB Control center Admin User
+  #     # description: |
+  #     #   TODO description
+  #     #   **Main use cases:**
+
+  #     #     - TODO
+  #     # inScope: true
+    - ID: DF_MNGGUI_SSO
+      type: dataflow
+      title: Auth flows from GUI to Keycloak SSO server
+      description: |
+        OAuth Authorization code flow from the CBDC_MNGGUI to Keycloak. 
+      inScope: true
+
+
+analysis: |
+
+
+
+threats:
+  - ID: USER_SPOOFING
+    title: Spoofing GUI USER
+    assets:
+      - REFID: DF7_USER_MNGGUI
+    attackers:
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H
+    threatType: Spoofing
+    attack: |
+      An attacker can impersonate a GUI user
+    impactDesc: Attackers can control memberships, control issuance and 
+      redemption workflows and effectively control CBCC. It can view members' 
+      accounts and activities.
+    impactedSecObj:
+      - REFID: FULL_CIA
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: AUTHENTICATION_AUTHORISATION
+        title: User/password authentication
+        description: |
+          Strong authentication and authorization measures should be implemented.
+        operational: false
+        inPlace: true
+        public: true
+      - ID: MULTI_FACTOR_AUTH
+        title: Multi-factor authentication
+        description: |
+          Multi-factor authentication measures should be implemented.
+        operational: false
+        inPlace: false
+        public: true
+      - ID: CRITICAL_ACTIONS_REAUTHENTICATION
+        title: Request Re-authentications for critical actions
+        description: |
+          Critical actions such as issuance redemptions requests and approvals 
+           should require re-authentication for example asking for a second factor of authentication 
+           (one time code/password or similar)
+        operational: false
+        inPlace: false
+        public: true
+
+    # - Tampering -> TLS, XSS exploitation prevention by isolation of the client (browser/network) (operational)
+
+
+  - ID: GUI_XSS
+    title: XSS attacks on the user GUI
+    assets:
+      - REFID: DF7_USER_MNGGUI
+    attackers:
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:H/PR:L/UI:R/S:U/C:H/I:H/A:L
+    threatType: Tampering, Spoofing, DoS
+    attack: |
+      An attacker launches a cross site script attack against the USER GUI
+    impactDesc: XSS attacks allow attackers to view the victim user 's data, 
+      steal credentials and effectively impersonate the victim user.
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: CLIENT_ISOLATION
+        title: Network and client isolation
+        description: |
+          XSS/CSRF and other user agent vulnerabilities exploitation can be prevented by
+           isolating the browser and network used by user's user-agent (browser).
+        operational: true
+        inPlace: false
+        public: true
+      - ID: XSS_SEC_CODING
+        title: XSS secure coding
+        description: |
+          Secure coding/escaping and testing [REF](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html)
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: GUI_WAF
+        title: WAF web application firewall
+        description: |
+          Web application firewall with hot patching capabilities
+        operational: true
+        inPlace: false
+        public: true
+
+      # - ID: GUI_TLS
+      #   title: Secure connection.
+      #   description: |
+      #     Implement TLS to avoid data tampering and information disclosure and server spoofing
+      #   operational: true
+      #   inPlace: true
+      #   public: true
+
+# - Repudiation -> User action logging and Audiatability
+      # - ID: CRITICAL_ACTIONS_REAUTHENTICATION
+      #   description: CRITICAL_ACTIONS_REAUTHENTICATION
+      #   operational: false
+      #   inPlace: false
+      #   public: true
+  - ID: GUI_USER_REPUDIATION
+    title: User repudiates actions
+    assets:
+      - REFID: DF7_USER_MNGGUI
+    attackers:
+      - REFID: CBCC_USER
+
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N
+    threatType: Repudiation
+    attack: |
+      A user repudiates its actions
+    impactDesc: Prevents accountability for user's actions.
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: COMPLIANCE
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: GUI_USER_ACTION_LOGGING
+        title: User actions logging
+        description: |
+          For each action taken by the user the issuance and redemption layer 
+          will keep an auditable record of the action and the user who perfomed it.
+        operational: true
+        inPlace: true
+        public: true
+      - ID: GUI_AUDITING
+        title: Auditing.
+        description: |
+          Auditing measures should be able to detect a user or a component misbehaviour.
+        operational: true
+        inPlace: yes
+        public: true
+
+    # - Information Disclosure 
+    #   -> Countermeasure 1: Limit user access to the minimal required data
+    #   -> Countermeasure 2: Client (Browser) isolation (Reference)
+  - ID: GUI_CSRF
+    title: CSRF attacks on the user GUI
+    assets:
+      - REFID: DF7_USER_MNGGUI
+    attackers:
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:H/A:N
+    threatType: Spoofing, Tampering, Elevation of priviledges
+    attack: |
+      An attacker launches a session riding attack against the USER GUI
+    impactDesc: CSRF (a.k.a. session riding) attacks  allow attackers to forge 
+      critical requests like issuance and redemption and approvals.
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: ANTI_CSRF_FILTER
+        title: Anti CSRF filter on PAI endpoints
+        description: An anti CSRF filter allows to detect and prevent attempts 
+          of CSRF attacks. There are different ways to implement the checking 
+          filter. Modern frameworks provide ready to use options that need to be
+          activated both in on the API endpoints and on the client application 
+          (user-agent side) 
+          [REF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)
+        operational: false
+        inPlace: true
+        public: true
+      - REFID: CLIENT_ISOLATION
+
+
+
+
+  - ID: GUI_INFORMATION_DISCLOSURE
+    title: Information disclosure
+    assets:
+      - REFID: DF7_USER_MNGGUI
+    attackers:
+      - REFID: CBCC_USER
+      - REFID: ANONYMOUS
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N
+    threatType: Information disclosure
+
+    attack: |
+      A user accessing financial information of LFIs that should not be able to access. 
+      For example the user carries an IDOR attack.
+    impactDesc: Information disclosure.
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: USER_MINIMAL_ACCESS
+        title: Apply the need to know principal on accessible information
+        description: |
+          Users should be able to access only information necessary to carry their duties.
+        operational: false
+        inPlace: true
+        public: true
+      - REFID: CLIENT_ISOLATION
+
+    # - Denial of Service: Request Flooding: 
+    #   -> request rate limiting (operational/infrastructure)
+    #   -> System scalability (operational/infrastructure)
+    #   -> request size limiting (WAF, web application firewall)(operational/infrastructure)
+
+  - ID: DENIAL_OF_SERVICE
+    title: Denial of service via request flooding
+    assets:
+      - REFID: DF7_USER_MNGGUI
+      - REFID: CBCC
+
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L
+    threatType: Denial of service
+    attack: |
+      Denial of service via request flooding.
+    impactDesc: Availability of the system.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: LIMIT_REQUEST_RATE
+        title: Apply limits on request rate
+        description: |
+          Apply limit for requests rate per user.
+        operational: true
+        inPlace: false
+        public: true
+
+      - ID: SYSTEM_SCALABILITY
+        title: Scalable architecture and deployment
+        description: |
+          implement a scalable system architecture and deployment.
+        operational: true
+        inPlace: true
+        public: true
+
+      - ID: LIMIT_REQUEST_SIZE
+        title: Apply limits to the request size
+        description: |
+          Use WAF and web application firewall to limit requests size.
+        operational: true
+        inPlace: yes
+        public: true
+
+
+  - ID: CSRF_ON_REDIRECT
+    title: CSRF Attack against redirect-uri in Keycloack auth
+
+    impactDesc: |
+      The user accesses resources on behalf of the attacker. The
+      effective impact depends on the type of resource accessed. For
+      example, the user may upload private items to an attacker’s
+      resources. Or, when using OAuth in 3rd-party login scenarios, the
+      user may associate his client account with the attacker’s identity at
+      the external Identity Provider. In this way, the attacker could
+      easily access the victim’s data at the client by logging in from
+      another device with his credentials at the external Identity
+      Provider.
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: NON_REPUDIATION
+    assets:
+      - REFID: DF_MNGGUI_SSO
+    attackers:
+      - REFID: ANONYMOUS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N
+    threatType: Spoofing, Repudiation, Information Disclosure
+    attack: |
+      Cross-site request forgery (CSRF) is a web-based attack whereby HTTP
+      requests are transmitted from a user that the web site trusts or has
+      authenticated (e.g., via HTTP redirects or HTML forms). CSRF attacks
+      on OAuth approvals can allow an attacker to obtain authorization to
+      OAuth protected resources without the consent of the user.
+      This attack works against the redirect URI used in the authorization
+      "code" flow. An attacker could authorize an authorization "code" to
+      their own protected resources on an authorization server. He then
+      aborts the redirect flow back to the client on his device and tricks
+      the victim into executing the redirect back to the client. The
+      client receives the redirect, fetches the token(s) from the
+      authorization server, and associates the victim’s client session with
+      the resources accessible using the token.
+    pentestTestable: true
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: ANTI_CSRF_STATE_PARAM
+        title: Link the state Parameter to User Agent Session (anti CSRF)
+        description: The "state" parameter is used to link client requests and 
+          prevent CSRF attacks, for example, attacks against the redirect URI. 
+          An attacker could inject their own authorization "code" or access 
+          token, which can result in the client using an access token associated
+          with the attacker’s protected resources rather than the victim’s 
+          (e.g., save the victim’s bank account information to a protected 
+          resource controlled by the attacker). The client should utilize the 
+          "state" request parameter to send the authorization server a value 
+          that binds the request to the user agent’s authenticated state (e.g., 
+          a hash of the session cookie used to authenticate the user agent) when
+          making an authorization request. Once authorization has been obtained 
+          from the end user, the authorization server redirects the end-user’s 
+          user agent back to the client with the required binding value 
+          contained in the "state" parameter. The binding value enables the 
+          client to verify the validity of the request by matching the binding 
+          value to the user agent’s authenticated state.
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+        inPlace: true
+        public: true

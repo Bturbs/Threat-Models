@@ -1,0 +1,184 @@
+@startuml
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+
+title Why Two Signatures? — Off-Chain Payload (Broken) vs On-Chain Proposal (Standard)
+
+skinparam maxMessageSize 280
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+autonumber
+
+box "Environment A (Dirty / Untrusted)" #LightPink
+actor "Initiator" as Init
+participant "Squads Web UI\n(Compromisable)" as UI
+end box
+
+box "Out-of-Band" #White
+participant "Secure Channel\n(Slack / Signal)" as OOB
+end box
+
+box "Environment B (Secure / Clean)" #LightGreen
+actor "Approver 1" as Ap1
+actor "Approver 2" as Ap2
+actor "Approver 3" as Ap3
+participant "HW Wallet\n(Clear-Signing Device)" as HW
+end box
+
+box "Infrastructure" #LightBlue
+participant "Private RPC" as RPC
+database "Solana Mainnet\n(Squads V4)" as Squads
+end box
+
+== BROKEN: Off-Chain "Pass the TXID" Approach ==
+
+note over Init, Squads #Salmon
+  **Hypothesis:** Skip the on-chain proposal. Build the TX off-chain,
+  send a TXID/hash to the Approver, and let them sign just once.
+  **Result:** This breaks down for 4 fundamental reasons.
+end note
+
+Init -> UI: Build transaction payload off-chain
+note right of UI: TX stays off-chain.\nNo on-chain record exists yet.
+UI --> Init: Raw TX bytes + hash (TXID)
+
+Init -> OOB: "Check TXID: 7xF3...9aB2\nIntent: Safe Protocol Upgrade"
+OOB -> Ap1: Receives TXID hash + intent
+
+note over Ap1, HW #Salmon
+  **FAILURE 1 — The TXID Problem**
+  HW Wallet receives a hash (7xF3...9aB2).
+  It **cannot decode a hash into human-readable text**.
+  To display "Upgrade Program to <addr>", the HW needs
+  the **entire raw instruction byte array**, not a hash.
+
+  The hash is opaque — approver is blind-signing.
+end note
+
+Ap1 ->x HW: Pass TXID hash?\nHW screen: "Sign unknown data: 7xF3...9aB2"
+
+note over Init, OOB #Salmon
+  **FAILURE 2 — Transport Problem**
+  Since proposal doesn't exist on-chain, you must pass
+  the **full raw byte payload** (not an index) via OOB.
+  Complex Squads V4 instructions can be hundreds of bytes.
+
+  Options: massive QR code, Bluetooth, or copy-paste
+  a giant Base64 string into Slack.
+  **Terrible UX. Highly error-prone.**
+end note
+
+Init ->x OOB: Pass entire raw TX payload via Slack?\n"AQAAAAAAAAAAAAAAAAAAAAAAAABh\nFw8DAAAAAQAAAAMAAAA..."
+note right of OOB #Salmon: Hundreds of bytes.\nTransport errors likely.\nNot human-verifiable.
+
+note over Ap1, Ap3 #Salmon
+  **FAILURE 3 — Solana TX Size Limit (1232 bytes)**
+  Complex multisig actions (e.g., program upgrade with
+  7 signers) may exceed the 1232-byte transaction limit
+  if instructions + signatures are packed in one TX.
+
+  Squads V4 solves this by storing instructions in a PDA
+  on-chain first — which requires the Initiator to sign
+  CreateTransaction and pay ~0.002 SOL rent.
+end note
+
+note over Ap1, Ap3 #Salmon
+  **FAILURE 4 — Threshold Coordination (M-of-N)**
+  With 3-of-5 threshold and no on-chain proposal:
+  Ap1 signs raw payload → sends to Ap2 → Ap2 signs →
+  sends to Ap3 → Ap3 signs → broadcasts.
+
+  **Sequential relay of partially-signed payloads.**
+  Logistical nightmare. No async voting.
+  Each approver must trust the relay chain.
+end note
+
+Ap1 ->x Ap2: Forward partially-signed payload?
+Ap2 ->x Ap3: Forward again?
+note over Ap3 #Salmon: Cannot verify payload\nhasn't been swapped in transit.
+
+|||
+
+== STANDARD: On-Chain Proposal via Squads V4 (2-Signature Flow) ==
+
+note over Init, Squads #PaleGreen
+  **The blockchain is the secure data transport layer.**
+  Initiator's signature (Sign 1) is harmless — it only pins
+  a proposal to a PDA. No funds move, no programs upgrade.
+  Approvers independently fetch, verify, and sign (Sign 2).
+end note
+
+' --- Sign 1: Initiator proposes (harmless) ---
+Init -> UI: Draft protocol action
+note right of UI: Even if UI is compromised, the worst\noutcome is a **malicious proposal on-chain**.\nNo execution. No fund movement.\nCost: ~0.002 SOL rent.
+UI -> Squads: **Sign 1:** `Squads::CreateTransaction`\n(Initiator pays rent, proposal stored in PDA)
+Squads --> UI: Proposal #45 created\n(Instructions stored on-chain)
+
+' --- OOB hand-off: just a simple number ---
+Init -> OOB: "Check Proposal **#45**.\nIntent: Safe Protocol Upgrade"
+note over OOB: Just a small integer.\nNo raw bytes. No Base64.\nHuman-readable and verifiable.
+
+' --- Approver 1: independent verify + sign ---
+OOB -> Ap1: Receives intent + Index #45
+Ap1 -> HW: Input Index #45
+HW -> RPC: Fetch Proposal PDA account data for Index #45
+RPC --> HW: Raw serialised instruction bytes
+note over HW
+  **Firmware-Level Decode (Clear Signing)**
+  Secure Element deserialises Squads V4 instructions.
+  Trusted screen displays human-readable intent.
+end note
+HW -> Ap1: Screen: "Target: <program_id>"\n"Action: Upgrade Program"\n"Buffer: <verified_hash>"
+Ap1 -> HW: Confirms intent matches OOB → **Sign 2**
+HW --> RPC: Broadcast `ApproveTransaction`
+RPC -> Squads: Approval recorded (1/3)
+
+' --- Approver 2: fully independent, async ---
+OOB -> Ap2: Same message: "Check Proposal #45"
+note over Ap2: **Async & Independent.**\nNo relay from Ap1 needed.\nAp2 fetches the same PDA\ndirectly from blockchain.
+Ap2 -> HW: Input Index #45
+HW -> RPC: Fetch same Proposal PDA
+RPC --> HW: Same raw bytes
+HW -> Ap2: Same decoded intent on screen
+Ap2 -> HW: Confirms → **Sign 2**
+HW --> RPC: Broadcast `ApproveTransaction`
+RPC -> Squads: Approval recorded (2/3)
+
+' --- Approver 3: threshold reached ---
+OOB -> Ap3: Same message: "Check Proposal #45"
+Ap3 -> HW: Input Index #45
+HW -> RPC: Fetch same Proposal PDA
+RPC --> HW: Same raw bytes
+HW -> Ap3: Same decoded intent on screen
+Ap3 -> HW: Confirms → **Sign 2**
+HW --> RPC: Broadcast `ApproveTransaction`
+RPC -> Squads: Approval recorded (3/3)\n**Threshold reached!**
+
+note over Squads
+  Squads V4 marks proposal as Approved.
+  Timelock begins (e.g., 72h for Tier 1).
+  Watchtowers monitor for revocation window.
+end note
+
+== Why the 2-Signature Flow Wins ==
+
+note over Init, Squads
+  **Sign 1 (Initiator → CreateTransaction):**
+  • Harmless: only pins a draft to the blockchain
+  • No execution authority — just paying ~0.002 SOL rent
+  • Enables the blockchain to act as **secure data transport**
+
+  **Sign 2 (Each Approver → ApproveTransaction):**
+  • Each approver independently queries the same PDA
+  • HW Wallet fetches raw bytes via RPC using a simple index
+  • Firmware decodes to human-readable intent (Clear Signing)
+  • No relay chain between approvers — fully async
+
+  **What the on-chain proposal gives you:**
+  1. **Decodeability:** HW fetches full bytes from PDA, not a hash
+  2. **Clean transport:** OOB carries "Index #45", not raw bytecode
+  3. **Size limit solved:** Instructions stored in PDA, not packed in TX
+  4. **Async M-of-N:** Each approver votes independently via blockchain
+  5. **Auditability:** Proposal + all votes permanently on-chain
+end note
+
+@enduml

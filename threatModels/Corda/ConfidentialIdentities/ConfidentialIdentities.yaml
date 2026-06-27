@@ -1,0 +1,302 @@
+ID: ConfidentialIdentities
+schemaVersion: 2
+parent: Corda
+title: Confidential Identities
+
+scope:
+  description: |
+    [REF](https://github.com/corda/confidential-identities/blob/master/README.md)
+  securityObjectives:
+    - ID: BACKCHAIN_PRIVACY
+      description: |
+        Ensure that the backchain does not disclose identities,
+         allowing for privacy in transaction history.
+      contributesTo:
+        - REFID: DATA_CONFIDENTIALITY
+      group: Privacy & Confidentiality
+    - ID: BACKCHAIN_AUDITABILITY
+      description: |
+        Maintain the ability to audit transactions while preserving the confidentiality of identities.
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: Compliance & Audit
+  assets:
+  assumptions:
+    - ID: P2P_AUTHENTICATION
+      description: |
+        Corda P2P authentication is used to ensure that nodes can verify the identities of their peers.
+
+analysis: |2
+
+  <img src="img/ConfIDSeq4.svg"/>
+
+  **Detailed flow of the Confidential Identities protocol:**
+
+  <img src="img/ci-flow-security-protocol.png"/>
+
+  The Confidential Identities protocol allows parties to transact without revealing their real identities into the backchain.
+  It achieves this by using confidential keys for each transaction and selectively syncing identity mappings.
+
+  Every Node participanting in the trasaction known the other parties real identity. 
+
+  By Leveraging Confidential Identities, the protocol ensures that other parties can validate
+   the origin and legitimacy of the token they're receiving without learning the real identity of 
+   previous owners in the backchain with the exception of the issuer of the token itself.
+
+
+
+
+# https://github.com/corda/confidential-identities/blob/master/README.md
+
+# ✅ Functional goal: Let Charlie validate the origin and legitimacy of the token he's receiving without learning Alice’s real identity.
+
+# ✅ Privacy guarantee: Each transaction uses a fresh confidential key, and identity mappings are selectively synced—so Charlie sees enough to trust the asset but not enough to trace Alice personally.
+
+# ✅ Security and auditability: The backchain remains verifiable through state references and mappings, and audit nodes (or selectively included parties) can resolve identities if needed.
+
+threats:
+  - ID: CONFIDENTIAL_IDENTITY_DISCLOSURE_FLOW
+    title: Confidential Identity Disclosure in SyncKeyMappingFlow
+    attack: |
+      The SyncKeyMappingFlow may reveal confidential identities from other parties involved in a transaction to the counterparty. 
+      If the counterparty requests resolution for these identities, and the node can resolve them, the well-known identities will be disclosed.
+    threatType: Information Disclosure
+    impactDesc: |
+      Compromises the privacy of transaction participants by exposing confidential identities to unintended parties, potentially leading to misuse of sensitive information.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N'
+    fullyMitigated: true
+    countermeasures:
+      - ID: FILTERED_IDENTITY_LIST
+        title: Use Filtered Identity List
+        description: |
+          Provide a filtered list of confidential identities to the flow,
+           ensuring only the necessary identities are shared with the counterparty.
+        inPlace: false
+        public: true
+      # - ID: IDENTITY_RESOLUTION_AUDIT
+      #   title: Audit Identity Resolution Requests
+      #   description: |
+      #     Implement logging and auditing of identity resolution requests to detect and investigate any misuse or unauthorized access attempts.
+      #   inPlace: true
+      #   public: true
+      - ID: CRYPTOGRAPHIC_PROOF_VALIDATION
+        title: Enforce Cryptographic Proof Validation
+        description: |
+          Ensure that all key-to-party mappings are verified using cryptographic signatures before accepting them, preventing unauthorized mappings.
+        inPlace: true
+        public: true
+      # - ID: TRANSACTION_PARTICIPANT_FILTERING
+      #   title: Restrict Identity Sharing to Transaction Participants
+      #   description: |
+      #     Modify the flow to restrict identity sharing to only those parties directly involved in the transaction, excluding unrelated parties.
+      #   inPlace: false
+      #   public: true
+
+
+  - ID: MALICIOUS_NODE_DISCLOSURE
+    title: Malicious Node Disclosure of Confidential Identity
+    attack: |
+      A malicious node may reveal confidential identities to unauthorized parties under duress, hacking, or legal enforcement. 
+      This could include sharing identity mappings or cryptographic proofs that link confidential identities to well-known parties.
+    threatType: Information Disclosure
+    impactDesc: |
+      Exposes sensitive identity information, compromising the privacy of transaction participants and potentially leading to misuse or legal repercussions.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: ENCRYPTED_IDENTITY_STORAGE
+        title: Encrypted Identity Storage
+        description: |
+          Store identity mappings in an encrypted format to ensure they cannot be accessed 
+          or disclosed without proper authorization.
+        inPlace: false
+        public: true
+      # - ID: ZERO_KNOWLEDGE_IDENTITY_PROOFS
+      #   title: Zero-Knowledge Identity Proofs
+      #   description: |
+      #     Use zero-knowledge proofs to validate identities without revealing the actual mappings, ensuring privacy even if the node is compromised.
+      #   inPlace: false
+      #   public: true
+      - ID: LEGAL_PROTECTION_MECHANISMS
+        title: Legal Protection Mechanisms
+        description: |
+          Implement legal agreements and technical safeguards to prevent nodes from disclosing confidential identities under external pressure.
+        inPlace: false
+        public: true
+      - ID: NODE_AUDIT_LOGGING
+        title: Node Audit Logging
+        description: |
+          Maintain tamper-proof audit logs of all identity resolution requests and disclosures to detect and investigate unauthorized access.
+        inPlace: true
+        public: true
+
+      - ID: DELETE_OLD_IDENTITY_MAPPINGS
+        title: Delete Old Identity Mappings
+        description: |
+          Regularly delete old or un-useful identity mappings to minimize the risk of
+           exposure from compromised nodes.
+        inPlace: false
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+
+  - ID: CONFID_BACKCHAIN_DISCLOSURE
+    title: Backchain Disclosure
+    attack: |
+      The backchain flows and validation may disclose confidential identities by 
+      providing previous state owner's signatures with thir public idenity keys.
+
+    threatType: Information Disclosure
+    impactDesc: |
+      Compromises the privacy of transaction participants by exposing confidential identities through the backchain, potentially leading to misuse of sensitive information.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N'
+    fullyMitigated: true
+    countermeasures:
+
+      - ID: CONFIDENTIAL_IDENTITY_SINCE_ISSUANCE
+        title: Confidential Identity Since Token Issuance
+        description: |
+          The issuer of the token itself send the newly created token to a confidential identity.
+          Without this option the first receiver of the token cannot anonymize his transaction afterwards as the backchain needed for spending (coutnerparty validation)
+          will always contain his identity in the orm of signature verifiable with his public key (idenity).
+        inPlace: true
+        public: true
+        operational: true
+        operator: CORDAPP_DEVELOPER
+
+      - ID: REISSUANCE_FLOW
+        title: Reissuance Flow
+        description: |
+          Implement a reissuance flow (atomic burn/issue of a fungible state) 
+          that allows the token to be reissued with a new confidential identity, 
+          ensuring that the backchain does not reveal the original identity.
+        inPlace: true
+        public: true
+        operational: true
+        operator: CORDAPP_DEVELOPER
+
+  - ID: P2P_IDENTITY_DISCLOSURE
+    title: P2P Identity Disclosure
+    attack: |
+      A peer-to-peer transaction discloses the identity to the all direct counterparties
+    threatType: Information Disclosure
+    impactDesc: |
+      Every party involved in a transaction will learn the identity of the other parties
+       involved in the transaction by inspecting the P2P protocol and associating it with identities.
+       This is also true for Notaries.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: P2P_IDENTITY_ANONYMIZATION
+        title: P2P Identity Anonymization
+        description: |
+          Implement techniques to anonymize identities in peer-to-peer transactions, ensuring that only the necessary information is shared with counterparties.
+        inPlace: false
+        public: true
+
+  - ID: CI_MITM_ATTACK
+    title: Confidential Identity man in the middle attack
+    attack: |
+      A an attaker with access to network infrastructure (sniffing and tampering requests) 
+      may intercept the confidential identity mapping requests and responses,
+      potentially altering the mappings or injecting false identities.
+      The attacker with MITM access can trigger the sender to send tokens to his fake identity and
+       not to the wanted one.
+      Note: A signatire challenge(s) is not enought to prevent MITM attacks.
+      TODO: add https://ibb.co/bN1ndpj to analysis
+    threatType: Spoofing, Tampering
+    impactDesc: |
+      Compromises the integrity of identity mappings, 
+      allowing an attacker to impersonate parties or alter transaction details, 
+      leading to unauthorized access or fraudulent activities.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: NODE_AUTHENTICATION
+    CVSS:
+      vector: 'CVSS:3.1/AV:A/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N'
+    fullyMitigated: true
+    countermeasures:
+      - ID: CI_CRYPTOGRAPHIC_PROOF_VALIDATION
+        title: Enforce Cryptographic Proof Validation
+        description: |
+          Ensure that all key-to-party mappings are verified using cryptographic signatures by the known public identities
+           before accepting them, preventing unauthorized mappings. 
+          For Example and x500 certificate can be used to sign the confidential identity 
+          (NOTE: previous design storing certificates for confidential identities may have prevented this issue).
+        inPlace: false
+        public: true
+      - ID: KEY_EXCHANGE_PROTOCOL
+        title: Use Secure Key Exchange Protocols
+        description: |
+          Implement secure key exchange protocols (e.g., Diffie-Hellman) to establish secure mappings between confidential identities and well-known identities.
+        inPlace: false
+        public: true
+      - ID: P2P_SECURE_CHANNELS
+        title: Use Secure Communication Channels
+        description: |
+          Implement secure communication channels (Corda P2P at workflow level with identity verification) 
+          to protect identity mapping requests and responses from interception and tampering.
+        inPlace: true
+        public: true
+
+  - ID: TRANSACTION_REPUDIATION_VIA_CI
+    title: Transaction Repudiation via Confidential Identity
+    attack: |
+      A party can repudiate a transaction by denying the ownership of a confidential identity,
+      thus denying their involvement in the transaction completely.
+      For example there's no way (cryptographic proof) to verify a known sender sent a token to a
+      known receiver (if the receiver denies it afterwards). 
+      In a more complex smart contract than a simple token transfer, even in a DVP (delivery versus payment) or escrow scenario,
+      a party can claim that they did not receive the token or did not send it by altering a later Flow implementation.
+      This is because the confidential identity is not linked to a well-known identity (identity public key).
+      In the current design signing challenges value is not enough to prevent repudiation.
+
+      NOTE: the assumption that the P2P tls channel is secure and the identity of the sender is verified
+      is not enough to prevent repudiation as it does not create a durable cryptographic proof.
+      This attack may be also used in more complex smart contracts where logic where a party can claim a penality 
+      after a certain time. Previous implemetation of confidential identities seems to have been using signed X500 certificates
+      to prevent this attack.
+    threatType: Non-repudiation
+    impactDesc: |
+      Undermines the integrity of the transaction process,
+       allowing parties to deny their actions and evade accountability.
+    impactedSecObj:
+      - REFID: NON_REPUDIATION
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:H/A:L'
+    fullyMitigated: false
+    countermeasures:
+
+      - REFID: CI_CRYPTOGRAPHIC_PROOF_VALIDATION
+
+      - ID: REPUDIATION_COMPATIBLE_LOGIC
+        title: Repudiation-Compatible Logic
+        description: |
+          When using confidential identities, design smart contracts (CorDapps) and transaction logic to include only
+           mechanisms that are not affected by repudiation threats.
+        inPlace: true
+        public: true
+        operational: true
+        operator: CORDAPP_DEVELOPER

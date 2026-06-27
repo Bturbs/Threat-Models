@@ -1,0 +1,914 @@
+ID: CBUAE_PHASE2
+schemaVersion: 2
+title: CBUAE Phase 2
+version: 2025.rev3
+children:
+
+  - REFID: Network_Topology
+  - REFID: IAM
+  - REFID: DC_Core_Services
+  - REFID: Wallet_Service
+  - REFID: Wallet_Back_Office_Portal
+  - REFID: CBDC_Mobile_Application
+  - REFID: DLT
+  - REFID: Contracts
+  - REFID: WorkflowsSDK
+  - REFID: Delivery_Pipeline
+  - REFID: Ledger_PKI
+  - REFID: UAE_PASS_Integration
+  - REFID: Secrets_management
+  - REFID: Signing_Service
+  - REFID: Flexcube_Connector
+  - REFID: MBridge_Connector
+authors: |
+  Security Research team at *R3*
+
+  - David Cervigni
+  - James Brown
+
+history: |
+
+scope:
+  securityObjectives:
+    - ID: FULL_CIA
+      title: Confidentiality, integrity, and availability of the CBDC network.
+      description: |
+        Ability to maintain fundamental confidentiality,
+        integrity, and availability of the CBDC or of a specific cluster.
+      group: General security Objectives
+      treeImage: false
+    - ID: INTEGRITY
+      title: Data integrity
+      description: |
+        Ability to maintain fundamental integrity of the CBDC network or of a specific cluster data 
+      contributesTo:
+        - REFID: FULL_CIA
+      group: General security Objectives
+      treeImage: false
+
+    - ID: CONFIDENTIALITY
+      title: Data confidentiality
+      description: |
+        Ability to maintain fundamental confidentiality of the CBDC network or of a specific cluster of data.
+      contributesTo:
+        - REFID: FULL_CIA
+      treeImage: false
+      group: General security Objectives
+
+    - ID: AVAILABILITY
+      title: System availability
+      description: |
+        The ability to maintain fundamental availability of the CBDC network or of a specific cluster of data.
+      contributesTo:
+        - REFID: FULL_CIA
+      group: General security Objectives
+      treeImage: false
+    - ID: COMPLIANCE
+      title: Compliance
+      description: |
+        Ability to obtain and maintain maintain compliance with required regulations
+      # failureImpact: Non compliance, legal repercussions, business monetary
+      #    loss, non adequacy for regulated markets 
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: General security Objectives
+
+
+    - ID: TRUSTLESS_CONTRACTS_EXECUTION
+      title: Trustless execution of contracts
+      description: |
+        Contract rules cannot be circumvented by any system personae.
+        This objective gives assurance that a predetermined logical outcome (known as a contract) will be included in the transaction 
+        outcome when all parties accept—typically by signing—the transaction, without needing to rely on 
+        the goodwill or capability of any other party (referred to as *trustless* or operating without 
+        counterparty risk). The transaction may fail if another party does not agree (agreement 
+        is binding and non-repudiable, such as signing with a private key).
+        The system also ensures that the transaction and contract logic either completes 
+        entirely or does not execute at all, maintaining *atomicity*.
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: Business specific
+
+
+    - ID: NON_REPUDIATION
+      title: Non-repudiation of CBDCs events
+      description: |
+        CBDC issuance and redemption workflows events cannot be repudiated. 
+      contributesTo:
+        - REFID: COMPLIANCE
+      group: Business specific
+
+    # - ID: LOWER_COST_OF_MINTING
+    #   title: Lower cost of minting
+    #   description: |
+    #     It costs central banks to print and manage cash. 
+    #     ”India spends approximately $600 million to print cash alone and even more to manage it.
+    #      And 14% of India’s $3.18 trillion GDP is cash in circulation. India is exploring whether it 
+    #      can lower this component”. “Michael Saunders, who was on the Monetary Policy Committee for Bank
+    #       of England between 2016 and 2022, said the £126 billion ($161 billion) “lifetime cost” to the taxpayer
+    #        of central bank money printing”. CBDC not only reduces the cost but is immune to soiling or physical defects.
+    #         CBDC is  more secure and less susceptible to counterfeiting than actual 
+    #     banknotes and coins as they are issued and administered by central banks. 
+    #     [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+    #   # contributesTo:
+    #   #   - REFID: INTEGRITY
+    #   #   - REFID: COMPLIANCE
+    #   group: Business specific
+
+    - ID: CB_EFFECTIVE_MONETARY_POLICIES
+      title: Exclusive CB control of monetary base and policies
+      description: |
+        Central banks are better able to control the money supply, allowing them to pass more effective monetary 
+        policies as they are able to manage M0 (cash in circulation and reserves) and M1 (M0 plus deposits and other liquid assets) 
+        more effectively through issue, burn, redemption, and various
+         methods of programmability.
+        [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+      # contributesTo:
+      #   - REFID: INTEGRITY
+      #   - REFID: COMPLIANCE
+      group: Business specific
+
+    - ID: 24_7_CDBC_AVAILABILITY
+      title: 24/7 CBDC Availability
+      description: |
+        CBDC can make transactions faster and more efficient as they can be settled in real-time or near real-time 24/7.
+         Current money transfers rely on a T+2 settlement window, increasing costs and risks, and such transfers can be 
+         unavailable over weekends or national holidays as banks and RTGS systems do not open during this period.
+          Improved settlement times increase liquidity for players in the ecosystem as well as reducing reconciliation time which
+         is a major pain point for businesses.
+        [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+      # contributesTo:
+      #   - REFID: INTEGRITY
+      #   - REFID: COMPLIANCE
+      group: Business specific
+
+    # - ID: CHEAPER_GLOBAL_TRANSFERS
+    #   title: Cheaper Global Transfers
+    #   description: |
+    #     At times global transactions can get very expensive. Individuals are charged high fees to move funds from 
+    #     one nation to another, especially when it includes currency conversions and several intermediaries e.g automated 
+    #     clearing houses which take a cut pushing high fees to the payee and lengthy settlement times. Corresponding 
+    #     banking model is tightening an fewer banks are now in this space due to high cost and risk. CBDC could interrupt
+    #      this market by making the transaction cost-effective and quick serving nations with high demand for remittances
+    #     [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+    #   # contributesTo:
+    #   #   - REFID: INTEGRITY
+    #   #   - REFID: COMPLIANCE
+    #   group: Business specific
+
+
+    # - ID: REDUCTION_OF_INTERMEDIARIES 
+    #   title: Reduction of Intermediaries 
+    #   description: |
+    #     The current retail payment infrastructure is reliable but slow. 
+    #     It also incorporates multiple intermediaries from  all channels. 
+    #     All of whom take a percentage of the transaction cost that is incurred by the merchant 
+    #     (and generally passed onto the consumer). In addition, many earn additional profits through FX charges during 
+    #     the long settlement window. Card fees by the card schemes increase twice annually. Central banks are looking for
+    #      ways to reducing the number of intermediaries in the payment chain and the burden of this cost to their nation 
+    #      to drive prices lower and improve trade. Many central banks are in discussions regarding how to remove card 
+    #      schemes and acquirers in some cases which can have a positive transformative impact to an economy. 
+    #     [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+
+    #   # contributesTo:
+    #   #   - REFID: INTEGRITY
+    #   #   - REFID: COMPLIANCE
+    #   group: Business specific
+
+
+    - ID: FINANCIAL_TRANSACTION_TRANSPARENCY
+      title: Financial Transaction Transparency
+      description: |
+        CBDCs can improve financial transaction transparency by keeping a clear, immutable record of all 
+        transactions, making it easier to trace and combat financial crime.
+        [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+      # contributesTo:
+      #   - REFID: INTEGRITY
+      #   - REFID: COMPLIANCE
+      group: Business specific
+
+    # - ID: GOVERNMENT_OVERSIGHT_ON_PAYMENTS
+    #   title: Government Oversight on Payments
+    #   description: |
+    #     Government payments can be managed and controlled. Governments could send payments like child benefits, 
+    #     food stamps, and other subsidies including tax refunds to people instantly, rather than trying to figure out 
+    #     prepaid debit cards or mail them a check. Programmability can further enable how these subsidies are used e.g. 
+    #     food subsidy can only be used for food, expiry dates mean governments have been control over benefits system. 
+    #     [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+    #   # contributesTo:
+    #   #   - REFID: INTEGRITY
+    #   #   - REFID: COMPLIANCE
+    #   group: Business specific
+
+    # - ID: UNBANKED_ACCESS
+    #   title: Unbanked Access
+    #   description: |
+    #     Central banks are required to ensure all citizens have access to money.
+    #      The FDIC estimated that 7.1 million or 5.4% of US households were unbanked” verses 
+    #      “Twelve per cent of the adult population in the UAE are unbanked, 28% in Saudi Arabia and 34% in Qatar.
+    #       Central banks are obligated to promote financial inclusions by allowing people to conduct digital transactions
+    #        without to apply for a bank account. The direct model (see Section : How) can provide a method by which central
+    #         banks are able to supply CBDC’s directly to this population however,
+    #      it has a large impact on the central bank itself.
+    #     [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4914643124/R3+CBDC+Reference+Solution)
+    #   # contributesTo:
+    #   #   - REFID: INTEGRITY
+    #   #   - REFID: COMPLIANCE
+    #   group: Business specific
+
+
+    - ID: CRYPTO_AGILITY
+      title: Crypto agility
+      description: |
+        The ability of a cryptographic system to adjust to new cryptographic methods or key lengths.
+        [REF](https://www.bis.org/publ/othp64.pdf)
+      contributesTo:
+        - REFID: INTEGRITY
+        - REFID: CONFIDENTIALITY
+        - REFID: COMPLIANCE
+      group: Business specific
+
+    - ID: COMPROMISED_KEY_RECOVERY
+      title: Recover from a compromised/stolen key
+      description: |
+        There must be the possibility to, and methods for, recovering functionality and minimizing the 
+        impact of a private key being lost or stolen by an attacker. Keys include timestamper. 
+        [REF: malicious party is using the compromised private key to sign the transaction](https://github.com/corda/r3-engineering/blob/christians/R3SOL-266-Identities/architecture-and-design/certificate-authority/HLD/v1/README.md)
+
+      contributesTo:
+        - REFID: CRYPTO_AGILITY
+      group: Business specific
+      inScope: false
+
+
+
+    # - ID: LOST_LEDGER_KEY_RECOVERY
+    #   title: Lost key recovery
+    #   description: |
+    #     Possibility and methods to recover functionality and minimise the 
+    #     impact from a private key that has been lost.
+    #   contributesTo:
+    #     - REFID: CRYPTO_AGILITY
+    #   group: Business specific
+
+    - ID: LEDGER_TX_FINALITY
+      title: Transaction finality
+      description: |
+        With *transaction finality*, transactions are considered irreversible and cannot be altered or removed.
+        Network participant are able to deterministically verify ownership and accept tokens in any moment in the future. 
+        <h5>Forward ledger validation</h5>
+        Forward ledger validation is defined as the ability to deterministically confirm the validity of a ledger or of any of the
+         transactions at any point in the future, independently of other parties like: CAs, 
+         Notaries, Ledger network administrative parties, other network participant/counterparties etc.
+        To achieve this security objective of Finality and "Forward ledger validation" the PKI based Ledger should record:
+
+        - All the transaction that needs to be validated, including the related backchain transactions
+        - All the Certificates and related CRL used to validate every transaction
+          - It is likely that the number of CAs certificates and CRLs are going to be orders of magnitude inferior to the number transactions itself. 
+
+        Other Ledgers systems may not achieve this or have a pseudo ability to do it are for example:
+
+        - In Bitcoin: to validate a Bitcoin ledger in a point in the future you should check (with a gossip protocol) if
+         there is another chain of blocks that cumulatively has more Proof Of Work than the one stored and being validated.
+          For this reason to confirm a TX in Bitcoin it is recommended to wait that is extremely unlikely that there will be 
+          another such chain by waiting for every TX to be mined and confirmed in 3 to 6 blocks (it happens sometime that there's a
+           legit chain with more POW in 1 or 2 blocks after the first valid block and is called chain reorg). The residual risk impacting the
+            "Forward Ledger validation" in Bitcoin is also called Bitcoin 51% percent attack.
+
+        - In Corda 5 networks: the ledger validation can be done in the future by having a CPIs package that incorporates a signed groupPolicy.json 
+        file that has both data (e.g. participants public keys) and methods (contract code) to validate a ledger. 
+
+        To note that the concept of CACHE for CRL and certificate/public keys is not achieving this as the cache implies that is used only to
+         optimize an online access to a source of truth and can be evicted/deleted.
+
+
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: Business specific
+
+    - ID: FORWARD_LEDGER_VALIDATION
+      title: Forward ledger validation
+      description: |
+        The ability to deterministically confirm the validity of a ledger or of any of the transactions at any point in the future, 
+        independently of other parties. Without this feature, a token coin owner depends indefinitely 
+        on other parties to be able to spend its own tokens, as there are third parties that may be still needed to assess in a 
+        point in time in the future the validity of a past transaction, even after being initially confirmed.
+
+        These parties include:  
+
+        - Certificate authorities (PKIs) 
+        - Notaries 
+        - Ledger network administrative parties 
+        - Other network participant/counterparties 
+
+        To achieve this security objective , the PKI-based Ledger should record: 
+
+        - All transactions that need to be validated, including the related backchain transactions 
+
+        - All certificates and related certificate revocation lists (CRLs) used to validate every transaction 
+
+        It is likely that the number of certificate authorities (CAs), certificates and CRLs are negligible compared to the number of transactions. 
+
+        Other ledgers may not achieve this objective or have a pseudo-ability to achieve it.
+
+        For example: 
+
+        - **Bitcoin**: To validate a Bitcoin ledger in a point in the future, it must first be checked (with a gossip protocol) if there is another chain of blocks that cumulatively has more *proof of work* than the one stored and being validated. For this reason, to confirm a transaction in Bitcoin, it is recommended to wait until it is extremely unlikely that there will be another such chain, by waiting for every transaction to be mined and confirmed in 3 to 6 blocks. Sometimes, there is a legitimate chain with more POW in 1 or 2 blocks after the first valid block; this is called *chain reorg*. The residual risk impacting forward ledger validation in Bitcoin is also called the Bitcoin 51% percent attack. 
+
+        - **Corda 5 networks**: The ledger validation can be done in future by having a CPI package that incorporates a signed groupPolicy.json file that has both data (for example, participants’ public keys) and methods (contract code) to validate a ledger. 
+
+        Note that the concept of a cache for CRL and certificate/public keys does not achieve this, as the cache implies that it is used only to optimize online access to a source of truth and can be evicted/deleted. 
+
+      contributesTo:
+        - REFID: LEDGER_TX_FINALITY
+      group: Business specific
+
+
+    - ID: POST_QUANTUM_CRYPTO
+      title: Post-quantum crypto support
+      description: |
+        Support for quantum-resistant cryptographic schemas (unlike RSA or even ECDSA) for
+         PKI ledger-identities certificates of public keys. 
+         [REF: Flexible Signature Support For Post Quantum Cryptography](https://github.com/corda/r3-engineering/blob/5b1f088c2fa127f512d6007482633a0fb40b5faf/ADR/decisions/0049-flexible-signature-support.md)
+      contributesTo:
+        - REFID: CRYPTO_AGILITY
+      group: Business specific
+
+
+    - ID: PAYEE_CONSENT
+      title: Payee consent
+      description: |
+        A payee must be able to explicitly accept or reject a payment.
+        [REF](https://www.bis.org/publ/othp82.pdf)
+      # contributesTo:
+      #   - REFID: NON_REPUDIATION
+      group: Business specific
+
+    - ID: INSTANT_SETTLEMENT
+      title: Instant settlement
+      description: |
+        Instant or near-instant final settlement should be available to end users of the system.
+        [REF](https://www.bis.org/publ/othp33.pdf)
+        This should apply to chains of transactions. For example, A pays B, who in turn pays C, and so on. This may create a
+         lower duration boundary that is not compatible with the notion of near-instant final settlement.
+
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: Business specific
+
+    # - ID: CYBER_RESILIENCE
+    #   title: Cyber resilience
+    #   description: |
+    #     100% available, granting flexibility to adapt to variations in the availability of the supporting infrastructure
+    #      (eg allowing transactions to be processed once the infrastructure is back online)" 
+    #     [REF](https://www.bis.org/publ/othp82.pdf)
+    #   contributesTo:
+    #     - REFID: AVAILABILITY
+    #   group: Business specific
+
+    # - ID: CYBER_RESILIENCE
+    #   title: Cyber security standards compliance
+    #   description: |
+    #     Highest compliance with cyber security standards 
+    #     (eg those of the National Institute of Standards and Technology/NIST)
+    #     [REF](https://www.bis.org/publ/othp82.pdf)
+    #   contributesTo:
+    #     - REFID: COMPLIANCE
+    #     - REFID: FULL_CIA
+    #   group: Business specific
+
+
+    # - ID: PARTIAL_SECRECY_ENCRYPTION
+    #   title: Partial secrecy encryption
+    #   description: |
+    #     "Allows for separate message fields to keep relevant information encrypted only for those who need to see it"
+    #     and
+    #     "Distinct levels of data confidentiality. Space for additional data uses, subject to users’
+    #      authorisation or sufficient application of privacy preserving techniques."
+    #     [REF](https://www.bis.org/publ/othp82.pdf)
+    #   contributesTo:
+    #     - REFID: COMPLIANCE
+    #     - REFID: FULL_CIA
+    #   group: Business specific
+    #   inScope: false
+
+    - ID: AVOID_EXCESSIVE_DATA_EXPOSURE
+      title: Avoid excessive data exposure
+      description: |
+        Avoid data exposure that is not necessary to a lawful transaction fulfillment. 
+        [REF](https://www.edps.europa.eu/system/files/2023-03/23-03-29_techdispatch_cbdc_en.pdf)
+        "The resulting interference of the adoption and use of CBDC on people’s
+         private life might not fulfil the requirements of necessity and proportionality"
+         "Allows for separate message fields to keep relevant information encrypted only for those who need to see it"
+        [REF](https://www.bis.org/publ/othp82.pdf)
+        The requirement includes these specific objectives:
+        PII protection: "Separates personal information from transactional information in databases" ... for example with a code reference
+        [REF](https://www.bis.org/publ/othp82.pdf), 
+        transaction history confidentiality, transaction history protection, and confidentiality from unlawful and non essential uses. 
+
+      contributesTo:
+        - REFID: COMPLIANCE
+        - REFID: CONFIDENTIALITY
+      group: Business specific
+      inScope: true
+
+    # - ID: PARTIAL_TXDATA_ENCRYPTION
+    #   title: Partial data protection and encryption
+    #   description: |
+      # contributesTo:
+      #   - REFID: AVOID_EXCESSIVE_DATA_EXPOSURE
+      # group: Business specific
+      # inScope: false
+
+    # - ID: PII_PROTECTION
+    #   title: PII protection
+    #   description: |
+    #     "Separates personal information from transactional information in databases" ... for example with a code reference
+    #     [REF](https://www.bis.org/publ/othp82.pdf)
+    #   contributesTo:
+    #     - REFID: AVOID_EXCESSIVE_DATA_EXPOSURE
+    #   group: Business specific
+    #   inScope: false
+
+    # - ID: TRANSACTION_HISTORY_CONFIDENTIALITY
+    #   title: Transaction history confidentiality
+    #   description: |
+    #     Transaction history protection and confidentiality from unlawful and non essential uses.
+    #   contributesTo:
+    #     - REFID: AVOID_EXCESSIVE_DATA_EXPOSURE
+    #   group: Business specific
+    #   inScope: true
+
+    # - ID: NON_FUNGIBLE_TOKENS
+    #   title: Non Fungible tokens
+    #   description: |
+    #     Non Fungible tokens for specific uses
+    #     [REF](https://www.bis.org/publ/othp82.pdf)
+    #   # contributesTo:
+    #   #   - REFID: AVAILABILITY
+    #   group: Business specific
+
+
+    # - ID: MEMBERSHIP_CONTROL
+    #   title: Membership Control
+    #   description: The CB should have a membership control. 
+    #    This comprises; Onboarding participants, manage participants access and manage
+    #    currency usage rights
+    #   contributesTo:
+    #     - REFID: FULL_CIA
+    #   group: Business specific
+
+    # - ID: CURRENCY_CONFIGURATION
+    #   title: Currency Configuration Control
+    #   description: The CB should have a currency configuration control. 
+    #    This comprises; currency definition, currency controls, and domestic CBDC programmable constraints.
+    #   contributesTo:
+    #     - REFID: INTEGRITY
+    #     - REFID: AVAILABILITY
+    #   group: Business specific
+
+
+    # - ID: ISSUANCE_REDEMPTION_CONTROL
+    #   title: Token Issuance and Redemption Control
+    #   description: The Central bank should have control over token issuance and redemption. 
+    #       This comprises; mBridge issuance, wholesale issuance, and domestic retail issuance
+    #   contributesTo:
+    #     - REFID: INTEGRITY
+    #     - REFID: AVAILABILITY
+    #   group: Business specific
+
+
+    # - ID: REPORTING_MONITORING
+    #   title: Reporting and monitoring
+    #   description: The central bank should have monitoring control. 
+    #     This comprises; monitor issuance and redemption requests status, 
+    #     reporting and reconciliation, and  data analytics dashboard 
+    #   contributesTo:
+    #     - REFID: INTEGRITY
+    #   group: Business specific
+
+    - ID: MONETARY_BASE_INTEGRITY
+      title: Reliable monetary base
+      description: |
+        A reliable monetary base is expected according to the Central Bank's policies and knowledge.
+        This ensures that the total amount of digital currency in circulation is accurately
+         tracked and managed.
+        The system should provide (and do not dispupt) mechanisms to monitor, audit,
+         and report on the monetary base, ensuring transparency and trust in the digital currency system. 
+         Additionally, it should include safeguards to detect and respond to any anomalies in the monetary base.
+
+      contributesTo:
+        - REFID: INTEGRITY
+        - REFID: AVAILABILITY
+      group: Business specific
+
+    - ID: COIN_OWNERSHIP_GUARANTEE
+      title: LFI cannot interfere with retail coin ownership
+      description: |
+        An LFI cannot arbitrarily interfere with retail coin ownership in ways other than those implied by enforcing Central Bank policies; for example, via Corda contracts. An LFI cannot arbitrarily seize or change retail coin ownership and functionality, opposing those central bank-defined policies.  
+
+        In retail CDBC systems, as defined in “The technology of retail central bank digital currency", retail ownership of a digital coin/token (private key signature) tends to achieve this objective by having trust-less intermediaries (LFIs) while also exposing the user to different threats (for example, the risk of losing ownership by losing private keys).  
+
+        On the other hand, retail coin ownership, linked to an account with identity and authentication, does not tend to automatically achieve this goal, as the retail user needs to trust intermediaries (such as LFIs). In this latter case, compromised or colluding intermediaries can interfere with the owner’s coins, so that specific countermeasures need to be defined. 
+      contributesTo:
+        - REFID: INTEGRITY
+        - REFID: AVAILABILITY
+        - REFID: TRUSTLESS_CONTRACTS_EXECUTION
+      group: Business specific
+
+    - ID: DEFENSE_IN_DEPTH
+      title: Defense in depth
+      description: |
+        Preventative defence measures should be implemented at multiple layers; 
+        for example, across the network, application, and data access layers.
+      contributesTo:
+        - REFID: COMPLIANCE
+      group: Architectural
+
+    - ID: ZERO_TRUST
+      title: Zero trust
+      description: |
+        Zero-trust security practices including strong authentication, 
+        least privilege, network segmentation, and continuous validation of 
+        identity and trust, and so on.
+      contributesTo:
+        - REFID: COMPLIANCE
+      group: Architectural
+
+    - ID: MINIMAL_RISK_SURFACE
+      title: Minimal risk surface
+      description: |
+        The central bank has designed the CBDC
+        architecture in such a way as to minimize the
+        attack surface for sensitive data and CBDC
+        value; for example, by reducing the number of
+        parties in the ecosystem that hold financial value
+        or that store/process unencrypted sensitive data.
+        De-scoping using anonymous IDs is another way of minimizing risk 
+        surface.
+      contributesTo:
+        - REFID: COMPLIANCE
+      group: Architectural
+
+    - ID: PRINCIPLE_LEAST_PRIVILEGE
+      title: Principle of Least Privilege
+      description: |
+        The *principle of least privilege* (PoLP) is an information security concept that states that 
+        users should only have access to the minimum amount of data and resources they need to perform their jobs. 
+        It is considered a best practice for cybersecurity and is a key component of zero trust network access
+      contributesTo:
+        - REFID: COMPLIANCE
+      group: Architectural
+
+    - ID: SEGREGATION_DUTIES
+      title: Segregation of Duties
+      description: |
+        *Segregation of duties* (SoD) in software architectures refers to the design principle of dividing tasks
+        and responsibilities among multiple roles or systems to prevent any single entity from having unchecked control. 
+        This minimizes risks such as fraud, errors, or abuse by ensuring that critical operations require 
+        collaboration and oversight, thereby enhancing security, compliance, and accountability.
+      contributesTo:
+        - REFID: COMPLIANCE
+      group: Architectural
+
+    - ID: ADMIN_ATTACK_RESILIENCE
+      title: Admin attack resilience
+      description: |
+        The system is designed in a way that an insider user with administrative privileges is not able to compromise the security of the system 
+        (other than partial AVAILABILITY). For example, the user cannot impersonate other users, tamper the data, and so on. 
+      contributesTo:
+        - REFID: PRINCIPLE_LEAST_PRIVILEGE
+        - REFID: SEGREGATION_DUTIES
+      group: Architectural
+
+    - ID: AVOID_SINGLE_FAILURE_POINT
+      title: Avoid single points of failure
+      description: |
+        Reduce the risks from a single point of failure
+        [REF](https://www.bis.org/publ/othp82.pdf)
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: Architectural
+
+
+    # - ID: DATA_LEAK_RESILIENCY
+    #   title: Data stored is resilient to disclosure
+    #   description: |
+    #     A leak of stored data may compromise confidentiality but do not compromise Integrity a availability or allow to use
+    #      that data to perform specific attacks on the system.  
+    #     For example some of the data, specifically the most sensitive, for example authentication/signature keys, is cryptographically 
+    #     encrypted with keys that are not in the data storage.
+    #   contributesTo:        
+    #     - REFID: DEFENSE_IN_DEPTH
+    #     - REFID: MINIMAL_RISK_SURFACE
+    #   group: Architectural
+
+    # - ID: DATABASE_ENCRYPTION
+    #   title: Database encryption
+    #   description: |
+    #     Data stored in the main CBDC databases is encrypted so that even having database credential and access the client cannot 
+    #     read or counterfeit the data. The main keys needed to encrypt/decrypt are not in the database itself.
+    #     Whole disk encryption does not achieve this objective.
+    #   contributesTo:        
+    #     - REFID: DATA_LEAK_RESILIENCY
+    #     - REFID: DATA_TAMPER_RESILIENCY
+    #   group: Architectural
+
+
+    # - ID: SECURE_DEPLOYMENT
+    #   title: Secure deployment and DevSecOps practices
+    #   description: |
+    #     Using DevSecOps to streamline and automate the process to build, test, deploy
+    #     and operate software, to achieve agility without compromising quality control
+    #   contributesTo:
+    #     - REFID: FULL_CIA
+    #   group: Operational
+
+    # - ID: APP_LOGIC_MONITORING
+    #   title: Application logic anomaly detection
+    #   description: |
+    #     A real-time monitoring and risk-based decision capability to identify suspicious
+    #     or anomalous CBDC transactions or compromised digital wallets and take
+    #     appropriate actions such as blocking a wallet, adjusting transaction limits or other
+    #     risk management parameters.
+    #   contributesTo:
+    #     - REFID: FULL_CIA
+    #   group: Operational
+
+    # - ID: WALLET_BLOCKING
+    #   title: Wallet blocking capabilities
+    #   description: |
+    #     The CBDC system has implemented
+    #     capabilities to block certain CBDC wallets
+    #     (online or offline) that have shown suspicious
+    #     behaviour so that they can no longer be used
+    #     to receive CBDCs or make CBDC payments
+    #     until the suspicion is resolved
+    #   contributesTo:
+    #     - REFID: FULL_CIA
+    #   group: Operational
+
+    # - ID: MULTI_FACTOR_AUTH 
+    #   title: Multi factor authentication
+    #   description: |
+    #     The central bank has implemented multifactor
+    #     authentication for all internal users' access to its
+    #     financial systems, including hardware-based
+    #     multifactor authentication for its privileged
+    #     users. 
+    #   contributesTo:
+    #     - REFID: FULL_CIA
+    #   group: Operational
+
+
+
+  description: |2
+
+    CBUAE CBDC Phase 2
+
+      **References:**
+
+      1. <a id="HLD"></a>**HLD**: *"R3 CBUAE CBDC Phase 2 - High Level Design Document"*
+      2. <a id="LLD"></a>**LLD**: *"R3 CBUAE CBDC Phase 2 - Low Level Design Document"*
+
+  assets:
+    - ID: CBCC
+      type: system
+      title: Central Bank Command Center AKA Issuance Platform
+      description: |
+        AKA Issuance platform
+      inScope: true
+
+    - ID: WORKFLOW_CALLS
+      type: dataflow
+      title: Workflow calls
+      description: |
+        Calls to workflows steps defined in the micro applications.
+        For example calls to Wallet services.
+      inScope: true
+
+    - ID: SERVICES_CALLS
+      type: dataflow
+      title: Calls to services
+      description: |
+        Calls to services (e.g. wallet services) exposed by imcro applicatinos 
+        , intended to be from the client backoffice.
+        Those calls, when from the client backoffice) already resolved authenticatino and authorisation via IAM.
+      inScope: true
+
+    - ID: WALLET_SERVICE
+      type: process
+      title: Wallet Service Core
+      description: |
+        Manages wallet creation, updates, deactivation, transfers, add/deduct flows, 
+        and enforces contract logic through the Corda Contract Engine.
+      inScope: true
+
+
+    - ID: AUTHZ_SERVICE
+      type: service
+      title: Wallet Authorisation
+      description: |
+        Manages user permissions, ensuring only authorized users can view or modify wallets.
+      inScope: true
+
+    # - ID: SETTLEMENT_LAYER
+    #   type: external
+    #   title: Settlement Layer (Corda)
+    #   description: |
+    #     Finalizes transactions, ensures ledger finality and accuracy.
+    #   inScope: false
+
+
+
+  attackers:
+    - ID: ANONYMOUS
+      title: Anonymous Internet User
+      description: |
+        Anonymous internet users.
+        In accordance to the Architectural sEcurity Objectives, namely ZERO_TRUST, DEFENSE_IN_DEPTH
+         the system should be designed to be resilient to attacks even when the attacker escalates
+         to the internal network.
+      inScope: true
+
+    - ID: INFRASTRUCTURE_OPERATOR
+      title: Infrastructure Operator
+      description: |
+        Personnel delegated to install/deploy and maintain the CBDC infrastructure
+        **Main use cases:**
+
+        - Install clusters and configure the network
+        - Access K8 APIs, DBs networks,  hardware...
+        - **Do not** Authenticates as user (does not use RPC APIs)
+      inScope: false
+
+    - ID: CBCC_USER
+      title: CB Control center User
+      description: |
+        CB Control center User
+
+        Main portal use-cases:
+          - View dashboard and system status
+          - Initiate issuance requests
+          - Monitor transaction flows and alerts
+          - Review audit logs and reports
+
+        **Refs:** [LLD - 2 Wallet Back-Office Portal](#LLD), [LLD - 2.1 Wallet Back-Office Portal/Overview](#LLD)
+      inScope: true
+
+    - ID: CBCC_ADMIN
+      title: CB Control center Admin User
+      description: |
+        CB Control center Admin User
+
+        Main portal use-cases:
+          - Manage user accounts and roles
+          - Configure system policies and thresholds
+          - Approve high-privilege operations (issuance, burns)
+          - Access detailed operational and security logs
+
+        **Refs:** [LLD - 2 Wallet Back-Office Portal](#LLD), [LLD - 2.1 Wallet Back-Office Portal/Overview](#LLD)
+      inScope: true
+
+    - ID: LFI
+      title: LFI or Participating Bank
+      description: |
+        An LFI or Bank participating in a CBDC network
+      inScope: true
+
+    - ID: PAYEE
+      title: An LFI receiving a payment transaction
+      description: |
+        An LFI or Bank participating in a CBDC network receiving a payment transaction
+      inScope: true
+
+    - ID: PAYER
+      title: An LFI sending a payment transaction
+      description: |
+        An LFI or Bank participating in a CBDC network sending a payment transaction
+      inScope: true
+
+    - ID: NETWORK_CA_OPERATOR
+      title: Corda Network Certification Authority Operator
+      description: |
+        Certification Authority Operator - The organisation that operates the Certificate Authority.
+      inScope: true
+
+
+    - ID: BACK_OFFICE_LFI_ADMIN
+      title: Back Office LFI Admin
+      description: |
+        Back Office LFI Admin:
+
+         Main portal use-cases:
+           - Create and manage wallets
+           - Associate wallets to retail customers
+           - View transactions for LFI customers
+           - Update or deactivate wallets (TBC)
+           - Manage customer support requests
+
+        **Refs:** [LLD - 2 Wallet Back-Office Portal](#LLD), [LLD - 2.1 Wallet Back-Office Portal/Overview](#LLD)
+      inScope: true
+
+
+analysis: |
+  This section contains the analysis and considerations of the threats and the security objectives that are relevant 
+  to the whole system. The result of this analysis is expressed as structured threats in the following sections.
+   
+   <h3>Distributed nature of the Ledger</h3>
+   
+   Traditionally Corda networks are distributed and while the ledger is not replicated across
+    all nodes, the backchain of the unspent outputs is sent to the next node and the Notary centrally
+   vigilates over double spending. Notary clusters and such techniques allow for scalability.
+   The current DLT design for retail CBDC differs in the sense that the central party (the Central Bank) 
+   maintains the UTXO database and of course the capability to issue coins to LFI participants. For this reason 
+   there is no stringent need for backchain verification. While this central database of accounts simplifies the 
+   tracking of unspent/spendable coins, it changes the nature of a distributed ledger technology in a series 
+   of specific ways:
+
+   <h4>1) Trust relationships</h4>
+
+   While traditional Corda networks are trustless with aspects of centralization (e.g. network participant onboarding
+   for regulated markets, centrally managed notarization for double spending etc.),
+    the retail CBDC network is more trustful: 
+   
+    - The retail user needs to trust the LFI and cannot directly claim a coin value to the Central Bank.
+   
+    - The retail user needs to trust intermediaries and the Central Bank, because they can at any time: spend, credit or change the 
+    ownership of the coins (confiscation) or prioritize one payment over others etc. 
+    This is a trustful model that does not offer any of the characteristics of 
+    cash notes in a digital form, instead, has most of the characteristics of a bank accounting system.
+    Another effect of this paradigm is the fact that p2p participants cannot directly verify a TX by signatures, they need to rely 
+    and trust the LFI/intermediary.
+
+   - Another characteristic of cash is anonymity, by design this retail CBDC does not offer anonymity. Quite the
+   opposite it enables trusted parties to inspect the flow of transactions. This data is valuable and concentrated.
+   This mere fact that that data exists in the Central Bank (is easy to link wallet IDs to identities) creates an incentive for attackers, including antagonistic 
+   international organizations, to compromise that data.
+   For the retail user, traditional cash notes remain the sole form of Central Bank money that is anonymous and trustless.
+
+   - Contract as business rules checks with trusted parties (need enforcement, trustful model)
+
+   Contracts as thought in this solution design are not also classic Corda Contracts, which are a form of smart contract.
+   Smart contracts allow for trustless execution of business rules. This solution differs in the fact that the rules:
+   
+   1) Need to be enforced by third parties, trusting one or more parties that are not the participants of a P2P
+   transaction. This trustful model requires, for example, that the LFI is trusted to enforce the rules. 
+    Even the central bank cannot verify that two colluding LFIs are not tampering, forging, or mishandling retail 
+    transactions in general (maybe due to a system corruption or security exploit of some sort); again a trustless model of 
+    smart contract does not have this 'need to trust intermediaries' characteristic.
+
+   2) There are no examples of rules other than for blocking a transaction (by failing them).
+   Instead, a full smart contract system may define conditional/additional transactions
+   triggered by independently verifiable events, where it is assured that dependent transactions are executed by the 
+     originating one. This is not the case in this solution as designed, so far.
+
+     In summary:
+
+     While the design refers to retail accounts as 'wallets', to the ledger technology as 'distributed', 
+     to balances as 'coins', and to validation rules as 'smart contracts' not all the main 
+     characteristics defining the used terminology are always present in the designed solution.
+     The solution design can still implement the functional use-cases as per the functional requirement 
+     (e.g. settle retail transactions with currency issued by the central bank preventing double spending),
+     it does not meet all the non-functional security requirements that are implied by the terminology used 
+     , and listed in this threat model in the security objectives.
+
+   <h3>Operational Modes</h3>
+
+   While the final solution is intended to be distributed in some nature, the initial 
+   deployment is expected to be carried out by the central bank in a Central Bank-only accessed infrastructure.
+   This is a security feature as it allows the Central Bank to have full control over the initial
+    deployment and to ensure that the system is deployed in a secure manner.
+   LFI are expected to own their software 'nodes' and services in the final solution and 
+   not only to access the retail CBDC as a service (SaaS model); this is referred to in this threat model as:
+   <code>LFI-Managed Software</code>
+   Initial deployments of the developing solution are expected to be carried out by
+    the central bank and having the LFI access it mostly as a service in a quasi-SaaS model.
+   Threats that are not applicable to the initial SaaS are marked with the condition <code>LFI-Managed Software</code>
+   <h3>LFI Signing Service Access</h3>
+
+   In this design, the LFI signing service is also accessible by the Central Bank (CB).
+   This introduces a potential repudiation issue, as the CB could theoretically sign transactions on behalf of the LFI
+    without their consent. 
+    This access model requires robust logging, monitoring, and auditing mechanisms to ensure that any such actions are 
+    transparent and traceable. Additionally,
+     it is crucial to implement strict access controls and authentication measures to mitigate the risk of unauthorized use
+      of the signing service by the CB or any other party.
+   Note: <b>While the <code>LFI-Managed Software</code> threats are relevant to the final solution,
+    they are not considered in scope for the initial deployment.</b>
+
+  <h3>Network topology</h3>
+
+   Hub-Spoke network is considered an availability feature as it allows for lower latency. It 
+   is still not to be considered a security feature in the final solution (<code>LFI-Managed Software</code>) 
+   as it does not provide any confidentiality/integrity/observability guarantee per se:
+    while the central bank can monitor the volume of the encrypted traffic* it cannot force a specific
+     routing. For example, two LFIs could agree to define a custom internet routing that does not pass through the hub.
+   
+   <b>*NOTE:</b> The CB could monitor some unencrypted traffic if the CB abuses the CA private keys and carries on a MiTM 
+   (man in the middle attack), but currently the CB is not classified as an attacker in scope for this threat model.
+
+
+   
+threats:
+

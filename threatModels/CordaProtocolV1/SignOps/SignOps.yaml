@@ -1,0 +1,1073 @@
+ID: SignOps
+schemaVersion: 2
+title: Signing Operations
+status: Draft
+
+authors: |
+  Security Research team at R3
+
+parent: CordaProtocolV1
+
+scope:
+  description: |
+    Threat model for the Out-of-Band (OOB) transaction verification process
+    used by Tier 1 and Tier 2 signing operations in the Corda Protocol V1.
+
+    This model addresses the "What You See Is What You Sign" (WYSIWYS)
+    problem: ensuring that signers verify the actual on-chain transaction
+    content before approving, rather than relying on potentially compromised
+    UIs or communication channels.
+
+    **Scope Boundary:**
+    This model covers the verification workflow from proposal creation through
+    signature approval, focusing on the trust assumptions and attack surfaces
+    of each verification layer. Key management, role definitions, and
+    multisig threshold design are covered in the sibling UserAuth model.
+
+    **Tier Definitions:**
+
+    - **Tier 1 — Critical Operations:** Program upgrades, config changes.
+      4-of-7 cold multisig, 72h timelock. Three-layer verification: OOB
+      Multisig Client decode + Clean Device hash verification + HW wallet.
+    - **Tier 2 — BAU Operations:** Transfers, DeFi interactions, fee changes.
+      2-of-5 multisig, 24h timelock. Two-layer verification: OOB Multisig
+      Client simulation + HW wallet.
+
+    **Operational Illustration** 
+    
+    Twro different flows: 
+
+    - Panels 1234 Normal path
+    - Panels 1256 Anomaly detection
+
+    <img src="img/OOBSigning_illustration.png"/>
+
+    **Sequence Diagrams:**
+    <img src="img/TIER1_WYSIWYS.svg" alt="WYSIWYS Tier 1"/>
+    <img src="img/TIER2_WYSIWYS.svg" alt="WYSIWYS Tier 2"/>
+
+
+  assets:
+    - ID: SIGNING_UI
+      type: system
+      title: Signing UI / CLI (Environment A — Untrusted)
+      description: |
+        The primary user interface used by the initiator to draft and
+        submit on-chain proposals. This environment is assumed untrusted.
+        Includes Web UIs, dApps, and Solana CLI tools.
+      inScope: true
+
+    - ID: OOB_MULTISIG_CLIENT
+      type: system
+      title: OOB Multisig Client (Environment B)
+      description: |
+        Out-of-band multisig client (e.g., Squads App) operating in a
+        separate environment from the signing UI. Polls the Solana RPC
+        for active proposals using hardcoded multisig PDA addresses,
+        decodes inner instructions, and runs simulations to display
+        human-readable state changes.
+
+        This is the primary intent verification tool for both Tier 1
+        and Tier 2 operations.
+      inScope: true
+
+    - ID: CLEAN_VERIFICATION_DEVICE
+      type: system
+      title: Clean Verification Device (Tier 1 Only)
+      description: |
+        A separate clean device (not part of the signing workflow) used
+        exclusively for Tier 1 program upgrade verification. Runs standard
+        Solana CLI commands to dump the buffer bytecode and compute its
+        hash, which is then compared against the CI/CD deterministic build.
+      inScope: true
+
+    - ID: HW_WALLET
+      type: system
+      title: Hardware Wallet (Environment C — Zero-Trust)
+      description: |
+        Advanced hardware wallet (e.g., Keystone, GridPlus) providing
+        secure element key storage and physical confirmation. Signs the
+        Squads `proposal_approve` wrapper instruction.
+
+        **Limitation:** The HW wallet signs the Squads wrapper instruction,
+        NOT the inner instructions stored in the Proposal PDA. It can
+        verify the program ID, multisig address, and signer identity,
+        but cannot display the inner transaction intent (e.g., "Transfer
+        50k USDC to Kamino" or "Upgrade vault to hash [e7b4...f9a1]").
+      inScope: true
+
+    - ID: OOB_CHANNEL
+      type: dataflow
+      title: OOB Communication Channel (Slack / PagerDuty)
+      description: |
+        Out-of-band communication channel used for hand-off between the
+        initiator and approver(s). Carries human-authored free text
+        describing the intended action. Serves as an alert mechanism,
+        NOT as a verification source.
+      inScope: true
+
+    - ID: TX_SIMULATOR
+      type: system
+      title: Transaction Simulator (Blowfish / Helius)
+      description: |
+        External simulation API used by the OOB Multisig Client to
+        decode and simulate inner instruction execution. Returns
+        human-readable state changes (balance deltas, account
+        modifications).
+      inScope: false
+
+    - ID: PRIVATE_RPC
+      type: system
+      title: Private RPC Endpoint
+      description: |
+        Private Solana RPC endpoint used by the OOB Multisig Client
+        and Clean Verification Device to fetch proposal data and
+        buffer contents from the blockchain.
+      inScope: false
+
+    - ID: CICD_REPO
+      type: system
+      title: CI/CD Repository (Deterministic Build)
+      description: |
+        Source of truth for deterministic program builds. Used in
+        Tier 1 buffer hash verification to compare the on-chain
+        buffer hash against the expected CI/CD build output.
+      inScope: false
+
+    # --- Dataflows ---
+
+    - ID: DF_PROPOSAL_CREATION
+      type: dataflow
+      title: Proposal Creation Flow
+      description: |
+        Initiator creates a Squads vault transaction proposal containing
+        inner instructions. Flows from Signing UI through RPC to the
+        Squads program on Solana mainnet.
+      inScope: true
+
+    - ID: DF_OOB_VERIFICATION
+      type: dataflow
+      title: OOB Verification Flow
+      description: |
+        The OOB Multisig Client polls proposals via hardcoded multisig
+        PDA, decodes inner instructions, simulates execution, and
+        presents human-readable state changes to the approver.
+      inScope: true
+
+    - ID: DF_BUFFER_HASH_VERIFICATION
+      type: dataflow
+      title: Buffer Hash Verification Flow (Tier 1 Only)
+      description: |
+        Clean Device dumps buffer bytecode from RPC, computes SHA-256
+        hash, and compares against CI/CD deterministic build hash.
+      inScope: true
+
+    - ID: DF_HW_SIGNING
+      type: dataflow
+      title: Hardware Wallet Signing Flow
+      description: |
+        OOB Multisig Client passes the `proposal_approve` transaction
+        to the HW wallet via QR Code or USB. HW wallet displays the
+        Squads wrapper instruction details and returns a cryptographic
+        signature after physical confirmation.
+      inScope: true
+
+  assumptions:
+    - ID: SQUADS_V4_PROPOSAL_INTEGRITY
+      description: |
+        The Squads V4 program correctly stores and retrieves inner
+        instructions in Proposal PDAs. Bugs in Squads V4 itself are
+        out of scope.
+
+    - ID: SOLANA_CONSENSUS_INTEGRITY
+      description: |
+        Solana consensus correctly orders and finalizes transactions.
+        Blockchain-level attacks (51%, censorship) are out of scope.
+
+    - ID: SEPARATE_ENVIRONMENTS
+      description: |
+        Environment A (untrusted signing UI), Environment B (OOB
+        verification), and Environment C (HW wallet) operate on
+        separate devices with independent software stacks. A
+        compromise of one environment does not automatically
+        compromise the others.
+
+analysis: |
+  **WYSIWYS Problem Statement**
+
+  In multisig signing flows using Squads V4, the hardware wallet signs a
+  `proposal_approve` wrapper instruction — not the actual inner instructions
+  (e.g., "Transfer 50k USDC" or "Upgrade program to buffer X"). This means
+  the hardware wallet alone cannot verify the signer's intent. The inner
+  instructions live in a Proposal PDA and are never part of the HW signing
+  payload.
+
+  **Verification Architecture**
+
+  To bridge this gap, the protocol uses a multi-layer out-of-band (OOB)
+  verification architecture:
+
+  - **Layer 1 — OOB Multisig Client (Primary Intent Verification):**
+    Operates in Environment B, separate from the untrusted signing UI.
+    Auto-polls the blockchain for active proposals using hardcoded multisig
+    PDA addresses (defeating address poisoning). Decodes and simulates
+    inner instructions to display human-readable state changes.
+
+  - **Layer 2 — Clean Device Hash Verification (Tier 1 Only):**
+    For program upgrades, a separate clean device dumps the buffer
+    bytecode from an independent RPC and computes its SHA-256 hash.
+    This hash is compared against the CI/CD deterministic build output.
+    This layer verifies not just "what" the proposal does, but "what
+    code" it deploys.
+
+  - **Layer 3 — Hardware Wallet (Program & Account Verification):**
+    Provides a secondary check that the correct Squads program and
+    multisig PDA are being called. Protects the private key in a secure
+    element and requires physical confirmation.
+
+  - **Layer 4 — Timelock (Last Defence):**
+    Even if all prior verification layers are fooled, the timelock
+    (24h for Tier 2, 72h for Tier 1) provides a final window to detect
+    and veto the action via on-chain monitoring and watchtowers.
+
+  **Trust Model**
+
+  The verification architecture assumes that an attacker cannot
+  simultaneously compromise all independent environments. Specifically:
+
+  - **Tier 2:** Requires compromising both the OOB Multisig Client
+    (Environment B) AND the OOB channel simultaneously to fool the
+    approver, since the HW wallet cannot detect inner IX manipulation.
+  - **Tier 1:** Requires compromising the OOB Multisig Client, the
+    Clean Verification Device, AND the OOB channel. Additionally, the
+    4-of-7 threshold means the attacker must fool four independent
+    signers, each performing their own verification.
+
+  **Signer Compromise and Exfiltration Scenarios (Current Rust Codebase)**
+
+  The primary exfiltration risk is not a standalone "mint authority key"
+  theft. In this design, the vault PDA acts as mint/freeze authority and
+  signs via program logic. The vault's sole `authority` field points to the
+  RBAC program's VaultAuthority PDA, which enforces per-instruction
+  permissions. Practical theft scenarios therefore focus on compromising
+  RBAC permission holders and the RBAC admin:
+
+  - **Scenario A — RBAC admin takeover + permission reassignment + drain:**
+    Attacker compromises the RBAC admin key, calls `set_vault_ix_permission`
+    to assign their own pubkey to settlement and config discriminators, then
+    uses `update_vault_config` to set `offboard_destination = attacker USDC
+    account`, followed by `transfer_to_tokenizer` on pending deposits.
+    Result: direct USDC exfiltration to attacker-controlled destination.
+
+  - **Scenario B — RBAC admin takeover + fee-recipient rewrite (fee siphon):**
+    Attacker compromises the RBAC admin key, grants themselves the
+    `update_vault_config` permission, updates `fee_recipient` to an attacker
+    account, then waits for routine settle/match operations.
+    Result: ongoing exfiltration of entry/exit fees.
+
+  - **Scenario C — Settlement permission holder compromise (bounded):**
+    Compromise of the signer assigned to settlement discriminators can
+    trigger settlement and movement, but cannot arbitrarily redirect
+    destination accounts where on-chain constraints pin recipient addresses
+    to proposal owner or vault config.
+    Result: high operational risk, but lower unilateral redirection power.
+
+  - **Scenario D — Oracle-wrapper admin + settlement permission collusion:**
+    Oracle-wrapper admin can manipulate feed/staleness parameters; the signer
+    holding settlement permissions can execute economically favorable
+    settlements around manipulated price windows.
+    Result: economic extraction through over/under-pricing, potentially
+    draining USDC over multiple cycles.
+
+  - **Scenario E — Program upgrade authority compromise:**
+    If the upgrade authority is compromised, attacker can deploy arbitrary
+    logic that signs with PDA authority and bypasses intended guardrails.
+    Result: full loss potential across vault-held assets.
+
+  **Motivation Scenario — Unlocking Frozen Funds / AML Evasion**
+
+  A high-motivation adversary may target signer operations not only to steal
+  funds directly, but to restore mobility to compliance-restricted balances.
+
+  - **Scenario F — RBAC permission reassignment to unfreeze and whitelist:**
+    Attacker compromises the RBAC admin key and assigns themselves the
+    freeze/thaw and whitelist permissions, then executes:
+    `thaw_vtoken_account` for a previously frozen holder, optionally
+    `add_to_vtoken_whitelist` (or prevents removal), then initiates normal
+    redemption/settlement flow to convert vTokens into transferable USDC.
+    Result: bypass of AML enforcement intent and release of previously
+    immobilized value.
+
+  This motivation should be modeled as both financial theft risk and policy/
+  regulatory evasion risk, because the attacker objective may be to recover
+  blocked assets rather than maximize immediate gross extraction.
+
+threats:
+  - ID: SIGNING_UI_PROPOSAL_TAMPERING
+    title: Compromised UI creates Malicious Transaction
+    attack: |
+      The signing UI (Web dApp, Solana CLI, or custom tool) in Environment A
+      is compromised — either through supply chain attack, malicious browser
+      extension, or direct compromise. The UI displays the intended action
+      to the initiator but writes different inner instructions to the Squads
+      Proposal PDA on-chain.
+
+      For example:
+
+      - Initiator intends "Transfer 50k USDC to Kamino"
+      - Compromised UI writes "Transfer 50k USDC to attacker address"
+      - UI displays success with correct-looking proposal index
+
+      For program upgrades:
+
+      - Initiator intends to upgrade to buffer [e7b4...f9a1]
+      - Compromised CLI points BPF loader to a malicious buffer address
+      - CLI displays the expected buffer address, not the actual one
+
+    threatType: Tampering
+    impactDesc: |
+      On-chain proposal contains malicious inner instructions that differ
+      from the initiator's intent. If the OOB verification layers fail to
+      detect the discrepancy, the malicious action will be approved and
+      executed after timelock expiry.
+
+      - Funds redirected to attacker-controlled addresses
+      - Malicious program deployed via buffer substitution
+      - Unauthorized configuration changes embedded in proposal
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: SIGNING_UI
+      - REFID: DF_PROPOSAL_CREATION
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:N/I:H/A:N'
+    fullyMitigated: true
+    countermeasures:
+      - ID: OOB_MULTISIG_CLIENT_VERIFICATION
+        title: OOB Multisig Client Intent Verification
+        description: |
+          The OOB Multisig Client operating in Environment B independently
+          fetches and decodes the actual on-chain proposal content. Because
+          it polls using hardcoded multisig PDA addresses and reads inner
+          instructions directly from the blockchain, it is not affected by
+          a compromised signing UI.
+
+          The approver verifies the decoded/simulated state changes match
+          the stated intent before signing.
+
+        inPlace: true
+        public: true
+        operational: true
+        operator: Approver / Signer
+
+      - ID: HARDCODED_MULTISIG_POLLING
+        title: Hardcoded Multisig PDA Polling
+        description: |
+          The OOB Multisig Client uses hardcoded multisig PDA addresses
+          in its configuration. It ignores any user-provided addresses,
+          entirely defeating address poisoning and UI spoofing attacks
+          where an attacker substitutes the multisig address.
+
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: OOB_CHANNEL_SOCIAL_ENGINEERING
+    title: Social Engineering via OOB Communication Channel
+    attack: |
+      The OOB communication channel (Slack, PagerDuty) carries human-authored
+      free text describing the intended action. An attacker can exploit this
+      channel to socially engineer approvers:
+
+      - **Compromised initiator account:** Attacker gains access to the
+        initiator's Slack account and sends a benign-sounding intent
+        message for a malicious on-chain proposal
+      - **Spoofed messages:** Attacker creates a look-alike Slack account
+        or spoofs the sender identity
+      - **Misleading intent:** Compromised initiator deliberately states
+        a benign intent for a harmful proposal
+
+      The OOB channel is designed as an **alert mechanism only**, not as
+      a verification source. However, approvers may over-rely on the
+      stated intent and skip thorough verification.
+
+    threatType: Spoofing, Tampering
+    impactDesc: |
+      Approver is primed with a false expectation of the proposal intent.
+      If the approver treats the OOB message as verification rather than
+      just an alert, they may:
+
+      - Skip detailed simulation review in the OOB Multisig Client
+      - Confirm under time pressure based on trusted sender identity
+      - Miss discrepancies between OOB stated intent and actual proposal
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: OOB_CHANNEL
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: OOB_ALERT_ONLY_POLICY
+        title: OOB Channel is Alert-Only — Never Verification
+        description: |
+          Operational policy mandating that the OOB channel message is
+          treated strictly as an alert to check for pending proposals.
+          Approvers must NEVER use the OOB message content as the basis
+          for their sign/reject decision.
+
+          The sign/reject decision must be based solely on:
+
+          - OOB Multisig Client simulation output (Tier 1 and Tier 2)
+          - Clean Device hash verification (Tier 1 program upgrades)
+          - HW wallet program/account check (all tiers)
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+      - ID: STRUCTURED_OOB_MESSAGES
+        title: Structured OOB Messages with Proposal Reference
+        description: |
+          Replace free-text OOB messages with structured templates that
+          include the on-chain proposal index and multisig address.
+          This allows the approver to cross-reference the OOB alert
+          with the actual on-chain proposal without relying on the
+          stated intent.
+
+          Example: "Tier 2: Proposal #88 pending on multisig Bk4R...mN21.
+          Please verify and approve via Squads App."
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Protocol Manager
+
+  - ID: OOB_CLIENT_COMPROMISE
+    title: Compromised OOB Multisig Client or Transaction Simulator
+    attack: |
+      The OOB Multisig Client (Environment B) or the external transaction
+      simulator (Blowfish, Helius) is compromised. The compromised client
+      or simulator displays a fake decode that matches the OOB intent
+      message, while the actual Proposal PDA contains different inner
+      instructions.
+
+      Attack vectors:
+
+      - Supply chain compromise of the Squads App or its dependencies
+      - Compromised browser extension injecting into the OOB client
+      - Malicious simulator API returning crafted decode results
+      - DNS hijacking redirecting simulator API calls
+      - Compromised RPC endpoint returning modified proposal data
+
+      This is the most critical single-point-of-failure in the Tier 2
+      verification flow, as the OOB Multisig Client is the primary
+      (and only software-based) intent verification layer.
+
+    threatType: Tampering
+    impactDesc: |
+      Approver sees a simulated state change that matches the expected
+      intent, but the actual on-chain proposal contains a malicious action.
+      Combined with OOB channel social engineering, the approver has no
+      remaining software-based verification layer to detect the discrepancy.
+
+      The HW wallet provides program/account verification but cannot
+      reveal the inner instruction content, making this attack undetectable
+      through the HW wallet alone.
+
+      - **Tier 2 impact: HIGH** — OOB Client is the only software
+        verification layer; compromise defeats intent verification
+      - **Tier 1 impact: MEDIUM** — Clean Device hash verification
+        provides an independent check for program upgrades, but config
+        changes rely solely on the OOB Client decode
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: OOB_MULTISIG_CLIENT
+      - REFID: TX_SIMULATOR
+      - REFID: DF_OOB_VERIFICATION
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: MULTI_SIMULATOR_CROSS_CHECK
+        title: Multiple Independent Simulators
+        description: |
+          Use multiple independent transaction simulators (Blowfish,
+          Helius, self-hosted) from different providers. Compare decode
+          results across simulators before signing. Any discrepancy
+          triggers a halt.
+
+          For self-hosted simulators: run in an isolated environment
+          with independently verified dependencies.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Approver / Signer
+
+      - ID: BLOCK_EXPLORER_CROSS_CHECK
+        title: Manual Proposal PDA Inspection via Block Explorer
+        description: |
+          Manually inspect the Proposal PDA accounts via an independent
+          block explorer (Solscan, SolanaFM) from a separate device.
+          Compare the raw account data against the OOB Client decode.
+
+          This provides an independent read path that bypasses both the
+          OOB Client and the simulator.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Approver / Signer
+
+      - ID: OOB_CLIENT_SUPPLY_CHAIN_HARDENING
+        title: OOB Client Supply Chain Hardening
+        description: |
+          Harden the OOB Multisig Client against supply chain compromise:
+
+          - Pin and audit all dependencies
+          - Use reproducible builds
+          - Verify application signatures before installation
+          - Use a dedicated device for the OOB Client (not shared with
+            other applications)
+          - Keep the OOB Client software up to date with security patches
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+  - ID: HW_WALLET_INNER_IX_BLINDNESS
+    title: Hardware Wallet Cannot Verify Inner Transaction Intent
+    attack: |
+      The hardware wallet signs a Squads `proposal_approve` wrapper
+      instruction, not the inner instructions stored in the Proposal PDA.
+      This is a fundamental architectural limitation of the current
+      multisig clear-signing model on Solana hardware wallets.
+
+      The HW wallet screen can display:
+
+      - Correct program ID (Squads V4, not a phishing contract)
+      - Correct multisig PDA address
+      - Signer key identity
+      - (With firmware support) Action name: `proposal_approve`
+
+      The HW wallet screen CANNOT display:
+
+      - Inner instruction details (e.g., "Transfer 50k USDC to Kamino")
+      - Buffer address or program hash (for upgrades)
+      - Configuration change details (new authority key, new threshold)
+
+      Without Squads-specific firmware support, the HW wallet may show
+      only raw hex data and an "Unrecognized instruction" warning,
+      further reducing the signer's ability to verify even the wrapper.
+
+    threatType: Tampering
+    impactDesc: |
+      The HW wallet provides no defense against inner instruction
+      manipulation. If all software-based verification layers (OOB Client,
+      Clean Device, OOB Channel) are compromised, the HW wallet will
+      sign the `proposal_approve` instruction regardless of the inner
+      content, because the inner content is not part of the signed payload.
+
+      This is the fundamental residual risk of the WYSIWYS architecture:
+      the HW wallet guarantees key protection and program-level verification,
+      but cannot provide intent verification for multisig-wrapped instructions.
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: HW_WALLET
+      - REFID: DF_HW_SIGNING
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: SQUADS_FIRMWARE_SUPPORT
+        title: Squads-Aware HW Wallet Firmware
+        description: |
+          Use hardware wallets with firmware that understands Squads V4
+          instruction format and can display:
+
+          - Action name (proposal_approve, proposal_reject)
+          - Multisig address (human-readable or verified checksum)
+          - Member identity
+
+          While this does not solve inner IX blindness, it ensures the
+          signer can at least verify they are interacting with the correct
+          Squads program and multisig.
+
+        inPlace: false
+        public: true
+        operational: false
+
+      - ID: MULTI_LAYER_VERIFICATION
+        title: Multi-Layer Verification Compensates HW Limitation
+        description: |
+          The OOB verification architecture (Multisig Client simulation +
+          Clean Device hash check + Timelock monitoring) is specifically
+          designed to compensate for the HW wallet's inability to verify
+          inner instructions.
+
+          The HW wallet's role in this architecture is limited to:
+
+          - Private key protection (secure element)
+          - Program-level and account-level verification
+          - Physical confirmation (anti-remote-signing)
+
+          Intent verification is delegated to the software layers, with
+          the timelock as the final fallback.
+
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: CLEAN_DEVICE_RPC_COMPROMISE
+    title: Compromised Clean Device or RPC During Buffer Verification (Tier 1)
+    attack: |
+      During Tier 1 program upgrade verification, the clean device or the
+      RPC endpoint it queries returns fake bytecode. The attacker ensures
+      the fake bytecode produces a hash matching the expected CI/CD build,
+      while the actual on-chain buffer contains malicious code.
+
+      Attack vectors:
+
+      - Malware on the "clean" verification device
+      - Compromised or intercepted RPC connection
+      - DNS hijacking redirecting RPC calls
+      - Man-in-the-middle on the RPC TLS connection
+
+      This attack targets the Tier 1 buffer hash verification layer
+      specifically, which is the critical defense for program upgrades.
+
+    threatType: Tampering
+    impactDesc: |
+      The clean device reports "HASH VERIFIED" for a buffer that actually
+      contains malicious code. Combined with a compromised OOB Client,
+      the approver has no remaining verification layer to detect the
+      malicious program upgrade.
+
+      However, the 4-of-7 threshold for Tier 1 requires the attacker to
+      fool four independent signers' clean devices, each potentially
+      using different RPC endpoints and running on different hardware.
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+      - REFID: PROGRAM_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: CLEAN_VERIFICATION_DEVICE
+      - REFID: PRIVATE_RPC
+      - REFID: DF_BUFFER_HASH_VERIFICATION
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: INDEPENDENT_RPC_ENDPOINTS
+        title: Independent RPC Endpoints per Signer
+        description: |
+          Each Tier 1 signer must use a different RPC endpoint for buffer
+          verification than the one used in Environment A (proposal creation).
+          Ideally, different signers use different RPC providers to prevent
+          a single compromised RPC from fooling all signers.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+      - ID: BLOCK_EXPLORER_BUFFER_VERIFICATION
+        title: Cross-Check Buffer on Block Explorer
+        description: |
+          In addition to CLI-based buffer dump, signers should verify the
+          buffer account data via an independent block explorer (Solscan,
+          SolanaFM) on a separate device. This provides a third independent
+          read path for the buffer contents.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Approver / Signer
+
+      - ID: FOUR_OF_SEVEN_THRESHOLD
+        title: 4-of-7 Threshold Requires Independent Compromise
+        description: |
+          The Tier 1 4-of-7 multisig threshold means an attacker must fool
+          four independent signers — each running their own clean device,
+          potentially with different RPC endpoints and different hardware.
+          This makes simultaneous RPC/device compromise significantly harder.
+
+        inPlace: true
+        public: true
+        operational: false
+
+  - ID: MULTI_LAYER_SIMULTANEOUS_COMPROMISE
+    title: Simultaneous Compromise of All Verification Layers
+    attack: |
+      An advanced attacker simultaneously compromises multiple verification
+      layers to bypass all WYSIWYS defenses:
+
+      **Tier 2 scenario (two layers):**
+
+      - Compromise the OOB Multisig Client (Environment B) to display
+        a fake simulation matching the intended action
+      - Compromise or spoof the OOB channel (Slack) so the approver
+        expects the action
+      - The HW wallet signs the wrapper instruction without detecting
+        the inner IX manipulation
+
+      **Tier 1 scenario (three layers):**
+
+      - Compromise the OOB Multisig Client
+      - Compromise the Clean Verification Device or its RPC
+      - Compromise or spoof the OOB channel
+      - All four signers (4-of-7) must be independently fooled
+
+      This is the residual risk of the WYSIWYS architecture and represents
+      the theoretical upper bound of the attack surface.
+
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      Complete bypass of all intent verification. The attacker can execute
+      any action permissible by the compromised multisig role:
+
+      - Unauthorized fund transfers (Tier 2)
+      - Malicious program deployments (Tier 1)
+      - Unauthorized configuration changes (Tier 1)
+
+      Only the timelock provides a final detection window.
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: OOB_MULTISIG_CLIENT
+      - REFID: CLEAN_VERIFICATION_DEVICE
+      - REFID: HW_WALLET
+      - REFID: OOB_CHANNEL
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: TIMELOCK_LAST_DEFENCE
+        title: Timelock as Last Defence
+        description: |
+          Even if all verification layers are compromised, the on-chain
+          timelock provides a final detection and intervention window:
+
+          - **Tier 2:** 24h timelock for BAU operations
+          - **Tier 1:** 72h timelock for critical operations
+
+          During the timelock window:
+
+          - Watchtower services monitor approved proposals against expected
+            actions
+          - Any team member can independently verify the proposal content
+          - Break-glass revocation can cancel the pending action
+          - For program upgrades: buffer hash can be re-verified by anyone
+
+          This is an on-chain guarantee that cannot be bypassed without
+          compromising the multisig threshold itself.
+
+        inPlace: true
+        public: true
+        operational: true
+        operator: Security Operations Team
+
+      - ID: ENVIRONMENT_DIVERSITY
+        title: Environment and Device Diversity
+        description: |
+          Maintain strict separation and diversity across verification
+          environments to make simultaneous compromise impractical:
+
+          - **Environment A** (Signing UI): different device/OS from B and C
+          - **Environment B** (OOB Client): different device/OS from A and C
+          - **Environment C** (HW Wallet): dedicated hardware with secure
+            element
+          - **Clean Device** (Tier 1): yet another separate device
+
+          Use different vendors, operating systems, and network paths for
+          each environment to prevent a single supply chain or network
+          compromise from affecting multiple layers.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+  - ID: RPC_DATA_MANIPULATION
+    title: RPC Endpoint Returns Manipulated Proposal Data
+    attack: |
+      The private RPC endpoint used by the OOB Multisig Client or Clean
+      Verification Device returns manipulated data:
+
+      - Modified Proposal PDA contents (different inner instructions)
+      - Modified buffer bytecode (for Tier 1 hash verification)
+      - Stale data (old proposal state presented as current)
+      - Selective omission (hide active malicious proposals)
+
+      Attack vectors:
+
+      - Compromised RPC provider infrastructure
+      - Man-in-the-middle on the RPC TLS connection
+      - DNS hijacking redirecting to a malicious RPC
+      - Compromised RPC proxy or load balancer
+
+    threatType: Tampering, Information Disclosure
+    impactDesc: |
+      The OOB Multisig Client and/or Clean Device operate on false data,
+      undermining all software-based verification layers that depend on
+      accurate on-chain reads.
+
+      - OOB Client displays a benign simulation for a malicious proposal
+      - Clean Device computes correct hash against fake buffer data
+      - Legitimate proposals hidden from approver view
+
+    impactedSecObj:
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: PRIVATE_RPC
+      - REFID: OOB_MULTISIG_CLIENT
+      - REFID: CLEAN_VERIFICATION_DEVICE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: MULTI_RPC_PROVIDER
+        title: Multiple Independent RPC Providers
+        description: |
+          Use multiple independent RPC providers for verification:
+
+          - OOB Client queries at least two different RPC endpoints
+          - Clean Device uses a different RPC than the OOB Client
+          - Results are cross-compared; any discrepancy halts signing
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+
+      - ID: RPC_TLS_PINNING
+        title: TLS Certificate Pinning for RPC Connections
+        description: |
+          Pin TLS certificates for known RPC endpoints in the OOB Client
+          and Clean Device configurations to prevent man-in-the-middle
+          and DNS hijacking attacks.
+
+        inPlace: false
+        public: true
+        operational: false
+
+  - ID: ATTACKER_INCENTIVE_STEAL_FUNDS
+    title: Attacker incentive to steal funds through signer compromise
+    attack: |
+      A financially motivated attacker attempts to compromise enough signing
+      authority to approve malicious treasury actions that exfiltrate value.
+      The attacker objective is direct economic gain, and the practical path
+      is social engineering, key theft, or workstation compromise against
+      signers involved in Tier 1 and Tier 2 operations.
+
+      Typical sequence:
+
+      - Prepare a proposal that routes value to attacker-controlled accounts
+      - Compromise enough signers to satisfy multisig threshold
+      - Wait through timelock while suppressing anomaly escalation
+      - Execute after timelock to finalize asset movement
+
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      Successful execution can lead to direct user-fund loss and severe trust
+      damage.
+
+      - Unauthorized USDC/token transfers
+      - Unauthorized config changes that enable subsequent drains
+      - Rapid reputational and regulatory impact after on-chain execution
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: HW_WALLET
+      - REFID: OOB_MULTISIG_CLIENT
+      - REFID: DF_HW_SIGNING
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:N/I:H/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: ECONOMIC_DRAIN_THRESHOLD_BARRIER
+        title: Multisig thresholds create high attack cost
+        description: |
+          Critical actions require multiple independent signer approvals
+          (Tier 1: 4-of-7, Tier 2: 2-of-5). This makes single-key theft
+          insufficient for direct fund exfiltration and raises attacker cost.
+
+        inPlace: true
+        public: true
+        operational: false
+
+      - ID: ECONOMIC_DRAIN_TIMELOCK_BARRIER
+        title: Timelocks reduce immediate payout certainty
+        description: |
+          On-chain timelocks delay execution, reducing attacker certainty of
+          successful payout and increasing probability of detection and veto.
+
+          - Tier 2: 24h delay
+          - Tier 1: 72h delay
+
+        inPlace: true
+        public: true
+        operational: false
+
+      - ID: PUBLIC_DETERRENCE_OF_ECONOMIC_ATTACKS
+        title: Publicly communicate low-success assumptions and response posture
+        description: |
+          Publish threshold, timelock, monitoring, and response controls so
+          attackers can see low expected payoff and high attribution risk.
+          Public deterrence messaging reduces incentives for opportunistic
+          theft attempts.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Operations Team
+
+  - ID: ATTACKER_INCENTIVE_UNFREEZE_FUNZD
+    title: Attacker incentive to unfreeze restricted funds
+    attack: |
+      A motivated actor seeks to restore mobility to compliance-restricted
+      balances (for example AML-frozen positions). Instead of immediate broad
+      theft, the attacker objective is to unblock specific balances and exit.
+
+      Plausible sequence:
+
+      - Gain control of signer set that can approve admin operations
+      - Approve thaw/whitelist-changing actions for restricted holders
+      - Submit redemption/settlement flow to convert unlocked balances
+      - Transfer resulting liquid assets out of monitored perimeter
+
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      This undermines compliance controls and can reintroduce sanctioned or
+      blocked value into circulation.
+
+      - AML policy bypass through governance-layer abuse
+      - Legal/regulatory exposure for unauthorized release of funds
+      - Difficult incident containment once assets are redeemed and moved
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: HW_WALLET
+      - REFID: OOB_MULTISIG_CLIENT
+      - REFID: DF_OOB_VERIFICATION
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: UNFREEZE_ADMIN_THRESHOLD_CONTROL
+        title: Admin-path threshold and timelock for freeze-state changes
+        description: |
+          Freeze/thaw and whitelist-affecting operations must pass the same
+          signer-governance barriers (multisig threshold + timelock), reducing
+          feasibility of fast unauthorized unfreeze attempts.
+
+        inPlace: true
+        public: true
+        operational: false
+
+      - ID: AML_UNFREEZE_PUBLIC_AUDITABILITY
+        title: Public auditable governance trail for freeze/unfreeze actions
+        description: |
+          Keep freeze/unfreeze governance decisions and execution traces visible
+          and reviewable. Public scrutiny lowers expected attacker success and
+          raises deterrence for policy-bypass attempts.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Compliance and Security Operations Team
+
+  - ID: ATTACKER_INCENTIVE_FREEZE_FUNDS
+    title: Attacker incentive to freeze legitimate funds for extortion or disruption
+    attack: |
+      An attacker may be motivated to freeze legitimate holders' funds to cause
+      business disruption, extort victims, or create governance panic. This is
+      a denial-oriented objective rather than direct immediate theft.
+
+      Plausible sequence:
+
+      - Compromise signers with authority over freeze-related admin actions
+      - Approve targeted freeze operations against legitimate holders
+      - Delay remediation by creating governance noise during timelock windows
+      - Demand payment or strategic concessions to reverse freezes
+
+    threatType: Denial of Service, Tampering
+    impactDesc: |
+      Legitimate holders can be prevented from moving or redeeming assets,
+      producing significant operational and reputational damage.
+
+      - Temporary or prolonged asset immobilization
+      - Extortion leverage against affected users or operator teams
+      - Erosion of trust in governance and signing controls
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: SIGNING_TRANSACTION_INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: HW_WALLET
+      - REFID: OOB_MULTISIG_CLIENT
+      - REFID: OOB_CHANNEL
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:L/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: FREEZE_ABUSE_THRESHOLD_AND_DELAY
+        title: High-signature governance and timelock for freeze actions
+        description: |
+          Requiring multiple signatures and timelock delay for freeze-related
+          governance actions increases attacker effort and provides a detection
+          window before irreversible harm.
+
+        inPlace: true
+        public: true
+        operational: false
+
+      - ID: FREEZE_ACTION_PUBLIC_DETERRENCE
+        title: Publicly visible freeze governance to reduce extortion incentives
+        description: |
+          Publicly document freeze governance criteria, operator response
+          runbooks, and monitoring so attackers anticipate low probability of
+          sustained extortion success.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Operations Team

@@ -1,0 +1,49 @@
+@startuml
+Participant Payer1 as PAYER 
+Participant Payee2 as PAYEE 
+box "Trusted parties" #LightGreen
+Entity "Cert Auth(s)" as CA
+Entity NOTARY
+end box
+
+== 1: TX creation ==
+
+autonumber 1.1
+PAYER -> PAYER: signs tx at time1
+
+note over PAYER: tx contains\nbackchain information
+
+PAYER -> PAYEE: signed Payer1 (time1, tx)
+
+== 2: Counterparty TX Verification ==
+autonumber 2.1
+PAYEE -> CA: get certs (Payer)
+CA --> PAYEE: ret certs
+
+
+PAYEE -> CA: get CRL
+CA --> PAYEE: ret CRL (time2)
+
+PAYEE -> PAYEE: Start verify & sign tx
+activate PAYEE
+
+PAYEE -> PAYEE: is past signature valid at timePast1? \n get CRL at time ()
+
+
+deactivate PAYEE
+
+' PAYEE --> PAYER: signed Bob(signed Payer1 (tx))
+
+== 2: TX Notarization and finality ==
+
+autonumber 3.1
+
+PAYEE -> NOTARY: signed Payee2(time3, signed Payer1 (time1, tx))
+NOTARY -> CA: get CRL
+CA --> NOTARY: ret CRL (time3.5)
+
+
+autonumber 4.1
+  NOTARY -> PAYER : signed Notary (time4, signed Bob(signed Payer1 (time1, tx)))
+ NOTARY -> PAYEE : signed Notary (time4, signed Bob(signed Payer1 (time1, tx)))
+@enduml

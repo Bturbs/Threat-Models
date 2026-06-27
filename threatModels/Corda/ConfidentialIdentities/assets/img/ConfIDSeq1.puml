@@ -1,0 +1,44 @@
+@startuml
+actor Alice
+actor Bob
+participant Notary as "Non-Validating Notary"
+actor Charlie
+
+== Swap Confidential Identities ==
+note right of Alice
+Generates new confidential identity
+Signed by Alice's well-known identity
+Sent to Bob
+end note
+
+Alice -> Bob : SwapIdentitiesFlow
+Bob -> Alice : Return Bob's conf. identity
+note right of Bob
+Each party learns the other’s conf. key
+end note
+
+== Transaction Assembly ==
+Alice -> Notary : Submit input state hashes
+note right of Notary
+Sees only hashes
+No identity mapping
+end note
+Notary --> Alice : OK
+
+== IdentitySync ==
+Alice -> Bob : IdentitySyncFlow
+note right of Bob
+Receives certificate path for Alice’s conf. key
+Only if Alice possesses it
+Charlie’s identity unknown unless synced
+end note
+
+Bob -> Charlie : Use input state from Alice
+note right of Charlie
+Sees Alice's conf. key
+Does not know legal identity
+Unless certificate is shared
+ via IdentitySync
+end note
+
+@enduml

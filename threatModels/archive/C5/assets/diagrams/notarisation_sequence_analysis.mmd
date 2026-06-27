@@ -1,0 +1,77 @@
+
+sequenceDiagram
+    autonumber
+    
+    box Notarisation sequence analysis
+    actor vnode as V Node operator
+    participant Member1 as Member Cluster  
+    participant notary as Notary Cluster
+    participant Member2 as Peer Member Cluster
+    
+    end
+    
+   vnode->>Member1: Execute Flow <br/>RPC/api/v1/flow/$HOLDING_ID:"startFlow":{"clientRequestId":"r1", <br/> "flowClassName":"net.cordapp.testing.calculator.CalculatorFlow",<br/>"requestData":"{\"a\":10,\"b\":20}"}
+   
+
+   Note over vnode,Member1: DF_FLOW_REQ
+    rect rgb(200, 150, 255)
+    note right of Member1: Spoofing, Repudiation, Dos, Elev of Priv.
+    end 
+   Member1-->>vnode: return status: START_REQUIRED
+   vnode-->>Member1: Check Status <br/>RPC/api/v1/flow/$HOLDING_ID:r1
+   Note over vnode,Member1: DF_FLOW_STAT1
+    rect rgb(200, 150, 255)
+    note right of Member1: Spoofing, Tampering, Repudiation, Dos, Elev of Priv.
+    end 
+   Member1->>+vnode: return status: RUNNING
+
+   Member1->>+Member1: Flow code: <br/>UtxoLedgerService.finalize (participant peer ID)
+   Note over Member1: DF_SANDBOX_FINALIZE1
+
+   alt
+    Member1->>+Member2: P2P sessions ResponserFlow.call via P2P
+    Note over Member1, Member2: DF_P2P_RESPONDER_FLOW
+    rect rgb(200, 150, 255)
+    note right of Member2: Spoofing, Tampering, <br/>Repudiation, Info Disc,<br/> Dos, Elev of Priv.
+    end 
+    Member2->>+Member2: LedgerService.<br/>receiveFinality(session,validationMethod) 
+    Member2-->>Member1: return Tx signed by Peer
+   else sendUnseenSignaturesToCounterparties
+    Note over Member1: DF_sendUnseenSignaturesToCounterParties 
+    rect rgb(200, 150, 255)
+    note right of Member2: Repudiation
+    end 
+
+   end
+   alt Non validation Notarization
+    Member1->>+notary: Non validating Tx Notarization(TxId, input state references, <br/> State references, number of outputs, time window, notary, Merkle proofs )
+    Note over Member1,notary: DF_NV_NOTARIZATION_REQ 
+    rect rgb(200, 150, 255)
+    note right of notary: Denial of State.
+    end 
+
+    notary->>+notary: Notary checks(OK)
+    notary->>+notary: UXTO Ledger Update
+    notary-->>Member1: return notary signature
+    Note over Member1,notary: DF_NV_NOTARIZATION_RES 
+
+   else validating Notarisation (custom implementation)
+    Member1->>+notary: Validating Tx Notarization(Whole Tx, states...)
+    Note over Member1,notary: DF_VAL_NOTARIZATION_REQ 
+    rect rgb(200, 150, 255)
+    note right of notary: Info Disclosure, denial of service
+    end 
+    notary->>+notary: Notary checks(OK)
+    notary->>+notary: UXTO Ledger Update
+    Note over Member1,notary: DF_VAL_NOTARIZATION_RES 
+    notary-->>Member1: return notary signature
+    
+
+   end
+   Member1->>+Member2: send Notary Signatures To Counterparties
+    rect rgb(200, 150, 255)
+      
+    note right of Member2: Denial of Service/State2,<br/> Repudiation(both sides)
+    end 
+
+   Member2-->>Member1: return

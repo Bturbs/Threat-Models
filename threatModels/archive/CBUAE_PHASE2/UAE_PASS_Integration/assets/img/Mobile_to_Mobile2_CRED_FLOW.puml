@@ -1,0 +1,81 @@
+@startuml
+title UAE PASS Mobile Login via Keycloak (Authorization Code Flow with PKCE)
+
+box "Mobile Device" #lightblue
+actor "User" as User
+participant "Mobile App (YourApp)" as App
+participant "Embedded WebView" as WebView
+participant "UAE PASS Mobile App" as UAEPASSApp
+end box
+
+box "CDBC Backend" #lightgreen
+participant "Keycloak Server" as KC
+end box
+
+box "UAE PASS Backend"
+participant "UAE PASS Auth Server" as UAEPASS
+end box
+
+== Flow Type: OAuth 2.0 Authorization Code Flow with PKCE ==
+
+User -> App: Tap "Login with UAE PASS"
+App -> WebView: Open Keycloak /auth endpoint with PKCE
+note right
+URL: https://your-keycloak.com/realms/myrealm/protocol/openid-connect/auth  
+Query Params:
+  - client_id=mobile-client  
+  - redirect_uri=yourapp://callback  
+  - response_type=code  
+  - scope=openid  
+  - code_challenge=...  
+  - code_challenge_method=S256  
+Keycloak Client Config:
+  - Access Type: public  
+  - Redirect URI: yourapp://callback  
+  - Web Origins: *  
+  - PKCE: enabled  
+end note
+
+WebView -> KC: GET /auth with PKCE params
+KC -> UAEPASS: Redirect to UAE PASS /authorize
+note right
+URL: https://id.uaepass.ae/idshub/authorize  
+Keycloak Identity Provider:
+  - Type: OIDC  
+  - Alias: uaepass  
+  - Token URL: https://id.uaepass.ae/idshub/token  
+  - User Info URL: https://id.uaepass.ae/idshub/userinfo  
+end note
+
+WebView -> UAEPASS: Redirect via user-agent
+UAEPASS -> UAEPASSApp: Launch UAE PASS App via uaepass:// scheme
+User -> UAEPASSApp: Authenticate biometrically
+UAEPASSApp -> UAEPASS: Confirm identity
+
+UAEPASS -> KC: Redirect to Keycloak broker endpoint with code
+note right
+Redirect URI registered with UAE PASS:  
+https://your-keycloak.com/realms/myrealm/broker/uaepass/endpoint  
+end note
+
+KC -> UAEPASS: POST /token to exchange code for UAE PASS token
+KC -> UAEPASS: GET /userinfo to validate token and extract claims
+KC -> KC: Map user via Emirates ID or other claim
+
+KC -> App: Redirect via deep link to yourapp://callback?code=...
+note right
+Handled by mobile OS, not WebView.  
+App intercepts URI and resumes flow.
+end note
+
+App -> KC: POST /token to exchange code for Keycloak JWT
+note right
+URL: https://your-keycloak.com/realms/myrealm/protocol/openid-connect/token  
+Returns:
+  - access_token (JWT)  
+  - id_token  
+  - refresh_token  
+end note
+
+@enduml
+

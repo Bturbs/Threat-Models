@@ -1,0 +1,110 @@
+@startuml
+' Define participants
+participant "RPC Client" as Client
+participant "Initiator Flow" as Init <<FlowLogic>>
+participant "ServiceHub" as SH
+participant "NetworkMapCache" as NMC
+participant "TransactionBuilder" as TB
+participant "CollectSignaturesFlow" as CSF <<FlowLogic>>
+participant "Acceptor Flow" as Acc <<FlowLogic>>
+participant "SignTransactionFlow" as STF <<FlowLogic>>
+participant "FinalityFlow" as FF <<FlowLogic>>
+participant "ReceiveFinalityFlow" as RFF <<FlowLogic>>
+participant "Notary" as Notary
+
+' Start the flow (e.g., via RPC)
+Client -> Init : call(iouValue, otherParty)
+
+' Stage 1: Generating Transaction
+Init -> Init : progressTracker.setCurrentStep(GENERATING_TRANSACTION)
+note right of Init : Start: Generate Transaction
+
+Init -> SH : getNetworkMapCache()
+SH -> NMC : getNotary(CordaX500Name)
+NMC --> SH : notaryParty
+SH --> Init : notaryParty
+
+Init -> SH : getOurIdentity()
+SH --> Init : meParty
+
+Init -> Init : Create IOUState(iouValue, me, otherParty)
+Init -> Init : Create Command(Create, keys)
+Init -> TB : new(notary)
+Init -> TB : addOutputState(iouState, IOUContract.ID)
+Init -> TB : addCommand(txCommand)
+
+' Stage 2: Verifying Transaction
+Init -> Init : progressTracker.setCurrentStep(VERIFYING_TRANSACTION)
+note right of Init : Start: Verify Transaction
+Init -> TB : verify(getServiceHub())
+TB -> SH : Verify Transaction Logic (using contracts etc.)
+SH --> TB : Verification OK
+TB --> Init
+
+' Stage 3: Signing Transaction
+Init -> Init : progressTracker.setCurrentStep(SIGNING_TRANSACTION)
+note right of Init : Start: Sign Transaction (Initiator)
+Init -> SH : signInitialTransaction(txBuilder)
+SH --> Init : partSignedTx
+
+' Stage 4: Gathering Signatures
+Init -> Init : progressTracker.setCurrentStep(GATHERING_SIGS)
+note right of Init : Start: Gather Signatures
+Init -> Init : initiateFlow(otherParty)
+note right of Init : Establishes FlowSession (otherPartySession)\nTriggers Acceptor Flow on otherParty node
+
+' --- Start CollectSignaturesFlow sub-flow ---
+Init -> CSF : subFlow(new CollectSignaturesFlow(partSignedTx, otherPartySession))
+CSF -> Acc : Send partSignedTx (via FlowSession)
+
+' --- Acceptor Flow Logic ---
+Acc -> STF : subFlow(new SignTxFlow(otherPartySession))
+' STF receives partSignedTx implicitly via session from CSF -> Acc link
+STF -> Acc : checkTransaction(partSignedTx) ' Callback for verification
+Acc -> Acc : Verify IOUState (e.g., value <= 100)
+Acc --> STF : Verification OK
+
+STF -> SH : addSignature(partSignedTx) ' Acceptor signs using its ServiceHub
+SH --> STF : Signed Part (Acceptor's Sig)
+
+note right of STF : STF sends signature back via session implicitly
+STF --> CSF : Return Acceptor's Signature (via FlowSession response)
+' STF sub-flow finishes within Acceptor
+STF --> Acc : Return txId (or other result of STF subflow)
+' --- End Acceptor's SignTransactionFlow ---
+
+CSF -> CSF : Add received signature to transaction
+CSF --> Init : fullySignedTx
+' --- End CollectSignaturesFlow sub-flow ---
+
+' Stage 5: Finalising Transaction
+Init -> Init : progressTracker.setCurrentStep(FINALISING_TRANSACTION)
+note right of Init : Start: Finalise Transaction
+
+' --- Start FinalityFlow sub-flow ---
+Init -> FF : subFlow(new FinalityFlow(fullySignedTx, otherPartySession))
+FF -> Notary : Send fullySignedTx for Notarization
+Notary -> Notary : Verify Transaction & Sign (Notarize)
+Notary --> FF : Notary Signature
+
+FF -> SH : recordTransactions(finalTx) ' Initiator records
+SH --> FF
+
+FF -> Acc : Send final notarized transaction (stx) (via FlowSession)
+
+' --- Acceptor waits for Finality ---
+Acc -> RFF : subFlow(new ReceiveFinalityFlow(otherPartySession, txId))
+' RFF receives final notarized transaction (stx) implicitly via session
+RFF -> RFF : Verify Notary Signature & txId
+RFF -> SH : recordTransactions(stx) ' Acceptor records using its ServiceHub
+SH --> RFF
+RFF --> Acc : finalTx (stx)
+' --- End Acceptor's ReceiveFinalityFlow ---
+
+' Acceptor flow completes after RFF
+FF --> Init : finalTx (stx)
+' --- End FinalityFlow sub-flow ---
+
+Init --> Client : finalTx (stx)
+
+@enduml

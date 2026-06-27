@@ -1,0 +1,21 @@
+@startyaml
+threats:
+
+  - ID: UNAUTH_SERVICE_CALLS
+    title: Unauthorized service calls
+    attackers:
+      - REFID: ANONYMOUS
+    attack: ddd
+    impactDesc: ddd
+    fullyMitigated: true
+    CVSS: 6.5
+    threatType: Spoofing
+    public: true
+    
+    countermeasures:
+      - ID: d
+        title: Policy Enforcement Point on service
+        description: desc
+        inPlace: true
+        public: true
+@endyaml

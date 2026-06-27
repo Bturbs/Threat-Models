@@ -1,0 +1,83 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.3.0 Chrome/140.0.7339.249 Electron/38.7.2 Safari/537.36" version="29.3.0">
+  <diagram name="Page-1" id="uJiTX2Ro6e7poUPeZSDC">
+    <mxGraphModel dx="1157" dy="881" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-1" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="180" y="510" as="sourcePoint" />
+            <mxPoint x="700" y="510" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-4" connectable="0" parent="QWnLg1CE1vRTkJr9E9Mk-1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Time ( &amp;gt; risk)" vertex="1">
+          <mxGeometry relative="1" x="0.3885" y="-1" as="geometry">
+            <mxPoint x="119" y="19" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-2" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="180" y="510" as="sourcePoint" />
+            <mxPoint x="180" y="150" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-3" connectable="0" parent="QWnLg1CE1vRTkJr9E9Mk-2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Mitigations" vertex="1">
+          <mxGeometry relative="1" x="-0.0167" y="-1" as="geometry">
+            <mxPoint x="-41" y="-153" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-5" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Internal" vertex="1">
+          <mxGeometry height="40" width="60" x="220" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-6" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="Soft launch" vertex="1">
+          <mxGeometry height="60" width="80" x="360" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-7" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Flagship" vertex="1">
+          <mxGeometry height="150" width="170" x="510" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-8" edge="1" parent="1" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;endWidth=30;endSize=14.67;width=38;fillColor=#d5e8d4;strokeColor=#82b366;labelBackgroundColor=default;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="20" y="440" as="sourcePoint" />
+            <mxPoint x="210" y="440" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-9" connectable="0" parent="QWnLg1CE1vRTkJr9E9Mk-8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];labelBackgroundColor=none;" value="&amp;nbsp;&lt;b&gt;Phase1&lt;/b&gt;: Ops + Keys&lt;div&gt;&amp;nbsp; + Code Hygiene&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.3255" y="-3" as="geometry">
+            <mxPoint x="13" y="-3" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-11" edge="1" parent="1" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;endWidth=30;endSize=13;width=22;fillColor=#60a917;strokeColor=#2D7600;labelBackgroundColor=default;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="133" y="350" as="sourcePoint" />
+            <mxPoint x="348" y="349.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-12" connectable="0" parent="QWnLg1CE1vRTkJr9E9Mk-11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];labelBackgroundColor=none;" value="&lt;b&gt;Phase2&lt;/b&gt;: Supply chain segregation" vertex="1">
+          <mxGeometry relative="1" x="-0.3255" y="-3" as="geometry">
+            <mxPoint x="13" y="-3" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-15" edge="1" parent="1" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;endWidth=30;endSize=13;width=22;fillColor=#008a00;strokeColor=#005700;labelBackgroundColor=default;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="260" y="250" as="sourcePoint" />
+            <mxPoint x="505" y="250" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-16" connectable="0" parent="QWnLg1CE1vRTkJr9E9Mk-15" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];labelBackgroundColor=none;" value="&lt;b&gt;Phase3&lt;/b&gt;: Out Of Band redundancy ops" vertex="1">
+          <mxGeometry relative="1" x="-0.3255" y="-3" as="geometry">
+            <mxPoint x="13" y="-3" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-19" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;autosize=1;resizable=0;" value="&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Phase 1 &lt;/b&gt;(secure baseline):&lt;/span&gt;&lt;div&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Secure operations (keys, multisigs)&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;External Testing (code review + pen-testing)&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Secure product design (including timelocks, limits ...)&lt;/span&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="94" width="337" x="40" y="584" as="geometry" />
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-20" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;autosize=1;resizable=0;" value="&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Phase 2 &lt;/b&gt;(resiliency to industry incidents e.g. supply chain):&lt;/span&gt;&lt;div&gt;&lt;ul&gt;&lt;li&gt;Operations: code commits signatures&lt;/li&gt;&lt;li&gt;Supply chain and CI/CD pipeline segregation (resilience to compromised PC or Dependency)&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="79" width="552" x="34" y="686" as="geometry" />
+        </mxCell>
+        <mxCell id="QWnLg1CE1vRTkJr9E9Mk-21" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;autosize=1;resizable=0;" value="&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Phase 3 &lt;/b&gt;(resiliency to targeted attacks with advanced threats):&lt;/span&gt;&lt;div&gt;&lt;ul&gt;&lt;li&gt;Out of Band operations verification redundancy&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="65" width="350" x="34" y="770" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

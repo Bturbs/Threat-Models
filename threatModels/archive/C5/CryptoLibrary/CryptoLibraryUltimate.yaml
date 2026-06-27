@@ -1,0 +1,38 @@
+parent: C5.CryptoLibrary
+ID: Ultimate
+schemaVersion: 2
+title: Crypto Library Ultimate Security Level
+
+# gantt:
+#   startDate: 2022-11-01
+#   endDate: 2022-11-25
+#   status: done
+
+scope:
+  description: |
+    TODO: describe multiple HSM situation
+
+    For this threat model we consider **system_operator** a potential attacker in scope, see the "Attackers" section below
+        <img src="img/corda5-Crypto Worker_Ultimate.svg" />
+
+    actual HSM authentication out of scope, it is implementation dependant, additional TM for AWS cloud HSM?)
+
+  attackers:
+    - ID: system_operator
+      description: personnel delegated to install and maintain the corda5 
+        cluster
+      inScope: true
+
+
+  assets:
+    - ID: HSMAuth
+      inScope: false
+      title: HSM authentication
+      type: data flow
+      description: Crypto worker to HSM authentication and related credentials
+
+analysis: |2
+
+  Given the scope no threat was identified.
+
+

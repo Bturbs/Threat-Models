@@ -1,0 +1,621 @@
+parent: C5
+ID: MGM
+schemaVersion: 2
+prefix: C5.MGM
+title: MGM
+
+# gantt:
+#   startDate: 2023-6-7
+#   endDate: 2023-4-11
+#   status: active
+
+scope:
+  description: |2
+
+    The scope of analysis of this Corda 5 Threat Model section considers the following
+    use cases:
+
+    - Group data distribution
+    - Synchronisation
+    - Membership suspension and activation
+
+    The following related use cases are also covered in other threat models. These
+
+     include:
+
+    - Member registration and re-registration (including member updates). This is 
+    covered in VNodeOnboarding threat model.
+    - Application on-boarding, generating and distributing CPIs. This is partially covered
+    in end-2-end and CPI Packaging threat models.
+
+    The process of on-boarding an MGM is also known as the process of creating  the
+    membership group.  During MGM on-boarding you are defining the parameters which
+    all members  must adhere to in order to participate in a group.
+        [REF](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/3934879814/Membership+Groups+High+Level+Overview)
+
+  attackers:
+
+    # - ID: COUNTERPARTY
+    #   description: |
+    #     Cordapp user of a peer VNode.
+
+    #      **Main use cases:**
+
+    #       - Call and retrieve CordApp Flows:
+    #          - Gets all flows that can be used by the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Info-API/operation/get_flowclass__holdingidentityshorthash_)
+    #          - Starts a new instance for the specified flow for the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/post_flow__holdingidentityshorthash_)
+    #          - gets the current status of the specified flow instance [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/get_flow__holdingidentityshorthash___clientrequestid_)
+    #   inScope: true
+
+
+  assets:
+    - ID: DF_MGM_2_Member_Data_distribution
+      title: MGM to Member data distribution
+      description: |
+        This is the dataflow communication between MGM to a member virtual node of the group. 
+        The distributed data is sent as a broadcast from the MGM to the group member.
+        For reference, you can find details of MGM data distribution here: 
+          <a href="https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/the-host/membership-data-distribution.md"> REF </a>
+      type: dataflow
+      inScope: true
+
+    - ID: DF_Member_2_MGM_synchronisation
+      title: Member to MGM synchronisation requests
+      description: |
+        Active group Member requests for data synchronisation whenever it is needed and at least once a day.
+
+        For reference, you can find details of members synchronisation here: 
+          <a href="https://github.com/corda/platform-eng-design/blob/08896a67029689970c934a95775124dbaec37a1a/core/corda-5/corda-5.0/the-host/group-parameters.md"> REF </a>
+      type: dataflow
+      inScope: true
+
+    - ID: groupDataPackage
+      type: Data
+      title: Group data distribution package
+      description: |
+        This includes:
+
+         - MemberInfo list
+         - MemberInfo list Hash
+         - GroupParameters
+         - CPIWhitelist
+
+      #  type: configuration
+      inScope: true
+
+    - ID: MemberInfo
+      type: Data
+      title: Member Info
+      description: |
+        Member information includes:
+
+        - List of endpoints
+        - Identity key (a.k.a session initiation key) 
+        - Ledger key
+
+      inScope: true
+
+    - ID: GroupParameters
+      title: Group Parameters
+      description: |
+        Group Parameters will be sent in the same data distribution package as the MemberInfo and CPI whitelist
+        Group Parameters updates are
+
+        - Dynamic updates to the MinimumPlatformVersion
+        - Addition of new Notaries to the NotaryWhiteList
+        - Any update to additional fields
+
+        For reference on Group Parameters: 
+          <a href="https://github.com/corda/platform-eng-design/blob/08896a67029689970c934a95775124dbaec37a1a/core/corda-5/corda-5.0/the-host/group-parameters.md"> REF </a>
+      type: configuration
+      inScope: true
+
+    - ID: CPIWhitelist
+      title: CPI Whitelist
+      description: |
+        The whitelist is a list of Cpi Version objects. 
+
+        The Cpi Whitelist can acts as an advertised schedule or a pipeline for clients to be able to 
+        foresee the arrival of new cpi versions in the group as well as the sun-setting of older versions.
+
+        CPI whitelist is distrubuted by the MGM using the same data package as the Membership updates and Group parameters
+        using STANDARD distribution type. 
+
+        Each CPIversion entry consists of:
+
+        - version: String : Cpi Name & version
+        - cpiHash: Hash : the hash over the entire cpi file.
+        - datePublished : Instant : The Date when the cpi was first registered
+        - activationTime: Instant :  This is the time from when this version will be active on the network 
+        allowing for Users to register/upgrade using this version. Can be null.
+        - deactivationTime : Instant : This is the time from when this version will be deactivated on the network 
+        causing all members currently using it to be suspended. Can be null.
+        - isActive: Boolean : A flag that marks the cpiVersion as being part of the cpi whitelist.   
+
+        For reference, on CPI version: 
+          <a href="https://github.com/corda/platform-eng-design/blob/2fb14f3b7f66537fbf19fb03b49405d4f59cc3db/core/corda-5/corda-5.0/the-host/cpi-whitelist.md"> REF </a>
+      type: configuration
+      inScope: true
+
+    - ID: MGM_REGISTRATION_KEY
+      title: MGM Registration keys
+      type: key
+      description: (A.K.A. corda.ecdh.key) Public MGM keys are used when making 
+        registration requests. The public key is included in the dynamic group 
+        policy file. The private key is kept by the MGM. For VNode registration 
+        this key is used for authentication in the P2P protocol.
+      inScope: true
+      properties:
+        location: CRYPTO_WORKER Java memory process, MGM_DB (encrypted with 
+          wrapping keys) to be checked
+        type: Private signature key
+        format: ECDSA key pair
+        length: 256
+      applicationRelated: true
+      infrastructureRelated: false
+
+  assumptions:
+    - ID: SINGLE_MGM
+      description: >
+        A group has only one MGM. Multiple MGMs are not supported.           
+           
+    - ID: IDENTIFICATION_AUTHENTICATION
+      description: >
+        Corda is a permissioned network, where all participants are identified and
+        authenticated.  Participants communicate confidentially in peer-to-peer, and
+        mutual identification and authentication  takes place prior to any ledger
+        operation.           
+           
+analysis: |
+
+threats:
+  - ID: SPOOFING_MGM_DATA_DISTRIBUTION
+    lastReview: 2024-04-23
+    title: Spoofing of the MGM data distribution
+    impact: |
+      Affect the operation of the corda group and the availability of the service.
+    impactedSecObj:
+      - REFID: LEDGER_INTEGRITY
+      - REFID: AVAILABILITY
+      - REFID: LEDGER_SPOOFING_PREVENTION
+
+    assets:
+      - REFID: DF_MGM_2_Member_Data_distribution
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H
+    threatType: Spoofing, elevation of privilege and tampering
+    attack: |
+      A peer attempts to send the MGM data distribution package to other group members.
+      The data distribution 
+      package include members information, active and suspended members, group parameters and CPI whitelist. 
+      If the distribution message is not authenticated this will enable the attacker to impersonate the MGM. 
+      This will lead to elevating privileges to that of the MGM and enable the attacker to override group parameters that 
+      are defined by the MGM.
+      This could create different problems; including making members unreachable or appear suspended, adding untrusted Notary
+      services, etc. The MGM is the anchor of trust in a Corda network, impersonating the MGM could lead to impersonating
+      all group members, for example replacing the notary with an attacker controlled node. 
+
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: MEMBER_DATA_DISTRIBUTION_AUTH
+        title: MGM data distribution package is signed by the MGM private key
+        description: |
+          Data distribution package is communicated over an authenticated end-2-end channel. 
+          Reject packages that is not signed by the MGM.
+          Group parameters are signed by the MGM using its session initiation key. 
+          Member info contains two parts, member context and mgm context. 
+          The first is signed by the member's session initiation key and the second is signed 
+          by the MGM's session initiation key. When a member receives a data distribution package, 
+          it verifies all these signatures. 
+          This is done by a component in the membership worker.
+          Note that these signatures are generated and verified regardless of whether the vnodes are in the same or a different cluster.
+        operational: false
+        inPlace: true
+        public: true
+
+  - ID: REPLAY_OLD_MGM_DATA_DISTRIBUTION
+    lastReview: 2024-04-23
+    title: Send old distribution package
+    impactedSecObj:
+      - REFID: INTEGRITY
+
+    impactDesc: |
+      Causing use of outdated member info or Group parameters.
+    assets:
+      - REFID: DF_MGM_2_Member_Data_distribution
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:L
+    threatType: Information disclosure
+    attack: |2
+
+      The attacker sends old MGM data distribution package. These were signed by the MGM's session initiation key. If the package includes
+      memberInfo, it would also be signed the member's session initiation key. The attacker extracts these packages and replay them 
+      to the victim v-node. The victim v-node would check validity of the signatures and use the package data assumnig they are 
+      new uptodate package. This could cause misconfiguration or affect transacting with other members  
+          
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: MEMBER_DATA_DISTRIBUTION_TIMESTAMPING
+        title: Ordering data distribution package
+        description: |
+          Data distribution package is ordered or time-stamped. Upon receiving a data package the v-node should check that the received
+          package order (or time stamped) is after the v-node currently used configuration. The order (or time-stamp) should be 
+          signed by the MGM's session initiation key 
+
+        operational: false
+        inPlace: true
+        public: true
+
+
+  - ID: DISCLOSING_MGM_DATA_DISTRIBUTION
+    title: Disclosure of the MGM Member data distribution to suspended or 
+      unactivated members
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+
+    impactDesc: |
+      Information disclosure to suspended or unactivated members.
+    assets:
+      - REFID: DF_MGM_2_Member_Data_distribution
+    attackers:
+      - REFID: VNODE_OPERATOR
+      - REFID: NETWORK_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:L/A:N
+    threatType: Information disclosure
+    attack: |2
+
+      Group data distribution should be distributed to currently active group members and suspended members who 
+      are being activated. However, a suspended member could receive the data distribution due to a race condition.
+      i.e. becomes suspended about the same time of the data distribution. 
+      Alternatively, a suspended member could request an active member to forward the data distribution update.
+      A misconfigured MGM could send the group data distribution to unactivated members. 
+      Alternatively, member could avoid being suspended by not providing the MGM its real Group parameters and CPI -If 
+      that was the reason of it being suspended-.
+
+      In this case the member would continue to receive the MGM updates.    
+
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-23
+    countermeasures:
+      - ID: PreventForwarding
+        title: Only the MGM can send data distrubtion
+        description: |
+          Data distrubtion package is communicated over an authenticated end-2-end channel. It is accepted only if it is sent by the MGM. 
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: SuspendedMemberGetItsOwnSuspension
+        title: Suspended Member receive only its own suspension status update
+        description: |
+          A suspended member receives a message that they are suspended. It does not receive the group data distribution 
+          package.
+
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: ReactivatedMemberSynchronisation
+        title: Reactivated Members synchronizes
+        description: |
+          A member that gets re-activated should ensure it is synchronised with the MGM before interacting 
+          with other group members.
+        operational: false
+        inPlace: true
+        public: true
+
+  - ID: REPUDIATING_MGM_DATA_DISTRIBUTION
+    title: Member repudiating receiving data distribution package
+    impactedSecObj:
+      - REFID: NON_REPUDIATION
+
+    impactDesc: |
+      Information disclosure to suspended or unactivated members.
+    assets:
+      - REFID: DF_MGM_2_Member_Data_distribution
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N
+    threatType: Repudiation
+    attack: |
+      A member continues using outdated memberInfo, CPI, or Group parameters and claiming not receiving MGM data distribution 
+      package. It is also possible that the member did not receive an update due to failure in communication.
+
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-22
+    countermeasures:
+      # - ID: synchronisation
+      #   title: Member should run regular synchronisation
+      #   description: |
+      #     Member should run regular synchronisation with the MGM.
+      #     Having an up to date MemberInfo list and group parameters is a shared responsibility between the MGM and the member  
+      #   operational: false
+      #   inPlace: true
+      #   public: true
+
+      - ID: MGM_MEMBERINFO_PROTOCOL_LOGGING
+        title: MGM communication logging
+        description: |
+          Communication between the MGM and the group member is logged. This help providing non-repudiation. 
+        operational: false
+        inPlace: true
+        public: true
+
+  - ID: MEMBERINFO_UPDATE_FLOODING
+    title: Nodes abuse MemberInfo updates request to MGM via P2P
+    impactedSecObj:
+      - REFID: AVAILABILITY
+
+    impactDesc: |
+      Flooding the group network, affecting availability.
+    assets:
+      - REFID: DF_MGM_2_Member_Data_distribution
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:H
+    threatType: Availability
+    pentestTestable: true
+    attack: |
+      A Node member changes and publishes its memberInfo (e.g. endpoints, session initiation key, etc) too frequently. 
+      This prompts the MGM to update the memberInfo Merkle tree and broadcast a group data distribution package to all active members.
+      this causes data distribution flooding.
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-22
+    countermeasures:
+      - ID: LIMIT_MEMBERINFO_CHANGERATE
+        title: Member limited number of memberInfo updates per unit time.
+        description: |
+          MGM allows a member to run only limited number of updates per unit time.  
+        operational: false
+        inPlace: false
+        public: true
+
+      - ID: LimitDataDistributionUpdateRate
+        title: MGM limits the number of data distribution updates
+        description: |
+          MGM does not broadcast a group data distribution for every member update.
+           It limits the rate of runnning this service.
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: ALERT_MEMBERSHIP_SYNC_QUOTAS
+        title: MGM sends alerts of members suspected of misbehaving
+        description: |
+          MGM sends alerts when detecting suspected misbehaviour.
+        operational: false
+        inPlace: false
+        public: true
+
+      - ID: MGMManualApproval
+        title: MGM manual approve new member Info
+        description: |
+          An MGM can configure manual approval, in which case these registration requests will not be automatically approved 
+          and will not trigger any data distribution. 
+          The MGM can manually reject them and potentially proceed by blocking the IP the requests were coming from 
+          at the network level (or similar operational counter-measures out of Corda's control).
+        operational: true
+        operator: NETWORK_OPERATOR
+        inPlace: true
+        public: true
+
+  - ID: SYNCH_REQUEST_DOS
+    title: DoS against MGM using MemberInfo synchronisation
+    impactedSecObj:
+      - REFID: AVAILABILITY
+
+    impactDesc: |
+      Flooding the group network, affecting availability.
+    assets:
+      - REFID: DF_Member_2_MGM_synchronisation
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:L
+    threatType: Availability
+    attack: |
+      A member synchronising with the MGM its list of memberInfo, can extend synchronisation rounds by sending
+      incorrect bloom filter values. This causes the MGM to remain engaged in sending memberInfo. The attack is 
+      not perceived to have serious impact on the resources of the MGM. 
+# (R.F.I.: When two active members communicate, do they need to check that they are uptodate and synchronised with each other? Both have the same memberInfo, group parameters and CPIwhitelist?)
+# No, depending on what information in the MemberInfo is stale, communication might be disrupted. But, when a member re-registers and changes their Member Info, they can do that in a backwards compatible way to avoid these disruptions. For example, if they want to change their network endpoints, they can keep the old one listed for a while until their new MemberInfo propagates to everyone in the network
+# R.F.I.: Following the above, could an attacker persuades its victim that it is out-of-sync and gets the victim to do synch request with the MGM, leading to DOS against the MGM
+# No, syncs are only triggered from the MGM side upon change in a member (e.g. due to registration, re-registration, suspension, activation etc.) and from the member side only periodically to check if they are up-to-date. 
+    public: true
+    pentestTestable: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: SYNC_ABUSE_MEMBER_SUSPENSION
+        title: MGM detect sync request abuse and suspend members
+        description: |
+          The MGM infrastructure observes the bloom filter values sent by the synchronising member. It also observes list of memberInfo
+          sent during the exchange. The sent list should not exceed the total list of the MemberInfo. 
+          The MGM can thus detect misbehaving members and suspend them. 
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+        inPlace: false
+        public: true
+
+  - ID: OUTOFSYNC_MEMBER_ENDPOINT
+    title: Communication disruption due to out-of-sync memberInfo
+    impactedSecObj:
+      - REFID: AVAILABILITY
+
+    impactDesc: |
+      Communication disruption between v-nodes.
+    assets:
+      - REFID: groupDataPackage
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L
+    threatType: Availability
+    attack: |
+      A member updates its end-points. That member's communication with other members 
+      that did not receive the updates is disrupted.  
+
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-22
+    countermeasures:
+      - ID: BACK_COMPATIBLE_UPDATING
+        title: Updates are backward compatible
+        description: |
+          When a member wants to change its network endpoints, it should keep the old one listed and active for
+           a while until their new MemberInfo propagates to everyone in the network. 
+           Similarly when an MGM runs updates, old configurations should be allowed long enough
+           for the updates to be propagated.
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+        inPlace: true
+        public: true
+
+  - ID: SPOOFING_MEMBER_SYNCH_REQUEST
+    title: Spoofing member in synchronisation with MGM
+    impactDesc: |
+      Suspending spoofed member.
+    assets:
+      - REFID: DF_Member_2_MGM_synchronisation
+      - REFID: MemberInfo
+      - REFID: CPIWhitelist
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:L
+    threatType: Denial of Service
+    attack: |
+      An attacker VNode impersonates a member doing synchronisation with the MGM via P2P protocol tampering. 
+      By sending an outdated CPI version, this can cause the MGM to suspend the impersonated member over having an outdated
+      CPI version. This can also be achieved by sending a MemberInfo update, where the attacker changes the 
+      endpoint, or session initiation key (Identity key) of the impersonated member.
+      A synchronisation request from the Same cluster (MGM and VNode) may shortcut e2e authentication protocol. If this is accessible 
+      via API from the Participant VNode the attack can be attempted.
+
+    lastReview: 2024-04-05
+    pentestTestable: true
+
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: MEMBER_SYNCH_REQUEST_AUTHENTICATION
+        title: |
+          Member updates and synchronisation requests are signed by the member private key
+        description: |
+          Member communications including updates and synchronisation requests are done over an authenticated end-2-end channel. 
+          They are checked for authentication and authorisation. 
+      # (RFI: Can this attack be more successful if launched from the same cluster?)
+      # No, information included in the registration request is always signed by the member using their session initiation key, regardless of whether the MGM resides in a different cluster or the same.         
+        operational: false
+        inPlace: true
+        public: true
+
+#   - ID: SuspendedMembersCommunication
+#     title: Suspended members communicate
+#     impactDesc: |
+#       Suspended member is not aware of other members who were suspended after it.
+#     assets:
+#       - REFID: MemberInfo
+#     attackers:
+#       - REFID: VNODE_OPERATOR
+
+#     CVSS:
+#       vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:L
+#     threatType: Integrity and information disclose
+#     attack: |
+#       A suspended member (say Alice) is not aware of members suspended (say Bob) after her own suspension.
+#       Alice would continue to receive communication from Bob without being aware that Bob is being suspended. 
+#       An attacker (in this case is Bob) who is being suspended would communicate with Alice.       
+#   # (R.F.I.: This is not an attack, unless Bob is being suspended for malicious behaviour. )
+#   #  In that scenario, Alice will check whether she is suspended herself before communicating with Bob. And given she's suspended, she will fail to communicate with Bob (assuming it's running valid, unaltered version of the Corda platform software).
+#   # (R.F.I.: If Bob gets suspended while Alice is suspended. When Alice gets re-activated she may not know that Bob is suspended. Please confirm)
+#   # No, once Alice gets re-activated she will get a fresh vie of the network.
+#   # (R.F.I.: Does an active member gets a list of suspended members? i.e. the memberInfo sent to members include a list of active members, or list of changes in membership status since the last data distribution.)
+#   # When there's an update (e.g. registration / activation / suspension), only this change is distributed to the existing members of the network. So, an active member will get notified about a member that got suspended as it got suspended. If multiple members get suspended, an active member will learn about it with separate data distribution packages.
+#   # (R.F.I.: Does suspended members get update about suspension lists?)
+#   # No suspended members do not receive any updates, while they are suspended.
+#   # (R.F.I.: Is there a threat that suspension fails due to mismatch memberInfo serial number? How is it obtained?  A continual update from the member that causes continual change of memberInfo serial number, could prevent member suspension. Is this a threat? )
+# # This can be mitigated by the MGM configuring manual approval. In that case, registrations will have to be manually approved before taking effect. So, a member cannot unilaterally keep increasing their member info without the MGM's approval. 
+
+
+#     public: true
+#     fullyMitigated: false
+#     countermeasures:
+#       - ID: NETWORK_MEMBER_SUSPENSION
+#         title: Suspended member has limited communication
+#         description: |
+#           A suspended member will only communicate with the MGM, interupting all other communications. This is also limited for the purpose of getting re-activated.
+#           A suspended member can initiate and receive communication from the MGM.
+#           It is not allowed to initiate or receive communication with other members. 
+#           If it is receiving communication from other group members, it should know that the sender is breaking the rules or out of sync.
+# # (R.F.I.: Are there cases where a suspended member should be able to communicate with other members without having to be active?) 
+# # The only case is communication between a member and an MGM, which can occur if the member is suspended. Communication between two members where any of them is suspended is not possible.
+#   # (R.F.I.: Should there be a differentiation between suspended members; those who were used to run malicious activities, and those with bad configuration? )
+#   # We don't have any specific requirements for that at the moment. At the moment, the MGM operator could store information like this out of band of Corda, if needed.
+#   # (R.F.I.: This countermeasure is implemented by the MGM and group members i.e. Vnode_operators. Please confirm that the cluster_operator is not invloved here)
+#   # This is enforced by the platform software. It's not visible to users of the software (e.g. operators)
+#   # (R.F.I.: If Alice and Bob are group members. One is active and the other is just re-activated after suspension.  In order for them to communicate, they both need to receive re-activation info from the MGM. If the MGM is unavailable/or updated only one of them, then they are not able to communicate. Please confirm)
+# #  correct
+#         operational: false
+#         inPlace: true
+#         public: true
+
+
+  - ID: MGM_SUSPENSION_SYNC
+    title: Suspended members synchronizes with the MGM
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+
+    impactDesc: |
+      Information disclosure to suspended members.
+    assets:
+      - REFID: MemberInfo
+      - REFID: groupDataPackage
+      - REFID: DF_Member_2_MGM_synchronisation
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:L/I:N/A:N
+    threatType: Information disclosure
+    pentestTestable: true
+    lastReview: 2024-04-05
+    attack: |
+      A suspended member synchronizes with the MGM and gets group/Corda network information updates (it should not be possible).
+      In this attack the suspended member circumvents the fact that the MGM does not send it its standard 
+      distrubtion group data updates. The attacker makes a synchronisation requests to the MGM and gets updated.
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: NOSYNC_SUSPENDED
+        title: Suspended members are not allowed synchronsation
+        description: |
+          The MGM checks member status before responding to its synchronisation request. 
+          Limited information is disclosed to suspended members. 
+
+        operational: false
+        inPlace: true
+        public: true
+
+

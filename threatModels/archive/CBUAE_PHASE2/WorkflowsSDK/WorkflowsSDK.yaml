@@ -1,0 +1,242 @@
+ID: WorkflowsSDK
+schemaVersion: 2
+parent: CBUAE_PHASE2
+scope:
+  description: |
+    Provide a consistent API for defining a workflow and its steps.
+    The API will allow the creation of many workflows within one application.
+
+    **Refs:** [LLD - 8 Corda Workflow SDK Overview](#LLD), [LLD - 8.1 Corda Workflow SDK Overview/Summary](#LLD)
+
+  assets:
+    - ID: WORKFLOW_SDK
+      type: library
+      title: Workflows SDK
+      description: |
+        The Workflow SDK enables the development of micro applications that 
+        can collaborate in executing distributed workflows over a peer-to-peer network.
+
+        **Refs:** [LLD - 8.3.1 Corda Workflow SDK Overview/Solution design/Overview](#LLD), [LLD - 8.3.2 Corda Workflow SDK Overview/Solution design/Workflow API](#LLD)
+      inScope: true
+    - ID: WF_MSG_SERVICE
+      type: process
+      title: Workflow Messaging Service
+      description: |
+        Low latency pub/sub messaging platform service that allows the exchange of messages 
+        between the different micro applications.
+
+        **Refs:** [LLD - 8.3.4.4 Corda Workflow SDK Overview/Solution design/Workflow execution/Workflow messaging](#LLD), [LLD - 8.3.5.8 Corda Workflow SDK Overview/Solution design/Networking/NATS messaging, headers, payloads, topics](#LLD)
+      inScope: true
+    - ID: WF_KV_STORE
+      type: process
+      title: Workflow Key-Value Store
+      description: |
+        Low latency key-value store service that allows the storage of the state of the workflow.
+
+        **Refs:** [LLD - 8.3.6 Corda Workflow SDK Overview/Solution design/State management](#LLD), [LLD - 8.3.10 Corda Workflow SDK Overview/Solution design/Data management](#LLD)
+      inScope: true
+    - ID: NETWORK_SERVICE
+      type: configuration
+      title: Workflow Network Service
+      description: |
+        Directory of network identities and applications in a Corda network.
+
+        **Refs:** [LLD - 8.3.3 Corda Workflow SDK Overview/Solution design/Identity management](#LLD), [LLD - 8.3.5.2 Corda Workflow SDK Overview/Solution design/Networking/Host resolution](#LLD)
+      inScope: true
+
+    - ID: WF_SIGN
+      type: dataflow
+      title: Workflow Signing
+      description: |
+        Call to the signing service from a workflow app to ensure its integrity and authenticity.
+
+        **Refs:** [LLD - 13.4 Network Identity Detailed Design/Exchanging application identity via tokens](#LLD), [LLD - 10 Cryptography and Public Key Infrastructure](#LLD)
+      inScope: true
+    - ID: WF_ASYNC_MSG
+      type: dataflow
+      title: Workflow Asynchronous Messaging call
+      description: |
+        Call to the messaging service for asynchronous workflows.
+
+        **Refs:** [LLD - 8.3.4.4 Corda Workflow SDK Overview/Solution design/Workflow execution/Workflow messaging](#LLD), [LLD - 8.3.5.6 Corda Workflow SDK Overview/Solution design/Networking/Asynchronous HA and reliable messaging model](#LLD)
+      inScope: true
+    - ID: WF_STATE_STORE
+      title: Workflow State Store call
+      type: dataflow
+      description: |
+        Call to the state store service to store the state of the workflow.
+
+        **Refs:** [LLD - 8.3.6 Corda Workflow SDK Overview/Solution design/State management](#LLD), [LLD - 8.3.4.2 Corda Workflow SDK Overview/Solution design/Workflow execution/Workflow checkpoints](#LLD)
+      inScope: true
+    - ID: WF_NET_SRV
+      title: Workflow Network Service call
+      type: dataflow
+      description: |
+        Call to the network service.
+
+        **Refs:** [LLD - 8.3.3 Corda Workflow SDK Overview/Solution design/Identity management](#LLD)
+      inScope: true
+
+    - ID: WF_SEND_MSG
+      title: Workflow Send Message
+      type: dataflow
+      description: |
+        Call to invoke a business workflow step.
+
+        **Refs:** [LLD - 8.3.5.5 Corda Workflow SDK Overview/Solution design/Networking/Structure of HTTP messages](#LLD), [LLD - 8.3.2 Corda Workflow SDK Overview/Solution design/Workflow API](#LLD)
+      inScope: true
+
+analysis: |
+  **Refs:** [LLD - 8.3.1 Corda Workflow SDK Overview/Solution design/Overview](#LLD)
+
+  <img src="img/workflowsSDK.png"/>
+
+
+threats:
+  - ID: WORKFLOW_CALL_SECURITY
+    title: Workflow Call security
+    assets:
+      - REFID: WF_SEND_MSG
+    attackers:
+      - REFID: LFI
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H
+    threatType: Spoofing, Tampering, Information Disclosure
+    attack: |
+      An attacker LFI (for example, a compromised account) can spoof a workflow call to CB to execute unauthorized workflow API calls.
+
+      This scenario could also be exploited by an anonymous attacker leveraging a SSRF (server side request forgery).  
+
+      For example: an attacker could capture or reuse a SPIFFE token intended for one service 
+      and attempt to use it for unauthorized access to another service.
+
+      **Refs:** [LLD - 8.3.3 Corda Workflow SDK Overview/Solution design/Identity management](#LLD), [LLD - 13 Network Identity Detailed Design](#LLD), [LLD - 13.4.3 Network Identity Detailed Design/Exchanging application identity via tokens/Security guarantees](#LLD)
+    impactDesc: |
+      Calling internal services API arbitrarily, including core services workflow of the Central Bank (issuing and so on)
+      Inconsistent transactions and wallets balances, unauthorized transactions, 
+      and potential data leakage.
+
+      **Refs:** [LLD - 8.3.2 Corda Workflow SDK Overview/Solution design/Workflow API](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    conditional: |
+      <scope>LFI-Managed Software</scope>
+    countermeasures:
+
+      - ID: WORKFLOW_SDK_AUTH
+        title: Workflow SDK Authentication
+        description: |
+          Implement a secure authentication and authorization mechanism for the SDKs at the application level.
+
+          **Refs:** [LLD - 8.3.3 Corda Workflow SDK Overview/Solution design/Identity management](#LLD), [LLD - 13.4 Network Identity Detailed Design/Exchanging application identity via tokens](#LLD)
+
+          [REF](https://r3-cev.atlassian.net/wiki/spaces/SEC/pages/5727518722/2025_N1_WORKFLOW_SDK)
+        inPlace: false
+        public: true
+
+      - ID: END2END_MUTUAL_TLS
+        title: End-to-End Mutual TLS
+        description: |
+          Implement end-to-end mutual TLS to ensure the integrity and confidentiality 
+          of the communication between the SDKs and the network services. The TLS connection information 
+          should be propagated to the application level; this tends to increase complexity and limit flexibility.
+          Network topology cannot be an abstracted part and TLS termination, load balancing, and so on need to be carefully planned and maintained
+          to allow for end-to-end security and information propagation.
+
+          **Refs:** [LLD - 8.3.5 Corda Workflow SDK Overview/Solution design/Networking](#LLD), [LLD - 5.1 Corda Networks/Networking](#LLD)
+        inPlace: false
+        public: true
+
+      - ID: AUDIENCE_FIELD_CHECK
+        title: Enforce Audience Field Validation
+        description: |
+          Ensure that SPIFFE tokens include an 'aud' (audience) claim which is 
+          validated by the target service to prevent token misuse.
+
+          **Refs:** [LLD - 13.4.3 Network Identity Detailed Design/Exchanging application identity via tokens/Security guarantees](#LLD), [LLD - 13.4.5 Network Identity Detailed Design/Exchanging application identity via tokens/Token validation responsibilities](#LLD)
+        operational: true
+        operator: UNDEFINED
+        inPlace: true
+        public: true
+
+  - ID: WORKFLOW_JWT_DISCLOSURE
+    title: Spoofing by overly permissive JWT Disclosure by Workflow SDK
+    attacker:
+      - REFID: LFI
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+    threatType: STRIDE
+    attack: |
+      Any network participant (intermediary, LFI) receiving a JWT token that is valid for more
+       than its own restricted audience 
+      can potentially spoof any other participant in the network by reusing the same token.
+      For example, when an LFI receives a workflow call with a JWT token from the Central Bank
+      and that token is the same used by the CB for all the network participants (non puntual/counterparty only audience),
+       that LFI can impersonate the Central Bank at the service/workflow level.
+
+      **Refs:** [LLD - 13.4.1 Network Identity Detailed Design/Exchanging application identity via tokens/Secure transmission of application identity](#LLD), [LLD - 12.7.4.5 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Scopes and tokens](#LLD)
+    impactDesc: |
+      Unauthorized access to the workflow, potentially leading to unauthorized access to the workflow.
+
+      **Refs:** [LLD - 8.3.2 Corda Workflow SDK Overview/Solution design/Workflow API](#LLD), [LLD - 13.4.3 Network Identity Detailed Design/Exchanging application identity via tokens/Security guarantees](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: false
+    fullyMitigated: false
+    pentestTestable: true
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4235
+
+    countermeasures:
+      - ID: STRICT_PER_COUNTERPARTY_JWT_AUDIENCE
+        title: Always use only strict per-counterparty JWT audience
+        description: |
+          Ensure that JWT tokens are only valid for the intended single recipient only.
+          That means that the service will need to have at any time a set of valid JWT tokens,
+          one for each counterparty.
+
+          **Refs:** [LLD - 13.4.3 Network Identity Detailed Design/Exchanging application identity via tokens/Security guarantees](#LLD), [LLD - 12.7.4.5 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Scopes and tokens](#LLD)
+        inPlace: false
+        public: true
+  - ID: INSUFFICIENT_MONITORING
+    title: Insufficient Logging & Auditing & Monitoring
+    attack: |
+      Malicious or accidental changes go unnoticed if logs lack granularity or
+      do not capture critical steps in the connector's transaction lifecycles.
+
+      **Refs:** [LLD - 8.3.7 Corda Workflow SDK Overview/Solution design/Monitoring and instrumentation](#LLD)
+    impactDesc: |
+      Hinders detection and forensics, allowing attackers to remain undetected
+      while causing unauthorized transactions or data changes.
+
+      **Refs:** [LLD - 8.3.7 Corda Workflow SDK Overview/Solution design/Monitoring and instrumentation](#LLD)
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: COMPLIANCE
+    threatType: Tampering
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N
+    fullyMitigated: true
+    countermeasures:
+      - ID: DETAILED_AUDIT_LOGGING
+        title: Comprehensive Log & Event Tracking
+        description: |
+          Log all transaction requests, changes, and error conditions, with secure storage
+          and immediate alerting on suspicious events.
+
+          **Refs:** [LLD - 8.3.7 Corda Workflow SDK Overview/Solution design/Monitoring and instrumentation](#LLD), [LLD - 8.3.7.1 Corda Workflow SDK Overview/Solution design/Monitoring and instrumentation/Logging](#LLD), [LLD - 8.3.7.4 Corda Workflow SDK Overview/Solution design/Monitoring and instrumentation/Data format and collection](#LLD)
+        inPlace: true
+        public: true
+      - ID: MONITORING_ALERTING
+        title: Real-Time Monitoring & Alerting
+        description: |
+          Implement real-time monitoring of connector performance, transaction volumes,
+          and error rates, with automated alerts for unusual activity.
+
+          **Refs:** [LLD - 8.3.7.3 Corda Workflow SDK Overview/Solution design/Monitoring and instrumentation/Metrics](#LLD)
+        inPlace: true
+        public: true
+title: Workflowssdk

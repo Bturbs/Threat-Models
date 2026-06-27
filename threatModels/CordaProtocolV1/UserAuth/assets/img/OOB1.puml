@@ -1,0 +1,51 @@
+@startuml
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+skinparam maxMessageSize 250
+skinparam sequenceMessageAlign center
+autonumber
+
+box "Environment A (Dirty / Untrusted)" #LightPink
+actor "Initiator" as Init
+participant "Squads Web UI\n(Compromisable)" as UI
+end box
+
+box "Out-of-Band" #White
+participant "Secure Channel\n(Slack / Cognitive Intent)" as OOB
+end box
+
+box "Environment B (Secure / Clear Signing)" #LightGreen
+actor "Approver" as Appr
+participant "Advanced HW Device\n(e.g., GridPlus/Keystone)" as HW
+end box
+
+box "Infrastructure" #LightBlue
+participant "Private RPC" as RPC
+database "Solana Mainnet\n(Squads V4)" as Squads
+end box
+
+== Phase 1: Initiation ==
+Init -> UI: Draft protocol action
+note right of UI: Assume UI is compromised and\nsecretly injects a malicious payload.
+UI -> Squads: `Squads::CreateTransaction`
+Squads --> UI: Proposal Created (Returns Index ID)
+
+== Phase 2: Out-of-Band Hand-off ==
+Init -> OOB: "Please approve Proposal [Index ID].\nIntent: Safe Protocol Upgrade"
+note over Init, Appr: If Initiator and Approver are the same person,\nthis step relies on their own cognitive memory.
+OOB -> Appr: Communicates Intent and Index ID
+
+== Phase 3: Hardware-Level Fetch & Decode ==
+Appr -> HW: Inputs Proposal Index directly into HW Device
+HW -> RPC: Fetch account data for Proposal PDA
+RPC --> HW: Returns raw, serialized instruction bytes
+note right of HW: **FIRMWARE DECODING**\nThe Device natively parses Squads V4 instructions\nusing its isolated Secure Element.
+
+== Phase 4: The Ultimate Manual Check ==
+HW -> Appr: Built-in screen displays Human-Readable Intent:\n"Target: Malicious Address"\n"Action: Drain Funds"
+note over Appr: **THE ZERO-TRUST CHECK**\nApprover reads the Hardware screen.\nCompares it directly to the OOB intent.\nBecause the UI lied, a discrepancy is found.
+
+== Phase 5: Air-Gapped Rejection ==
+Appr -> HW: Refuses to sign (Rejects transaction)
+note right of HW: If the text had matched the intent,\nApprover would sign and broadcast via RPC.\nThe attack is successfully neutralized.
+
+@enduml

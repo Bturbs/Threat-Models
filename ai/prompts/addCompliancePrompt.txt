@@ -1,0 +1,16 @@
+add ISO27001 compliance section for every threat in this yaml file:
+this is an exmaple of the already filled compliance section:
+
+threats:
+     - ID: THREAT_ID
+    [...other fields]
+      compliance:
+        - ISO27001:
+            - ref: A.5.1 (Information security policies)
+            - ref: A.5.12 (Information security for use of cloud services)
+            - ref: A.5.24 (Information security incident planning andpreparation)
+            - ref: A.6.1 (Organization of information security)
+            - ref: A.6.3 (Information security awareness, education and training)
+Associate precise chapter/refereces number according to the specific threat,
+ do also add a description in the ref: attribute between brackets like in the exmaple to easily understand the reference
+ Do not add or modify attackers or security objectives

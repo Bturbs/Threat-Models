@@ -1,0 +1,88 @@
+@startuml
+
+' High Level IOU Creation, Denial of State Attack, and Consequence
+
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+title High Level: IOU Creation, DoS Attack, & Failed Legitimate Use
+
+participant "Party A" as PA
+participant "Party B" as PB
+participant "Notary (Non-Validating)" as N
+
+group #LightBlue Legitimate IOU Creation Phase 
+    activate PA
+    PA -> PB : 1. Propose IOU & Request Signature
+    activate PB
+    PB -> PB : Verify IOU Proposal
+    PB -> PA : 2. Send IOU Signature
+    deactivate PB
+    PA -> PA : Assemble Signed IOU Tx
+    PA -> N : 3. Request Notarization for Signed IOU Tx
+    activate N
+    N -> N : Check Inputs (OK), Record State Refs, Sign (Notarize)
+    N --> PA : 4. Confirm IOU Notarized
+    N --> PB : 5. Distribute Notarized IOU Tx Confirmation
+    deactivate N
+    PA -> PA : Record Final IOU State
+    deactivate PA
+    activate PB
+    PB -> PB : Record Final IOU State
+    deactivate PB
+end group
+
+note across
+Time passes after IOU Creation
+end note
+
+group #pink  Denial of State Attack Phase (by Party A)
+    activate PA
+    PA -> PA : 1. Craft **Invalid** Tx Consuming IOU\n(e.g., missing PB signature, only PA signs)
+    note right of PA : This Tx breaks contract rules,\nbut uses the valid IOU StateRef as input.
+
+    PA -> N : 2. Request Notarization for **Invalid** Tx\n(Bypassing Party B entirely!)
+    activate N
+    N -> N : Check Input IOU StateRef (Not marked consumed yet)
+    note right of N : Non-Validating: Skips contract/signature checks!
+    N -> N : **Mark IOU StateRef as Consumed** (The DoS!)
+    N -> N : Sign (Notarize) the **Invalid** Transaction
+    N --> PA : 3. Confirm **Invalid** Tx Notarized
+    deactivate N
+    note right of PA : Attack successful! Notary thinks IOU is spent.\nPA does not share this invalid, notarized Tx with PB.
+    PA -> PA : (Optionally Records Attack Tx)
+    deactivate PA
+end group
+
+note across
+Time passes after DoS Attack
+end note
+
+group #LightCoral  Consequence Phase (Party B's Attempted Use Fails)
+    activate PB
+    PB -> PB : 1. Decide to spend/settle the IOU
+    ' Assuming contract requires both signatures for valid spend
+    PB -> PA : 2. Propose Spending IOU & Request Signature
+    activate PA
+    PA -> PA : (Signs the valid proposal)
+    PA -> PB : 3. Send Signature for Valid Spend Tx
+    deactivate PA
+    PB -> PB : 4. Assemble **Valid**, Fully Signed Tx
+    note left of PB : This transaction is contractually valid.
+
+    PB -> N : 5. Request Notarization for **Valid** Spend Tx
+    activate N
+    N -> N : Check Input IOU StateRef
+    note right of N : Notary finds IOU StateRef was **already marked consumed**\nduring the previous DoS attack phase!
+    N -> N : Generate Conflict / Double Spend Error
+    N --> PB : 6. **Reject Tx: Conflict/Double Spend Error**
+    deactivate N
+    PB -> PB : Flow Fails! Cannot use IOU State.
+    note left of PB : Denial of State successful.\nLegitimate use is blocked by the Notary.
+    deactivate PB
+
+end group
+
+
+@enduml

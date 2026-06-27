@@ -1,0 +1,46 @@
+@startuml
+Participant "LFI 1 Corda Network \nApplication\n<<Workflow SDK>>" as CORDA_NETWORK_APP 
+Participant "Signing \nService LFI 1" as SIGNING_SERVICE 
+' Participant "HSM" as HSM 
+
+
+
+Participant "LFI 2 Corda Network \nApplication\n<<Workflow SDK>>" as CORDA_NETWORK_APP2 
+Participant "Signing \nService LFI 2" as SIGNING_SERVICE2
+autonumber 1.0
+
+
+-> CORDA_NETWORK_APP: Start Workflow
+CORDA_NETWORK_APP -> CORDA_NETWORK_APP: Prepare message
+
+CORDA_NETWORK_APP -> CORDA_NETWORK_APP: Create random symmetric secret: SYM_K
+
+CORDA_NETWORK_APP -> CORDA_NETWORK_APP: Create HMAC message with \nSYM_K (and append to msg)
+
+alt First message to Counterpart
+
+CORDA_NETWORK_APP -> SIGNING_SERVICE: Sign SYM_K
+SIGNING_SERVICE --> CORDA_NETWORK_APP: Signed SYM_K
+CORDA_NETWORK_APP -> CORDA_NETWORK_APP: Encrypt SYM_K message with \nCounterpart public key\n and save in memory WRAP(SYM_K)
+
+
+' else Successive messages to Counterpart ...
+
+end
+
+== 2:  For every message ==
+
+CORDA_NETWORK_APP -> CORDA_NETWORK_APP: Append WRAP(SYM_K) to message
+
+CORDA_NETWORK_APP -> CORDA_NETWORK_APP2: Send message
+
+autonumber 2.0
+alt First message with this WRAPPED KEY
+CORDA_NETWORK_APP2 -> SIGNING_SERVICE2: Extract SYM_K from WRAP(SYM_K)\n 
+CORDA_NETWORK_APP2 -> CORDA_NETWORK_APP2: Verify SYM_K signature with \nCounterpart public key (Cert) and save in memory
+end
+
+CORDA_NETWORK_APP2 -> CORDA_NETWORK_APP2: Verify HMAC message with \nSYM_K: MSG OK
+CORDA_NETWORK_APP2 -> CORDA_NETWORK_APP2: process message
+
+@enduml

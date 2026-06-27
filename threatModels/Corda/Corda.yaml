@@ -1,0 +1,792 @@
+ID: Corda
+schemaVersion: 2
+title: Corda
+version: 1.0
+authors: |
+  Security Research team at *R3*
+
+   - David Cervigni
+   - James Brown
+
+
+
+children:
+  - REFID: Corda4
+  - REFID: NonValidatingNotary
+  - REFID: ConfidentialIdentities
+scope:
+  description: |
+    **NOTE:** This threat model is derived from the concepts presented in the Corda introductory whitepaper. It focuses on the core protocol architecture, transaction model, consensus mechanisms, and network services described therein.
+
+    This threat model covers potential threats to the fundamental components and interactions within a Corda network, including nodes, notaries, network map services, permissioning services, transactions, states, contracts, and flows.
+
+    What is **built** (and therefore in scope):
+    - The design of the peer-to-peer network and communication patterns.
+    - The UTXO-based state object model.
+    - The transaction structure and validation logic (including contract execution).
+    - The flow framework for orchestrating ledger updates.
+    - The roles and responsibilities of key network services (Notary, Network Map, Permissioning).
+    - The identity management framework based on PKI.
+    - The consensus mechanisms (uniqueness and validity).
+
+    What is **not built** (and therefore generally out of scope, unless interacting directly with core protocol):
+    - Specific CorDapp business logic implementations (though interaction patterns are considered).
+    - Underlying hardware, operating systems, or general network infrastructure (e.g., firewalls, routers) unless Corda's design makes specific assumptions about them.
+    - Physical security of node installations.
+    - Detailed implementation vulnerabilities within a specific Corda node version (focus is on protocol design threats).
+    - The security of the underlying JVM executing the node.
+
+  securityObjectives:
+    - ID: TX_VALIDITY
+      title: Transaction Validity
+      description: |
+        Ensure that all transactions processed and recorded on the ledger comply with 
+        the rules defined in the associated smart contracts and have the necessary signatures.
+      group: Ledger Integrity
+    - ID: UNIQUENESS_CONSENSUS
+      title: Uniqueness Consensus (No Double-Spends)
+      description: |
+        Prevent the same ledger state (UTXO) from being spent more than once across the network.
+      group: Ledger Integrity
+    - ID: DATA_CONFIDENTIALITY
+      title: Transaction Data Confidentiality
+      description: |
+        Ensure that the details of transactions and states are only accessible to parties explicitly involved in those transactions or who have a legitimate need to know.
+      group: Data Security
+    - ID: LEDGER_INTEGRITY
+      title: Ledger Integrity and Consistency
+      description: |
+        Ensure that all parties involved in a transaction eventually reach a consistent view of the shared facts recorded on the ledger, and that historical data cannot be tampered with.
+      group: Ledger Integrity
+    - ID: NODE_AUTHENTICATION
+      title: Node Authentication and Identity
+      description: |
+        Ensure that the identity of all communicating parties within the network 
+        is reliably established and verified.
+      group: Access Control
+    - ID: NETWORK_SERVICE_AVAILABILITY
+      title: Network Service Availability
+      description: |
+        Ensure that critical network services like Notaries and the Network Map Service remain available to allow the network to function.
+      group: Availability
+    - ID: FLOW_INTEGRITY
+      title: Flow Framework Integrity
+      description: |
+        Ensure that the multi-step protocols (flows) used to propose and agree on 
+        ledger updates execute correctly and are resilient to failures or malicious interruption.
+      group: System Integrity
+    - ID: AUDITABILITY
+      title: Auditability and Non-Repudiation
+      description: |
+        Ensure that transactions are linked to verified legal identities and that participation 
+        can be proven.
+      group: Compliance & Audit
+    - ID: NON_REPUDIATION
+      title: Transaction Non-Repudiation
+      description: |
+        Ensure that once a transaction is signed and recorded,
+         the parties involved cannot deny their participation or the validity of the transaction.
+      contributesTo:
+        - REFID: AUDITABILITY
+      group: Compliance & Audit
+    - ID: AVAILABILITY
+      title: Availability
+      description: General Availability
+      group: Availability
+    - ID: CORDA_NETWORK_AUTH
+      title: Corda Network Access Control
+      description: |
+        Ensure that only authorized nodes can join the network and interact with its services, 
+        preventing unauthorized access or malicious participation.
+      group: Access Control
+    # - ID: COMPLIANCE
+    #   title: Compliance
+    #   description: |
+    #     Ensure that all network participants adhere to relevant laws, regulations, and internal policies.
+    #   group: Compliance & Audit
+  assets:
+    # Systems / Components
+    - ID: NODE
+      type: system
+      title: Corda Node
+      description: |
+        A participant's instance on the network, hosting the Corda software, CorDapps, and a vault containing relevant ledger states.
+      inScope: true
+    - ID: NOTARY
+      type: system
+      title: Notary Service
+      description: |
+        A network service responsible for providing uniqueness consensus (preventing double-spends). Can be validating or non-validating. May be a single node or a cluster.
+      inScope: true
+    - ID: NETWORK_MAP_SERVICE
+      type: system
+      title: Network Map Service
+      description: |
+        A network service responsible for publishing the network topology, including node identities and addresses.
+      inScope: true
+    - ID: PERMISSIONING_SERVICE
+      type: system
+      title: Permissioning Service (Doorman)
+      description: |
+        A network service responsible for admitting nodes to the network and issuing root identity certificates.
+      inScope: true
+    - ID: ORACLE
+      type: system
+      title: Oracle Service
+      description: |
+        A network service that provides attestations about real-world facts external to the ledger, signing transactions if facts are valid.
+      inScope: true
+
+    # Data
+    - ID: STATE_OBJECT
+      type: data
+      title: State Object (UTXO)
+      description: |
+        An immutable object representing a shared fact on the ledger at a point in time. Consumed and produced by transactions.
+      inScope: true
+    - ID: CONTRACT_CODE
+      type: data
+      title: Smart Contract Code
+      description: |
+        Code defining rules for valid state transitions within a transaction. Associated with state objects.
+      inScope: true
+    - ID: TRANSACTION
+      type: data
+      title: Transaction Data
+      description: |
+        A data structure proposing a ledger update, including input states, output states, commands, signatures, attachments, and contract references.
+      inScope: true
+    - ID: NODE_PRIVATE_KEY
+      type: credential
+      title: Node Private Key
+      description: |
+        The private key associated with a node's legal identity, used for signing transactions.
+      inScope: true
+    - ID: IDENTITY_CERTIFICATE
+      type: credential
+      title: Node Identity Certificate
+      description: |
+        X.509 certificate linking a node's public key to its verified legal identity, issued by the Permissioning Service and potentially CAs.
+      inScope: true
+    - ID: NETWORK_PARAMETERS
+      type: data
+      title: Network Parameters
+      description: |
+        Configuration data defining operational parameters for the network, signed by the Network Map Service.
+      inScope: true
+    - ID: FLOW_STATE
+      type: data
+      title: Flow State
+      description: |
+        Internal state information maintained by a node during the execution of a multi-step flow protocol.
+      inScope: true
+
+    # Dataflows
+    - ID: NODE_TO_NODE_COMM
+      type: dataflow
+      title: Node-to-Node Communication
+      description: |
+        Peer-to-peer encrypted communication between nodes, typically for executing flows and sharing transaction data.
+      inScope: true
+    - ID: NODE_TO_NOTARY_COMM
+      type: dataflow
+      title: Node-to-Notary Communication
+      description: |
+        Communication between a node and a Notary service, primarily for transaction notarization requests.
+      inScope: true
+    - ID: NODE_TO_NETWORK_MAP_COMM
+      type: dataflow
+      title: Node-to-Network Map Communication
+      description: |
+        Communication between a node and the Network Map Service for retrieving network topology and parameters.
+      inScope: true
+    - ID: NODE_TO_PERMISSIONING_COMM
+      type: dataflow
+      title: Node-to-Permissioning Service Communication
+      description: |
+        Communication during the node registration process to obtain identity certificates.
+      inScope: true
+    - ID: NODE_TO_ORACLE_COMM
+      type: dataflow
+      title: Node-to-Oracle Communication
+      description: |
+        Communication between a node and an Oracle service to request validation of external facts for a transaction.
+      inScope: true
+
+  assumptions:
+    - ID: PKI_SECURE
+      description: |
+        The underlying Public Key Infrastructure (X.509 certificates, CAs, Permissioning Service) is managed securely and root keys are protected.
+    - ID: KEY_MANAGEMENT
+      description: |
+        Nodes are responsible for securely managing their private keys. Compromise of a node's private key is considered a node compromise.
+    - ID: TRANSPORT_SECURITY
+      description: |
+        Node-to-node and node-to-service communication relies on underlying transport security (e.g., TLS via AMQP) provided by the infrastructure. Weaknesses in the transport layer are considered infrastructure issues unless Corda's protocol design fails to use it correctly.
+    - ID: NOTARY_HONESTY
+      description: |
+        Notary services are assumed to perform their defined function (uniqueness consensus) honestly. Malicious behaviour by a Notary operator is a specific threat considered. Validating notaries are assumed to perform validation correctly based on visibility.
+    - ID: CONTRACT_DETERMINISM
+      description: |
+        Smart contract code is deterministic; given the same transaction and context, it always produces the same validation result.
+    - ID: NODE_INFRASTRUCTURE
+      description: |
+        Nodes run on generally secure infrastructure, but specific attacks targeting the node software or its host are possible.
+
+  attackers:
+    - ID: MALICIOUS_NODE
+      description: |
+        A legitimate participant node in the network attempting to cheat, violate contracts, perform double-spends, or disrupt flows it is involved in.
+      inScope: true
+    - ID: MALICIOUS_NOTARY
+      description: |
+        A compromised or intentionally malicious Notary operator attempting to cause incorrect consensus (e.g., allow double-spends, censor transactions).
+      inScope: true
+    - ID: MALICIOUS_NETWORK_SERVICE
+      description: |
+        A compromised or malicious operator of the Network Map or Permissioning Service attempting to disrupt the network or enable other attacks (e.g., provide false topology, issue rogue certificates).
+      inScope: true
+    - ID: NETWORK_ATTACKER
+      description: |
+        An entity with access to the network transport layer attempting to eavesdrop, replay, or modify communications (potentially bypassing TLS if misconfigured/vulnerable).
+      inScope: true
+    - ID: COMPROMISED_NODE_ATTACKER
+      description: |
+        An attacker who has gained unauthorized access to a node's infrastructure (OS, file system, memory), potentially accessing keys or manipulating node behaviour.
+      inScope: true
+    - ID: MALICIOUS_CORDAPP_DEV
+      description: |
+        A developer creating a CorDapp with hidden malicious logic intended to exploit nodes that install it (e.g., steal data, manipulate flows).
+      inScope: true # Considers the interaction point between CorDapps and the core protocol.
+    - ID: EXTERNAL_DOS_ATTACKER
+      description: |
+        An external attacker attempting to overwhelm network services (Notary, Network Map) or individual nodes with traffic.
+      inScope: true
+
+analysis: |
+  Corda's design prioritizes privacy (point-to-point communication, no global broadcast) and relies on Notaries for uniqueness consensus, while validity consensus is achieved through contract execution by involved parties. Key threats revolve around circumventing these mechanisms, compromising critical network services, or exploiting the flow framework and node implementations. The permissioned nature and PKI-based identity mitigate anonymous attacks but introduce reliance on the Permissioning Service and Network Map.
+
+threats:
+  - ID: DOUBLE_SPEND_ATTEMPT
+    title: Attempted Double-Spend
+    attack: |
+      A malicious node attempts to spend the same input state object in two different transactions submitted concurrently or sequentially to the same or different Notaries.
+    threatType: Tampering
+    impactDesc: |
+      If successful, the attacker illegitimately duplicates value or breaks ledger consistency, undermining the integrity of the shared facts.
+    impactedSecObj:
+      - REFID: UNIQUENESS_CONSENSUS
+      - REFID: LEDGER_INTEGRITY
+    assets:
+      - REFID: STATE_OBJECT
+      - REFID: TRANSACTION
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:N' # Assumes notary prevents it, high impact if successful
+    fullyMitigated: true # Depends on Notary implementation and resilience
+    countermeasures:
+      - ID: NOTARY_UNIQUENESS_CHECK
+        title: Notary Uniqueness Consensus Check
+        description: |
+          Nodes submit transactions to a chosen Notary, which maintains a record of 
+          consumed states and rejects transactions attempting to spend already-consumed states under its view.
+        inPlace: true
+        public: true
+      # - ID: NOTARY_CLUSTERING
+      #   title: Notary Clustering for Resilience
+      #   description: |
+      #     Notaries can be implemented as fault-tolerant clusters (e.g., using BFT consensus) to prevent single points of failure or compromise from enabling double-spends.
+      #   inPlace: true # Optional configuration
+      #   public: true
+
+  - ID: INVALID_TRANSACTION_CREATION
+    title: Creation of Invalid Transaction
+    attack: |
+      A malicious node crafts a transaction that violates the rules defined in the relevant contract code (e.g., incorrect state transition logic, invalid data fields, insufficient input value).
+    threatType: Tampering
+    impactDesc: |
+      An invalid transaction, if accepted onto the ledger, corrupts the state and violates agreed-upon business logic.
+    impactedSecObj:
+      - REFID: TX_VALIDITY
+      - REFID: LEDGER_INTEGRITY
+    assets:
+      - REFID: TRANSACTION
+      - REFID: STATE_OBJECT
+      - REFID: CONTRACT_CODE
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H' # High impact if successful, but contract checks should prevent
+    fullyMitigated: true # Depends on contract code quality and validation by counterparties
+    countermeasures:
+      - ID: CONTRACT_CODE_VALIDATION
+        title: Smart Contract Code Validation
+        description: |
+          Before signing a transaction, each required party executes the relevant contract code's `verify` function against the proposed transaction to ensure its validity according to the agreed rules. Transactions failing verification are rejected.
+        inPlace: true
+        public: true
+        operational: true
+        operator: CORDAPP_DEVELOPER
+      - ID: REQUIRED_SIGNATURES
+        title: Required Signatures Verification
+        description: |
+          Transactions require signatures from all necessary parties (as defined by commands/states). 
+          Nodes verify that all required signatures are present and valid before accepting a transaction.
+        inPlace: true
+        public: true
+      - ID: VALIDATING_NOTARY_CHECK
+        title: Validating Notary Check (Optional)
+        description: |
+          If a validating notary is used, it re-validates the transaction against contract
+           rules (based on visible states) before notarizing, providing an additional layer of defense.
+        inPlace: false # Depends on Notary type used
+        public: true
+
+  - ID: TRANSACTION_DATA_LEAKAGE
+    title: Transaction Data Leakage to Uninvolved Parties
+    attack: |
+      1. A participating node maliciously forwards transaction details to uninvolved third parties.
+      2. An attacker eavesdrops on node-to-node communication if transport security fails or is misconfigured.
+      3. A validating notary, if used and compromised, potentially sees more transaction data than necessary and leaks it.
+      4. Transaction data is inadvertently leaked via oracle interactions if not carefully managed.
+    threatType: Information Disclosure
+    impactDesc: |
+      Sensitive business transaction details are exposed to parties who should not have access, violating Corda's privacy principles.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    assets:
+      - REFID: TRANSACTION
+      - REFID: STATE_OBJECT
+      - REFID: NODE_TO_NODE_COMM
+      - REFID: NODE_TO_NOTARY_COMM
+      - REFID: NODE_TO_ORACLE_COMM
+    attackers:
+      - REFID: MALICIOUS_NODE
+      - REFID: NETWORK_ATTACKER
+      - REFID: MALICIOUS_NOTARY # Specifically validating
+      - REFID: COMPROMISED_NODE_ATTACKER
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N' # High impact, requires node compromise/malice or network vuln
+    fullyMitigated: false # Relies on participant behaviour and infrastructure security
+    countermeasures:
+      - ID: POINT_TO_POINT_MESSAGING
+        title: Point-to-Point Transaction Data Distribution
+        description: |
+          Corda's protocol design inherently limits data distribution; transaction details are typically only sent directly to involved parties during flow execution. There is no global broadcast.
+        inPlace: true
+        public: true
+      - ID: SECURE_TRANSPORT_LAYER
+        title: Secure Transport Layer (TLS/AMQP)
+        description: |
+          Communication between nodes and services should be secured using TLS over AMQP or similar protocols to prevent eavesdropping by network attackers.
+        inPlace: true # Assumed infrastructure capability
+        public: true
+      - ID: TRANSACTION_TEAROFFS
+        title: Transaction Tear-offs / Merkle Trees
+        description: |
+          Transactions use Merkle trees, allowing nodes to reveal only necessary parts of a transaction history to parties like Oracles or non-validating Notaries, minimizing data exposure.
+        inPlace: true
+        public: true
+      - ID: NON_VALIDATING_NOTARY_CONFIG
+        title: Configure a Non-Validating Notary
+        description: |
+          Using non-validating notaries minimizes the data they need to see (only input state refs and metadata), reducing the impact of notary compromise on confidentiality.
+        inPlace: false # Design choice
+        public: true
+
+  - ID: NODE_IMPERSONATION
+    title: Node Impersonation
+    attack: |
+      An attacker attempts to communicate with other nodes or services while pretending to be a legitimate network participant, possibly by stealing private keys or exploiting PKI weaknesses.
+    threatType: Spoofing
+    impactDesc: |
+      Impersonation could allow the attacker to participate in flows, receive confidential data, or submit malicious transactions under a false identity.
+    impactedSecObj:
+      - REFID: NODE_AUTHENTICATION
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: LEDGER_INTEGRITY
+    assets:
+      - REFID: NODE_PRIVATE_KEY
+      - REFID: IDENTITY_CERTIFICATE
+      - REFID: NODE_TO_NODE_COMM
+    attackers:
+      - REFID: COMPROMISED_NODE_ATTACKER
+      - REFID: NETWORK_ATTACKER # If PKI/TLS is weak
+      - REFID: MALICIOUS_NETWORK_SERVICE # Permissioning service issuing bad certs
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N' # High impact, requires key theft or PKI compromise
+    fullyMitigated: true # Depends on secure key management and PKI integrity
+    countermeasures:
+      - ID: PKI_BASED_IDENTITY
+        title: PKI-Based Node Identity
+        description: |
+          Each node has a legal identity backed by an X.509 certificate issued by the Permissioning Service and potentially intermediate CAs, binding its public key to its identity. Communication typically requires TLS mutual authentication using these certificates.
+        inPlace: true
+        public: true
+      - ID: NETWORK_MAP_VALIDATION
+        title: Network Map Service Validation
+        description: |
+          Nodes retrieve connection information and certificates for peers from the trusted Network Map Service, helping to verify the identity of nodes they connect to.
+        inPlace: true
+        public: true
+      - ID: SECURE_KEY_STORAGE
+        title: Secure Private Key Storage
+        description: |
+          Nodes must implement secure storage mechanisms (e.g., HSMs, secure key vaults) to protect their private keys from theft by compromised node attackers. This is an operational responsibility.
+        inPlace: false # Node operator responsibility
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+      - ID: PERMISSIONING_SERVICE_CONTROLS
+        title: Permissioning Service Admission Controls
+        description: |
+          The Permissioning Service implements strict vetting procedures before issuing
+           identity certificates, preventing unauthorized entities from joining the network legitimately.
+        inPlace: true
+        public: true
+        operational: true
+        operator: NETWORK_OPERATOR
+
+  - ID: NOTARY_DENIAL_OF_SERVICE
+    title: Denial of Service against Notary
+    attack: |
+      An attacker (external or malicious node) floods a Notary service with a high volume of valid or invalid notarization requests, aiming to exhaust its resources and make it unavailable for legitimate transactions.
+    threatType: Denial of Service
+    impactDesc: |
+      If the Notary becomes unavailable, transactions requiring its consensus cannot be finalized, potentially halting significant portions of network activity dependent on that Notary.
+    impactedSecObj:
+      - REFID: NETWORK_SERVICE_AVAILABILITY
+      - REFID: UNIQUENESS_CONSENSUS
+    assets:
+      - REFID: NOTARY
+      - REFID: NODE_TO_NOTARY_COMM
+    attackers:
+      - REFID: EXTERNAL_DOS_ATTACKER
+      - REFID: MALICIOUS_NODE
+      - REFID: NETWORK_ATTACKER # Amplification/reflection?
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:N/I:N/A:H' # High availability impact, potentially network-wide
+    fullyMitigated: true # Resilience depends on Notary deployment choices
+    countermeasures:
+      - ID: NOTARY_SCALABILITY_RESILIENCE
+        title: Scalable and Resilient Notary Deployment
+        description: |
+          Notaries should be deployed using scalable infrastructure and potentially clustering (e.g., BFT clusters) to handle high load and tolerate failures.
+        inPlace: false # Deployment choice
+        public: true
+        operateional: true
+        operator: NOTARY_OPERATOR
+      - ID: NETWORK_LEVEL_DOS_PROTECTION
+        title: Network-Level DoS Protection
+        description: |
+          Standard network infrastructure defenses (firewalls, rate limiting, traffic scrubbing) should be employed to protect Notary endpoints from volumetric attacks.
+        inPlace: false # Infrastructure responsibility
+        public: true
+        operateional: true
+        operator: NOTARY_OPERATOR
+      - ID: NOTARY_REQUEST_RATE_LIMITING
+        title: Notary Request Rate Limiting/Throttling
+        description: |
+          The Notary service itself may implement application-level rate limiting based on source node identity or other factors to prevent abuse.
+        inPlace: false # Implementation detail
+        public: true
+        operational: true
+        operator: NOTARY_OPERATOR
+
+  - ID: MALICIOUS_NETWORK_MAP
+    title: Malicious or Compromised Network Map Service
+    attack: |
+      The Network Map Service is compromised or acts maliciously, publishing incorrect node identities/addresses, omitting nodes, publishing outdated/invalid network parameters, or refusing service.
+    threatType: Tampering, Denial of Service, Spoofing
+    impactDesc: |
+      Nodes may be unable to discover or connect to legitimate peers, connect to imposter nodes, operate with incorrect network parameters, or be prevented from joining/participating in the network.
+    impactedSecObj:
+      - REFID: NODE_AUTHENTICATION
+      - REFID: NETWORK_SERVICE_AVAILABILITY
+      - REFID: LEDGER_INTEGRITY # If invalid parameters affect validation
+    assets:
+      - REFID: NETWORK_MAP_SERVICE
+      - REFID: NETWORK_PARAMETERS
+      - REFID: NODE_TO_NETWORK_MAP_COMM
+    attackers:
+      - REFID: MALICIOUS_NETWORK_SERVICE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:L/I:H/A:H' # High impact, requires compromise of central service
+    fullyMitigated: true # Relies on trust in the Network Map operator
+    countermeasures:
+      - ID: SIGNED_NETWORK_MAP_PARAMETERS
+        title: Signed Network Map and Parameters
+        description: |
+          The Network Map Service digitally signs the network map data and parameters it publishes. Nodes verify these signatures using a trusted root key for the service.
+        inPlace: true
+        public: true
+      - ID: NETWORK_MAP_SERVICE_RESILIENCE
+        title: Resilient Network Map Service Deployment
+        description: |
+          The Network Map Service should be deployed on resilient infrastructure with strong access controls and monitoring to prevent compromise or failure.
+        inPlace: false # Operator responsibility
+        public: true
+        operational: true
+        operator: NETWORK_OPERATOR
+      - ID: MULTIPLE_NETWORK_MAP_SERVICES
+        title: Support for Multiple Network Map Services (Potential Future)
+        description: |
+          Future designs might allow nodes to consult multiple map services to cross-verify information or provide redundancy. (Note: Not explicitly in introductory whitepaper).
+        inPlace: false
+        public: true
+
+  - ID: FLOW_INTERRUPTION_MANIPULATION
+    title: Flow Interruption or Manipulation
+    attack: |
+      A malicious node participating in a multi-step flow deliberately sends incorrect messages, refuses to respond, or crashes, attempting to stall the protocol, cause inconsistent states between participants, or trick counterparties into an invalid state.
+    threatType: Tampering, Denial of Service
+    impactDesc: |
+      Legitimate ledger updates may be prevented, resources might be locked temporarily or indefinitely, or counterparties might end up with inconsistent views of the proposed transaction state.
+    impactedSecObj:
+      - REFID: FLOW_INTEGRITY
+      - REFID: LEDGER_INTEGRITY
+      - REFID: NETWORK_SERVICE_AVAILABILITY # Effective DoS for specific interaction
+    assets:
+      - REFID: FLOW_STATE
+      - REFID: NODE_TO_NODE_COMM
+      - REFID: TRANSACTION # Proposed transaction state
+    attackers:
+      - REFID: MALICIOUS_NODE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:L' # Impact often limited to specific flow/parties
+    fullyMitigated: true # Requires robust flow design
+    countermeasures:
+      - ID: IDEMPOTENT_FLOWS
+        title: Idempotent Flow Design
+        description: |
+          Flows should be designed to be idempotent where possible, allowing them to be safely restarted or retried after failures without unintended side effects.
+        inPlace: true # CorDapp developer responsibility
+        public: true
+      - ID: FLOW_TIMEOUTS_ESCALATION
+        title: Flow Timeouts and Escalation Paths
+        description: |
+          Flows should incorporate timeouts for responses from counterparties.
+           Failure to respond within the timeout triggers error handling or escalation 
+           procedures (which might involve manual intervention or dispute resolution).
+        inPlace: false # CorDapp developer responsibility
+        public: true
+        operateional: true
+        operator: NODE_LEGAL_ENTITY
+      - ID: STATE_MACHINE_CONSISTENCY_CHECKS
+        title: Flow State Machine Consistency Checks
+        description: |
+          Flow logic should include checks to ensure messages received are 
+          appropriate for the current state of the flow, rejecting unexpected or out-of-order messages.
+        inPlace: true # CorDapp developer responsibility
+        public: true
+        operateional: true
+        operator: CORDAPP_DEVELOPER
+
+  - ID: MALICIOUS_CORDAPP
+    title: Malicious CorDapp Execution
+    attack: |
+      A CorDapp installed on a node contains malicious code. When invoked via a flow or RPC, it attempts to steal data from the node's vault, access/misuse the node's private keys, communicate sensitive information externally, or manipulate flows it participates in beyond its intended business logic.
+    threatType: Tampering, Information Disclosure, Elevation of Privilege
+    impactDesc: |
+      Compromise of node data confidentiality, potential for node impersonation if keys accessed, disruption of business processes, violation of ledger integrity if it can trick node into signing bad transactions.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+      - REFID: NODE_AUTHENTICATION
+      - REFID: LEDGER_INTEGRITY
+      - REFID: FLOW_INTEGRITY
+    assets:
+      - REFID: NODE
+      - REFID: STATE_OBJECT # In vault
+      - REFID: NODE_PRIVATE_KEY
+      - REFID: FLOW_STATE
+    attackers:
+      - REFID: MALICIOUS_CORDAPP_DEV
+      - REFID: COMPROMISED_NODE_ATTACKER # If they can install rogue CorDapps
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H' # High impact if CorDapp can break out of sandbox/permissions
+    fullyMitigated: true # Relies on Corda's sandboxing and node operator vigilance
+    countermeasures:
+      - ID: CORDAPP_SANDBOXING
+        title: CorDapp Sandboxing / Security Manager
+        description: |
+          Corda nodes typically execute CorDapps within a security sandbox 
+          (e.g., using Java Security Manager, Quasar etc) to restrict their access to node resources 
+          like the file system, network, and sensitive APIs based on permissions.
+        inPlace: true # Core Corda feature, effectiveness varies
+        public: true
+      # - ID: CORDAPP_PERMISSIONING
+      #   title: CorDapp Permissioning Model
+      #   description: |
+      #     Corda may employ a permissioning model limiting the actions a specific CorDapp 
+      #     can perform (e.g., which flows it can initiate, which services it can access).
+      #   inPlace: true # Core Corda feature, effectiveness varies
+      #   public: true
+
+      - ID: CORDAPP_SIGNING
+        title: CorDapp Signing
+        description: |
+          Node operators should perform security reviews of CorDapps before installation.
+           CorDapps may also be digitally signed by their developers, allowing operators to verify 
+           provenance (though not guaranteeing benign behaviour).
+        inPlace: true # Node operator responsibility
+        public: true
+
+      - ID: SECURE_CODING_PRACTICES_CORDA
+        title: Secure Coding Practices for CorDapps
+        description: |
+          CorDapp developers must follow secure coding practices to avoid introducing vulnerabilities within the CorDapp logic itself.
+        inPlace: true # Developer responsibility
+        public: true
+        operateional: true
+        operator: CORDAPP_DEVELOPER
+
+      - ID: CORDAPP_CODE_REVIEW
+        title: CorDapp Code Review
+        description: |
+          Node operators could perform code reviews and static code analysis, reverse engineering,
+          or other security assessments of the source code or compiled bytecode (e.g. deterministic
+           compilation check agains source code) of CorDapps before installation, 
+          especially for those that will handle sensitive data or perform critical operations.
+          This would require tooling that at the time of writing this document is not available.
+        inPlace: false # Operational best practice
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+
+
+  - ID: PRIVATE_KEY_COMPROMISE
+    title: Node Private Key Compromise
+    attack: |
+      An attacker gains access to a node's private signing key through external means (e.g., compromising the host system, social engineering the operator, vulnerabilities in key management software).
+    threatType: Spoofing, Tampering, Repudiation (undermining non-repudiation)
+    impactDesc: |
+      Attacker can impersonate the node, sign malicious transactions, potentially approve invalid states, and undermine the trust associated with the node's identity and past actions.
+    impactedSecObj:
+      - REFID: NODE_AUTHENTICATION
+      - REFID: LEDGER_INTEGRITY
+      - REFID: AUDITABILITY
+    assets:
+      - REFID: NODE_PRIVATE_KEY
+      - REFID: NODE
+    attackers:
+      - REFID: COMPROMISED_NODE_ATTACKER
+      - REFID: NETWORK_ATTACKER # If key transmitted insecurely (bad practice)
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H' # Catastrophic impact for the compromised node/identity
+    fullyMitigated: true # Relies heavily on operational security
+    countermeasures:
+      - REFID: SECURE_KEY_STORAGE # Operational countermeasure (HSM, etc.)
+      - ID: KEY_REVOCATION_PROCESS
+        title: Key Revocation Process
+        description: |
+          The network must have a defined process for revoking compromised identity certificates and keys, managed via the Permissioning Service and disseminated via the Network Map.
+        inPlace: true # Assumed network governance feature
+        public: true
+        operateional: true
+        operator: NODE_OPERATOR
+      - ID: REGULAR_KEY_ROTATION
+        title: Regular Key Rotation
+        description: |
+          Node operators should periodically rotate signing keys to limit the window of opportunity for an undetected compromise.
+        inPlace: true # Operational best practice
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+
+
+  - ID: BACKCHAIN_UNAVAILABILITY
+    title: Backchain Unavailability Leading to Unspendable State
+    attack: |
+      A node loses access to the full transaction history (backchain) required to 
+      validate and spend a state. This can happen due to local data corruption, disk failure,
+       incomplete synchronization from counterparties, or a malicious counterparty deliberately 
+       withholding historical transaction data during a dependency resolution flow.
+    threatType: Denial of Service
+    impactDesc: |
+      If a node cannot reconstruct or access the full backchain for an input state, 
+      it cannot create a valid transaction to spend it. The state becomes effectively frozen or 
+      unspendable for that node, leading to a loss of asset availability.
+       This is equivalent to losing access to the asset itself until the backchain can be restored.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: FLOW_INTEGRITY
+    assets:
+      - REFID: STATE_OBJECT
+      - REFID: TRANSACTION
+      - REFID: NODE
+    attackers:
+      - REFID: MALICIOUS_NODE
+      - REFID: COMPROMISED_NODE_ATTACKER
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: true
+    countermeasures:
+      - ID: BACKCHAIN_RESOLUTION_FLOWS
+        title: Backchain Resolution via Flows
+        description: |
+          Corda's flow framework includes dependency resolution protocols that allow
+           a node to request missing backchain transactions from its counterparties during transaction
+            verification.
+        inPlace: true
+        public: true
+      - ID: NODE_BACKUP_RECOVERY
+        title: Node Backup and Recovery Strategy
+        description: |
+          Node operators are responsible for implementing robust backup and recovery 
+          strategies for their node's vault and transaction storage. This is a critical operational 
+          control to recover from local data loss.
+        inPlace: true # Operational responsibility
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+      - ID: TRANSACTION_CACHING
+        title: Transaction Caching
+        description: |
+          Nodes cache previously validated transactions to speed up future validations and reduce reliance
+           on remote fetching, though this does not protect against initial data loss.
+          The subflows (e.g., ResolveTransactionsFlow) are directed to the sender of the transaction (the spender).
+          The spender is responsible for providing the full set of required transactions and signatures,
+           including those from prior owners, as they are expected to have the complete backchain cached locally.
+          The recipient does not directly contact earlier state owners in the backchain. 
+          Instead, the sender (spender) acts as the intermediary and provides all necessary data.
+        inPlace: true
+        public: true
+
+  - ID: BACKCHAIN_INFO_DISCLOSURE
+    title: Backchain Information Disclosure
+    attack: |
+      By design a participant gains access to a node's backchain data, which includes the history of all transactions 
+      involving a state object.
+    threatType: Information Disclosure
+    impactDesc: |
+      A Node that receives a state known all previous transaction and participant since the issuance of the state. 
+      This can lead to unintended information disclosure about the state history, including sensitive business logic,
+      transaction details, and involved parties.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    assets:
+      - REFID: STATE_OBJECT
+      - REFID: TRANSACTION
+      - REFID: NODE
+    attackers:
+      - REFID: MALICIOUS_NODE
+      - REFID: COMPROMISED_NODE_ATTACKER
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N'
+    fullyMitigated: true
+    countermeasures:
+      - ID: CORDA_CONFIDENTIAL_IDENTITIES
+        title: Corda Confidential Identities
+        description: |
+          > Confidential identities are key pairs where the corresponding X.509 certificate (and path)
+           are not made public, so that parties who are not involved in the transaction cannot identify the owner. 
+           They are owned by a well-known identity, which must sign the X.509 certificate. Before constructing a 
+           new transaction the involved parties must generate and exchange new confidential identities, a process 
+           which is managed using SwapIdentitiesFlow (discussed below). The public keys of these confidential 
+           identities are then used when generating output states and commands for the transaction.
+           [REF](https://docs.r3.com/en/platform/corda/4.8/enterprise/cordapps/api-confidential-identity.html)
+        inPlace: true # Assumed Corda feature
+        public: true
+        operator: COPRDAPP_DEVELOPER
+        operational: true

@@ -1,0 +1,247 @@
+@startuml
+skinparam useBetaStyle true
+
+
+
+' skinparam participant {
+'   Bordercolor black
+'   Backgroundcolor lightgreen
+'   Shadowing false
+' }
+actor "Token Definition Authority \n VNode user" as TOK_DEF_AUTH_USER order 5
+
+participant  TOK_DEF_AUTH  order 10   #LightGreen [
+    =Token Definition Authority
+    ----
+    ""<<Vnode>>""
+]   
+participant TOK_ISS_ENT order 10 #LightGreen [
+    =Token Issuing Entity
+    ----
+    ""<<Vnode>> AKA custodian?""
+]   
+' actor "Bank / LFI" as LFI order 20 #LightGreen 
+
+participant LFI order 20 #LightGreen  [
+    =LFI / Bank
+    ----
+    ""<<Vnode>>""
+]   
+
+participant AUDITOR order 30 #LightGreen [
+    =AUDITOR
+    ----
+    ""<<Vnode>>""
+]    
+
+participant NOTARY order 300 [
+    =Notary
+    ----
+    ""<<Vnode>>""
+]  
+participant LFI2 order 20 #LightGreen [
+    =LFI 2 
+    ----
+    ""<<Vnode>>""
+]   
+
+
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+
+skinparam sequenceMessageAlign center
+hide unlinked
+
+    
+title CBUAE F2
+
+
+group Token Definition
+group Create Token Definition
+note across: TODO longer description
+note across: Token definition initiator : Token Definition Authority (Central Bank) \n Responder: ? \n LFI network members should be notified
+TOK_DEF_AUTH_USER -> TOK_DEF_AUTH: REST call startFlow:  <b>CreateTokenDefinitionRequest</b> \n (Author, issuer.x500Name, \n metadata = mapOf("symbol" to "GBP"), \n issuanceMode = "MINT_ON_DEMAND", notary?, observers[])
+TOK_DEF_AUTH -> LFI++: P2P: Responder (as observer)
+hnote over LFI #LightPink: DOS_CREAT_TOKDEF1: LFI can maliciously stop indefinitely the TX finalization as observer 
+
+LFI --> TOK_DEF_AUTH--: P2P: signs and propagates TX
+TOK_DEF_AUTH -> LFI2++: P2P: Responder (as observer)
+hnote over LFI2 #LightPink: DOS_CREAT_TOKDEF2: Too many LFIs can delay the token creation Flow
+
+LFI2 --> TOK_DEF_AUTH--: P2P: signs and propagates TX
+TOK_DEF_AUTH -> NOTARY++: P2P: TODO why? as it doesnt consume state...
+NOTARY --> TOK_DEF_AUTH--: P2P: signs and propagates TX
+end
+
+    group Publish Token Definition
+    note across: TODO longer description
+    end
+
+    group Sync Token Definition
+    note across: TODO longer description
+    end
+
+    group Query Token Definition
+    note across: TODO longer description
+    end
+
+    group Request Token Definition
+    note across: TODO longer description
+    end
+
+    group Update Token Definition
+    note across: TODO longer description
+    end
+
+end
+
+
+
+'group Issuance Request
+'    group 1. Create an Issuance Request
+'    note across: Flow Class \n com.r3.dc.workflows.v1.approval.issuance.create.CreateIssuanceRequestAppFlows$Initiator
+'    initiator -> responder: Issuance Request \n {\n"quantity":<The requested quantity of the token to issue>, \n "tokenDefinitionId": <The external ID of the associated token definition>, \n "observers":\n } 
+ 
+'    note across:   "observers": Array of X500 Names of members in the network \n The X500 Name of the participants in the network who get a copy of the transaction. As they won’t be participants of the issuance request\ state they won’t see this upon a regular vault query.
+'     responder --> initiator:  Response \n https://r3-cev.atlassian.net/wiki/spaces/DC/pages/4562845765/Token+Flows
+'    note across: The response object consists of {transactionId, notary, issuance request=<The created issuance requestr state>={ "Id", "tokenDefinitionId", "requester", "issuer", "issuerStatus", "custodian", "custodian status", "quantity", "version" }
+'    note across: "version" =<version info of the issuance request>{ "created":<time of creation of the issuance req> , "updated":<time of issuance request update>, "number", "isFirstVersion" } 
+
+'    end
+'end
+
+group Issuance
+
+group Created Issuance Request
+note across: The initiator is an LFI and the responder is the Central bank (token issuing entity)
+note across: from CreateIssuanceRequestFlowTest.kt ref: https://r3-cev.atlassian.net/wiki/spaces/DC/pages/4743954465/Mint+and+Issue+Workflows+v0+and+v1 \
+\n https://r3-cev.atlassian.net/wiki/spaces/DC/pages/4640964670/Issuance+Request+Collateral+Movement+Flowchart 
+
+LFI_USER -> LFI: createIssuanceRequest:  quantity = "100",  tokenDefinitionId = tokenDefinitionId, observers []
+LFI -> NOTARY: TODO
+LFI -> TOK_ISS_ENT: TODO
+hnote across #LightPink: countermeasure to DOS_TOKDEF_SYNC1 `Can create issuance request when holding a consumed token definition (latest one will be pulled)`
+
+end
+
+group Mint Token
+note across:MintTokenRequest(\n\
+owner = owner.x500Name,\n\
+quantity = 123.45.toBigDecimal(),\n\
+tokenDefinitionId = tokenDefinition.id,\n\
+issuanceRequestId = approvedIssuanceRequest.id,\n\
+observers = emptyList())         
+end
+
+group Approved Issuance Request
+note across: TODO longer description
+end
+
+
+
+
+
+end
+
+
+
+
+group Query Balance
+note across: The external IDs of token definitions to obtain the balance for. When empty it will get the balance for all your available token definitions.
+  LFI_USER -> LFI: com.r3.dc.workflows.v1.token.balance.QueryTokenBalanceAppFlows$Initiator \n {        "tokenDefinitionIds": <List of extrnal IDs of token definitions to obtain the balance for>\}
+  LFI --> LFI_USER: tokenBalances:[{<The balance per tken def>}]
+note across: what is "scale": <The decimal scale of tokens associated with the token definition>?
+note across: Is this function for an LFI user to query his v-node for his tokens balances? \n How does the v-node checks the LFI_USER authorisation? 
+end
+
+
+group Transfer / Send
+note across: from: flowtests/src/test/kotlin/com/r3/dc/flowtest/v1/token/transfer/send/TransferTokenFlowWithAdvancedTokenSelectionTests.kt
+
+    group Create Transfer Request
+    note across: Transfer requets initiator is an LFI. The responder is an LFI?
+
+    LFI_USER -> LFI: create Transfer Request \ (quantity = "100",\
+            approver = approver.x500Name,\n\
+            tokenDefinitionId = tokenDefinitionId,\
+            type = "REQUEST_TO_SEND", \
+            observers []
+
+    note across: TODO updatedTransferRequest from TransferTokenFlowWithBasicTokenSelectionTests.kt
+    note across: TODO: TransferTokenRequest, transferredToken, changeToken
+    
+
+    end
+
+    group Updated Transfer Request
+    note across:
+    end
+
+    group Transfer Token
+    note across: can two different tokens have the same tokenDefId?\n or a token is identified only by its token def, and any two tokens with the same tokedefid are equal
+
+    end
+
+    group Query Transfer Token
+    note across:
+    end
+end
+
+
+' TOK_DEF_AUTH -> TOK_DEF_AUTH:
+
+' TOK_DEF_AUTH -> NOTARY++: probably not (not consuming states)
+' NOTARY --> TOK_DEF_AUTH--: return 
+' TOK_DEF_AUTH -> LFI: observer(ResponderFlow Init)
+' LFI -> TOK_DEF_AUTH: ResponderFlow END
+
+' TOK_DEF_AUTH -> LFI2: [multiple]observer(ResponderFlow Init)
+' LFI2 -> TOK_DEF_AUTH: ResponderFlow END
+
+
+
+
+
+' TOK_DEF_AUTH -> LFI: Sync token definition
+
+' TOK_ISS_ENT -> LFI: issue token
+
+' LFI -> LFI2: transfer token
+
+group Denial of State attack
+
+
+
+LFI2 -> NOTARY: Notarize Token definition TX id
+NOTARY --> LFI2: success
+group Unrelated Transfer
+
+LFI -> NOTARY: [...] Request transfer finalization
+hnote over LFI, NOTARY #LightPink
+Denial of state 
+end hnote
+NOTARY --> LFI: ERROR
+end
+
+
+end
+
+
+group Burn Token
+note across: todo
+end
+
+group Query Transaction (also query Burn tx)
+note across: todo
+end
+
+group Redemption
+
+    group Redeem token
+    note across: Redeem initiator is an LFI and the responder is the Central Bank
+    end
+end
+@enduml

@@ -1,0 +1,181 @@
+@startuml
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+title WYSIWYS for Corda Protocol V1 — Tier 2 BAU Operations\n(Corrected: What Each Layer Actually Verifies)
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam wrapWidth 460
+autonumber
+
+box "Environment A (Assumed Untrusted)" #LightPink
+actor "Protocol Manager\n(Initiator)" as Manager
+participant "Web UI / dApp\n(Untrusted)" as UI
+end box
+
+box "Communication" #White
+participant "Slack/PagerDuty\n(OOB Channel)" as OOB
+end box
+
+box "Environment B (More Secure, non Corda CI/CD)" #LightYellow
+actor "Tier 2 Signer\n(Approver)" as Approver
+participant "OOB Multisig Client\n(e.g., Squads App)" as App
+end box
+
+box "Environment C (Zero-Trust HW)" #LightGreen
+participant "Advanced HW\n(Keystone/GridPlus)" as HW
+end box
+
+box "Infrastructure" #LightBlue
+participant "Private RPC" as RPC
+participant "Blowfish API\n(Simulator)" as Sim
+database "Solana Mainnet\n(Squads V4)" as Squads
+end box
+
+== Phase 1: On-Chain Proposal ==
+note over Manager, Approver
+**Note:** In most cases the Initiator and Approver are the **same person** (single-signer flow).  In multisig flows (shown here), they are different roles — the separation enables independent verification.
+end note
+
+Manager -> UI: Draft BAU Action\n(e.g., Transfer 50k USDC to Kamino)
+UI -> Squads: `vault_transaction_create`\n& `vault_transaction_add_instruction`\n(inner IX stored in Proposal PDA)
+Squads --> UI: Returns Proposal Index #88
+
+note over UI #MistyRose
+**RISK: Compromised UI**
+If the Web UI is malicious, the inner instructions
+written to the Proposal PDA may differ from what
+the Manager intended. The on-chain payload
+is the source of truth, not the UI display.
+end note
+
+== Phase 2: Out-of-Band Hand-off ==
+Manager -> OOB: "Tier 2: Please approve pending proposal.\nIntent: Transfer 50k USDC to Kamino."
+OOB -> Approver: Receives notification (serves only as an alert)
+
+note over OOB #MistyRose
+**RISK: Social Engineering**
+OOB message is human-authored free text.
+A compromised Manager or spoofed Slack
+account could state a benign intent for
+a malicious on-chain proposal.
+end note
+
+== Phase 3: Intent Verification via Polling & Simulation ==
+note over App #PaleGreen
+**MITIGATION 1: HARDCODED CONFIG POLLING**
+The OOB Multisig Client ignores user input for addresses
+and auto-polls the Solana RPC for the **hardcoded multisig PDA**,
+entirely defeating address poisoning and UI spoofing.
+
+**MITIGATION 2: PRIMARY INTENT VERIFICATION**
+The Client operates **out-of-band** from the untrusted Web UI.
+It decodes/simulates the fetched **inner instructions** from the
+proposal to display a true, human-readable state change.
+end note
+
+App -> RPC: Poll active Proposal PDAs\nfor hardcoded Multisig address
+RPC --> App: Returns active proposals & VaultTransaction inner IX bytes
+App -> Sim: Simulate inner IX execution for active proposals
+Sim --> App: Returns decoded state changes:\n"-50,000 USDC from Vault ATA"\n"+50,000 USDC to Kamino ATA"
+App -> Approver: Display pending Proposal #88\n& validated intent
+
+note over App, Sim #MistyRose
+**RISK: Compromised OOB Multisig Client / Simulator**
+If the OOB multisig client or simulator is compromised,
+it could display a fake decode matching the OOB intent
+while the actual Proposal PDA contains different IX.
+**Mitigation:** Use multiple independent simulators
+(Blowfish, Helius, self-hosted) on different devices.
+**Mitigation:** Manually inspect Proposal PDA accounts
+via a separate block explorer (Solscan, SolanaFM).
+end note
+
+== Phase 4: Hardware Wallet — Program & Account Verification ==
+note over App, HW
+**IMPORTANT: What the HW wallet actually signs**
+The HW wallet signs an `ApproveTransaction` instruction
+to the Squads program — NOT the inner transfer IX.
+The inner IX (Transfer 50k USDC) lives in the Proposal PDA
+and is **not part of the payload** sent to the HW wallet.
+end note
+
+App -> HW: Pass `proposal_approve` TX\nvia QR Code / WebUSB
+
+note right of HW
+**HW SCREEN (with Squads firmware support):**
+Program: Squads V4 (SQDS...4nkn)
+Action:  proposal_approve
+Multisig: Bk4R...mN21
+Member:  7xF3...9aB2 (signer)
+
+**HW SCREEN (without Squads firmware support):**
+Program: SMPLec...4nkn
+Data:    0x03 58 00 00 ...
+Acct[0]: 7xF3...9aB2 (signer, writable)
+⚠️ Unrecognized instruction
+end note
+
+note over HW #MistyRose
+**RISK: No Inner Intent on HW Screen**
+The hardware wallet **NEVER** displays
+"Transfer 50,000 USDC to Kamino".
+It can only show the Squads wrapper instruction.
+The HW provides:
+✓ Correct program ID (not a phishing contract)
+✓ Correct multisig PDA address
+✓ Signer key identity
+✓ Private key protection (secure element)
+✗ Inner instruction intent (USDC transfer details)
+end note
+
+HW -> Approver: HW Screen displays:\n**Squads: proposal_approve**\nMultisig: Bk4R...mN21\nMember: 7xF3...9aB2
+
+== Phase 5: Final Intent Check (Based on OOB Multisig Client Simulation) ==
+note over Approver
+**FINAL INTENT CHECK**
+Approver makes the sign/reject decision based primarily
+on the **OOB Multisig Client simulation output** (Phase 3):
+
+**"Does the simulated state change match the stated intent?"**
+  OOB Intent: "Transfer 50k USDC to Kamino"
+  Simulation: "-50,000 USDC / +50,000 to Kamino ATA" → ✓ Match
+
+The HW screen (Phase 4) adds a secondary check:
+  Correct Squads program ID + correct multisig address → ✓
+
+The OOB Multisig Client simulation is the **primary source of truth**
+for the approver's intent verification.
+end note
+
+note over Approver #MistyRose
+**RESIDUAL RISK**
+If both the OOB Multisig Client (Phase 3) AND the OOB
+channel (Phase 2) are compromised simultaneously,
+the HW wallet alone cannot detect a malicious inner IX
+because it never sees the inner instruction bytes.
+This is the fundamental limitation of multisig
+clear signing on current hardware wallets.
+end note
+
+Approver -> HW: Confirms & physically presses Sign
+HW --> App: Returns Cryptographic Signature\n(signs only the `proposal_approve` TX)
+
+== Phase 6: Broadcast & Timelock ==
+App -> RPC: Broadcast signed `proposal_approve` TX
+RPC -> Squads: Execute `ApproveTransaction`
+Squads --> App: State: Approver added
+
+note over Squads: **Tier 2 Logic:**\nIf 2/5 Threshold met:\nStatus = 'Approved'\n**24h Timelock SLA begins.**
+
+note over Squads #PaleGreen
+**MITIGATION: Timelock as Last Defence**
+Even if all prior checks were fooled, the **24h timelock**
+provides a final window to detect and **veto** the action.
+Requires active monitoring of approved proposals
+against expected actions (watchtower / alerting).
+This is an **on-chain guarantee** — cannot be bypassed
+without compromising the multisig threshold itself.
+end note
+
+App -> Approver: "Success. 24h Timelock Active."
+
+@enduml

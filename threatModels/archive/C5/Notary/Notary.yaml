@@ -1,0 +1,521 @@
+parent: C5
+ID: Notary
+schemaVersion: 2
+prefix: C5.Notary
+title: Notary
+gantt:
+  startDate: 2023-6-7
+  endDate: 2023-4-11
+  status: active
+
+scope:
+  description: |
+    The scope of analysis of this Corda 5 Threat Model section is composed of:
+
+    - The notary
+    - Uniqueness checking specification
+    - Notarisation request flows
+
+    Corda 5 standard notarisation protocol is the non-validating protocol. However, notary services with 
+    different notarisation protocol is also allowed. 
+    The MGM is responsible for allowing notary services on the network. 
+
+    <strong>SubMerkle Tree Notary</strong><br/>
+     The following diagram shows transaction fields that are disclosed to a standard non-validating notary. 
+     This is known as transaction tear-offs, 
+     and is used to hide components of the transaction for privacy purposes. 
+     Transaction fields that are disclosed to a standard non-validating notary are:
+
+       - Transaction hash (root of the Merkle Tree)
+       - Input state references
+       - Notary, which is used to identify the notary
+       - Time window bounds, which is used to specify the time range to validate the transaction
+       - Number of output states (not shown in the diagram)
+       - Reference states (not shown in the diagram) 
+       (RFI: How input state references are distinguished by the notary from referece states?) 
+      <img src="img/SubMerkleTree_Notary.png"/>
+
+    The uniqueness checker is a stand alone service that is called by the notary. It is independent of the notarisation
+    protocol. 
+    The uniqueness checker requires that all transactions are presented to it, 
+    even those containing only output states (i.e. issuance transactions). 
+    It is responsible for validating the following:
+
+       - Any reference states in a transaction have not been spent
+       - Any input states in a transaction have not been spent
+       - Any time window bounds specified by a transaction are valid at the point the uniqueness checker 
+        processes the transaction
+        
+    These checks are performed sequentially, with the notary stopping validation at the first point of failure, 
+    even if the transaction would have gone on to fail further checks. 
+    For example, if a transaction contained both spent reference and spent input states, 
+    then only the reference state check would fail. 
+    If the reference states were subsequently removed and a new transaction submitted this would then 
+    fail the input state checks.  
+
+
+    <strong>Notarization sequence</strong><br/>
+    The following is a sequence diagram that shows notarisation requests made as part of the finality flow. 
+
+
+  assets:
+    - ID: States
+      type: Data
+      title: State
+      description: An immutable object that can represent a fact. It references 
+        a contract that governs the evolution of states. An example of a state 
+        could be a bank account.
+      inScope: true
+    - ID: Transactions
+      type: Data
+      title: Transaction
+      description: |
+        A proposal to update the ledger. They manage state transitions.  
+      inScope: true
+
+    - ID: UTXO
+      type: Data
+      title: Unspent transactions output
+      description: An (unspent) unconsumed transactions outputs. This is also 
+        called the current state.
+      inScope: true
+
+    - ID: DF_NV_NOTARIZATION_REQ
+      type: DataFlow
+      title: Non validating notarization request
+      description: |
+        Non validating notarization request part of the UtxoFinalityFlow (P2P)
+        (RFI: what data is in the request, core reference?does the requets include Merkel proofs? )
+        [REF](https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/notary/architecture-summary-q1-23/index.md) 
+      inScope: true
+
+    - ID: DF_NV_NOTARIZATION_RES
+      type: DataFlow
+      title: Non validating notarization response
+      description: |
+        Non validating notarization response part of the UtxoFinalityFlow (P2P)
+        (RFI: what data is in the response, core reference?Is it just the notary signatures?Does the response (or signed data) show which tx data fields have been disclosed to the notary, i.e. did the notary just signed tx root?Are there more than one notary signature per tx?)
+
+        [REF](https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/notary/architecture-summary-q1-23/index.md) 
+      inScope: true
+
+    - ID: DF_VAL_NOTARIZATION_REQ
+      type: DataFlow
+      title: Validating notarization request
+      description: |
+        Validating notarization request part of the UtxoFinalityFlow
+        [REF](https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/notary/architecture-summary-q1-23/index.md) 
+      inScope: true
+
+    - ID: DF_VAL_NOTARIZATION_RES
+      type: DataFlow
+      title: Validating notarization response
+      description: |
+        Validating notarization response part of the UtxoFinalityFlow
+        [REF](https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/notary/architecture-summary-q1-23/index.md) 
+      inScope: true
+
+    - ID: DF_sendNotarySignaturesToCounterparties
+      type: DataFlow
+      title: Sending Notary signature to counterparties
+      description: |
+        Sending Notary signature to all counterparties participating in the TX
+        [Code REF](https://github.com/corda/corda-runtime-os/blob/a04dbb486fe8ade28c94526df203a7095b14c710/components/ledger/ledger-utxo-flow/src/main/kotlin/net/corda/ledger/utxo/flow/impl/flows/finality/v1/UtxoFinalityFlowV1.kt#L66C23-L66C23) 
+      inScope: true
+
+    - ID: DF_sendUnseenSignaturesToCounterparties
+      type: DataFlow
+      title: Sending Notary signature to counterparties
+      description: |
+        Sending Notary signature to all counterparties participating in the TX
+        [Code REF](https://github.com/corda/corda-runtime-os/blob/a04dbb486fe8ade28c94526df203a7095b14c710/components/ledger/ledger-utxo-flow/src/main/kotlin/net/corda/ledger/utxo/flow/impl/flows/finality/v1/UtxoFinalityFlowV1.kt#L63C22-L63C22) 
+      inScope: true
+
+    - ID: NOTARY_KEYS
+      title: Notary Key
+      type: key
+      description: (A.K.A. Notary Signing Key) public and private notary keys. 
+        Each notary service is represented by one or more notary virtual nodes. 
+        Each notary virtual node has its own public / private key pair for 
+        signing successful notarization requests. A notary service (represented 
+        by multiple notary nodes) has a composite public key that is used to 
+        validate the signature of any notary node that represents that notary 
+        service. The MGM is responsible for maintaining the composite public key
+        for the notary service as a whole, which it broadcasts as part of 
+        network information to members. The notary service does not have a 
+        public key of its own; instead, the MGM provides a composite public key 
+        of all active notary representatives. This allows a virtual node to 
+        verify that approval of a notarization request was valid by ensuring 
+        that at least one notary representative of a notary service signed a 
+        notarization request.
+      inScope: true
+      properties:
+        location: CRYPTO_WORKER Java memory process, VNODE_DB (encrypted with 
+          wrapping keys), to be checked
+        format: ECDSA key pair
+        length: 256
+        type: Private signature key
+      applicationRelated: true
+      infrastructureRelated: false
+
+
+  assumptions:
+
+    - ID: IDENTIFICATION_AUTHENTICATION
+      description: >
+        Corda is a permissioned network, where all participants are identified and
+        authenticated.  Participants communicate confidentially in peer-to-peer, and
+        mutual identification and authentication takes place prior to any ledger
+        operation.      
+    - ID: TXID_SENSITIVITY_SECRET
+      description: >
+        TXID are considered to be secret and are not meant to be disclosed except
+        in the following cases,
+
+        - particpants to the transaction
+        - the notary assigned to notarize the transaction
+        - backchain validation: participants to future transactions that are related
+        to that transaction states      
+         
+
+  attackers:
+
+    # - ID: COUNTERPARTY
+    #   description: |
+    #     Cordapp user of a peer VNode.
+
+    #      **Main use cases:**
+
+    #       - Call and retrieve CordApp Flows:
+    #          - Gets all flows that can be used by the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Info-API/operation/get_flowclass__holdingidentityshorthash_)
+    #          - Starts a new instance for the specified flow for the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/post_flow__holdingidentityshorthash_)
+    #          - gets the current status of the specified flow instance [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/get_flow__holdingidentityshorthash___clientrequestid_)
+    #   inScope: true
+
+    # - ID: NOTARY
+    #   description: |
+    #     A virtual node notary that can access a notary service Uniqueness database.
+
+    #      **Main use cases:**
+
+    #       - Notarise transactions
+    #          - Check transaction inputs against double spent
+    #          - Sign transactions
+    #          - Maintain database of spent and unspent states 
+
+    #   inScope: true
+
+
+
+analysis:
+
+# <img --src="img/notarization_sequence1_analysis.png"/>
+# {mermaid!diagrams/notarisation_sequence_analysis.mmd!} TODO
+
+threats:
+  - ID: DENIAL_OF_STATE_ON_CONFIDENTIAL_STATES
+    lastReview: 2024-04-23
+    title: Denial of state
+    impactDesc: |
+      Denial of state attack prevents the rightful owner from spending its unspent state. 
+      Whilst the attack targets a non-validating Notary
+      the impact of this attack affects the state owner, which could be any participating node.
+      It can go undetected until the owner tries to spend it.
+    impactedSecObj:
+      - REFID: LEDGER_INTEGRITY
+      - REFID: AVAILABILITY
+
+    assets:
+      - REFID: UTXO
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:H
+    threatType: Denial of Service, Spoofing
+    pentestTestable: true
+    attack: |
+      A denial of state is where a malicious counterparty is able to block the transfer of states 
+      between participating peers on the network using [Non-Validating Notary Protocol](https://docs.r3.com/en/platform/corda/5.2/developing-applications/ledger/notaries/non-validating-notary.html)
+      In this scenario, the attacker does not own any of the states, but is able to get the notary to mark them as consumed 
+       even with invalid transaction signature, 
+      thereby blocking the states in any future transaction. 
+      The attacker needs to know the reference to an unspent state i.e. TXID and index. 
+      The attacker forms a transaction that uses as an input a UTXO.
+       The attacker then notarizes the transaction with a non-validating notary, 
+       which will then mark the referenced UTXO as spent. 
+       Since the non-validating notary does not validate the transaction signatures, 
+       the attacker does not need to know the UTXO owner's signing key.
+
+    # (R.F.I.: Though state refrences are confidential, an attacker can get them during backchain validation, and or transacting with the victim party. The attacker cancels(by not signing it) the tx the moment it gets the victim input states and use them in a denial of state attack)
+    #  (R.F.I.: Attacks that use unauthorised misbehaving Flows can be very disruptive -for e.g. change-notary flow and Finalisation flow- is this within the scope?)   
+
+    public: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: SIGNATURE_VALIDATING_NOTARY
+        title: Signature Validating Notary
+        description: |
+          Notary could run a signature validation algorithm for each UTXO being spent.
+          One way could be each UTXO should have a new public-private key pair. The private key 
+          is kept by the owner only. The notary keeps the public key for each UTXO. Privacy of input owners can be maintained
+          by using a different key pair for each input if required. 
+          The signature validating notary would not need to fully verify
+          each transaction with the respective contract, it purely needs to verify the owner's signature meaning that most of
+          the transaction is not disclosed to the notary.
+          Other custom notarization protocols could also mitigate the threat.  
+
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        inPlace: false
+        public: true
+      - ID: LOG_REQUESTER_ID
+        title: Identify the attacker and log requests
+        description: |
+          Keeping a log file of the P2P identity of the requester and the transaction ids requested can deter an attacker from carrying this attack, 
+          and allow the MGM or the notary to take action for example deny rights to use the network or to use the cryptographic proof
+          of fraudulent behaviour.
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: VALIDATING_NOTARY
+        title: Use Validating Notary
+        description: |
+          Use a validating notary. This attack will not be possible against validating notary.
+          However, the downside is the loss of privacy because the validating notary will be able to see all transaction details.   
+          REF: `ContractVerifyingNotaryServerFlowImpl` class
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        inPlace: true
+        public: true
+
+  - ID: DENIAL_OF_REFERENCED_STATES
+    lastReview: 2024-04-23
+    title: Denial of state attack against reference states
+    impactDesc: |
+      That attacks prevents any transaction that has reference states from being notarised, 
+      causing severe denial of service.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: LEDGER_INTEGRITY
+
+    assets:
+      - REFID: UTXO
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:H
+    threatType: Denial of Service, Spoofing
+    attack: |
+      Referenced States are potentially known to any Participant node.
+      When there is a [Non-Validating Notary](https://docs.r3.com/en/platform/corda/5.2/developing-applications/ledger/notaries/non-validating-notary.html)
+      an attacker Node reference state that does not own and/or cannot spend as an input in a transaction, and gets the notary to notarise it,
+       marking it as spent. 
+      When notaristing any subsequent transaction that uses that reference state, the notary will find it spent and 
+      will not notarise the transaction. 
+      The problem is the state references may be known to all network counterparties. 
+      Thus any counterparty can launch this attack, whereas in the previous denial of state attack the 
+      assumption was state references were confidential. 
+    pentestTestable: true
+    public: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: SIGNATURE_VALIDATING_NOTARY_FOR_REFERENCE_STATE
+        title: Signature Validating Notary for reference states
+        description: |
+          Notary could run a signature validation algorithm when reference states are being spent.
+          Note that the reason behind using non-validating notary is to maintain the privacy of the transaction 
+          participants. However, in the case of reference states, it is expected that 
+          only identified and authenticated actors should be authorised to issue and update reference states.    
+
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        inPlace: false
+        public: true
+
+      - ID: LOG_REQUESTER_ID
+        title: Identify the attacker and log requests
+        description: |
+          Keeping a log file of the P2P identity of the requester and the transaction ids requested can deter an attacker from carrying this attack, 
+          and allow the MGM or the notary to take action for example deny rights to use the network or to use the cryptographic proof
+          of fraudlent behaviour.
+        operational: false
+        inPlace: true
+        public: true
+
+
+  - ID: NOTARY_DENIAL_OF_STATE_BY_COUNTERPARTY
+    lastReview: 2024-04-23
+    title: Not sending Notary signatures to counterparties
+    impactDesc: |
+      Denial of state attack prevents the rightful owner from spending its unspent state. 
+
+    assets:
+      - REFID: DF_sendNotarySignaturesToCounterparties
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:L/MPR:H/MI:L/MA:L
+    threatType: Denial of service, repudiation
+    attack: |
+      The attacker runs a modified finalisation flow that collects the notary signatures but 
+      does not send notary signatures to the participants. 
+      This prevents the remaining participants from updating their ledgers and finalise the transaction. 
+      There is no ledger evidence of DF_sendNotarySignaturesToCounterparties being executed.
+         
+    public: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: QUERY_NOTARY_SIGNATURE_BY_TXID
+        title: Query the notary signature by txid
+        description: |
+          Participants should be able to query the notary using the TXID.
+          The TXID is confidential information that is known for limited number of participants.
+          If a participant does not receive notary signature to confirm transaction notarisation, it can query the 
+          notary directly to obtain the notary signature.
+
+          If the notary has signed the transaction, it will return its signature.
+          If the transaction is not signed or has been archived, it will return null.
+
+        operational: false
+        inPlace: false
+        public: true
+
+
+# (R.F.I.: I assume this is a safe response from the notary. The notary is not supposed to store txid list of txid that failed notarisation, nor a list of archived tx?)
+      # - ID: QUERY_NOTARY_UTXO_STATUS
+      #   title: Query the notary spent status of a state by reference
+      #   description: |
+      #     A counterparty can query a notary for a particular UTXO is spent or not. 
+      #     A query uses only the reference i.e. TxID | index.
+      #     This allows a counterparty to know if a particular state is spent or unspent.
+      #     If the queried state is unspent the notary response is true,
+      #     otherwise (spent or unfound) it returns null.  
+      #     (RFI: Careful consideration is needed here for the response logic not to disclose information? ) 
+
+      #   operational: true
+      #   inPlace: false
+      #   public: true
+
+  - ID: NOTARY_OFFLINE
+    lastReview: 2024-04-23
+    title: Denial of service attack against the notary
+    impactDesc: |
+      This affects the ability of the whole network to notarise any transaction, effectively preventing any transaction to finalise.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: Transactions
+    attackers:
+      - REFID: ANONYMOUS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H/E:U/RL:W/RC:U
+    threatType: Denial of service
+    attack: |
+      Due to a DDOS The notary is offline.
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: HIGH_AVAILABILITY_NOTARY_ARCHITECTURE
+        title: Corda 5 architecture ensures highly available notary service
+        description: |
+          Corda 5 Notary service architecture and Cluster is designed to ensure that the service is highly available. 
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+        inPlace: true
+        public: true
+
+      - ID: NETWORK_DETECTION_PREVENTION_TOOLS
+        title: Deploy attack detection and protection tools.
+        description: |
+          To prevent and detect DoS attacks the Notary Cluster deployment includes firewalls, network and applications
+           monitoring tools. These tools should be incorporated in any notary deployment. 
+        operational: true
+        inPlace: true
+        public: true
+        operator: INFRASTRUCTURE_OPERATOR
+
+  - ID: NOTARY_LOSES_STATES_LIST
+    lastReview: 2024-04-23
+    title: Notary loses list of spent states
+    impactDesc: |
+      Losing the state list would lead to a denial of state scenario.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: UTXO
+    attackers:
+      - REFID: VNODE_OPERATOR
+
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:H/UI:N/S:C/C:N/I:L/A:H
+    threatType: Tampering, Denial of service
+    attack: |
+      The notary in Corda 5 keeps a list of unspent states. 
+      If a successful attack or incident deletes this list goes undetected, it would cause a denial of state scenario.
+      Even if the deletion is detected but the notary is unable to retrieve lost entries, 
+      the notary will not be able to provide its state uniqueness checking service.   
+               
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: BACKUP_STATE_LIST
+        title: Use backup of spent state list
+        description: |
+          The Notary Cluster should preserve a backup of the spent list. 
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+        inPlace: true
+        public: true
+
+      - ID: ROLE_BASED_ACCESS_CONTROL
+        title: RBAC of the state list should allow limited editing access.
+        description: |
+          Access control of the spent state list should allow limited access. 
+          Modification is required to update a state from being unspent to spend. 
+            Thus only fields corresponding to spend status can be edited.
+          Deletion is also required for archiving purposes. 
+          However, RBAC in the DB could ensure that this privilege is limited to a specific user 
+          that is used for archiving purposes, and this is distinct from the user 
+          which is used as part of the uniqueness processor which inserts and updates states.
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: INTEGRITY_VERIFICATION
+        title: Hash-based verification.
+        description: |
+          Hash functions could be used to check the integrity of the spent state list. 
+        operational: false
+        inPlace: false
+        public: true
+
+
+
+    # - ID: NOTARY_CHANGE_REQUEST
+  #   title: Change used notary to a notary under attacker control  
+  #   impact: |
+  #     This can be used to allow double spending.
+  #   assets:
+  #      - ID: UTXO
+  #   attackers:
+  #     - REFID: COUNTERPARTY
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:N/I:L/A:H/E:U/RC:U/MPR:H
+  #   threatType: Spoofing
+  #   attack: | 
+  #    The attacker makes a notary change request to use a notary under its control. 
+  #    Alternatively, it can introduce the new notary in encumbrances.   
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: NOTARY_CHANGE_AUTHORISATION 
+  #       title: Use trusted and authenticated notaries  
+  #       description: | 
+  #         Only trusted, identified and authenticated notaries should be used. 
+  #       # (R.F.I.: Who can authorise a notary change request?Notary change requests are not implemented yet in Corda 5) 
+  #       operational: true
+  #       inPlace: true
+  #       public: true
+  #   Notary change is not implemented yet in Corda 5. This is commented off for now.    
+

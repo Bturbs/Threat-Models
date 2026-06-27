@@ -1,0 +1,569 @@
+parent: C5
+ID: Ledger
+schemaVersion: 2
+prefix: C5.Ledger
+title: Ledger
+# gantt:
+#   startDate: 2023-03-07
+#   endDate: 2023-04-11
+#   status: done
+
+scope:
+  description: |
+    The scope of analysis of this Corda 5 Threat Model section is composed of:
+
+    - States
+    - Transactions
+    - Smart contracts
+    - The Vault
+
+    <strong>Transaction backchains</strong><br/>
+      <img src="img/tx-chain.png" width="50%">
+
+    <strong>Transaction components</strong><br/>
+      <img src="img/full-tx.png" width="50%">
+
+    <strong>Full Merkle Tree Notary</strong><br/> 
+      The Merkle tree diagram is for demonstration and does not reflect the current Corda 5 implementation. 
+      It should be noted that inputs in a transaction are given by input state references (StateRefs), which consists of 
+      the hash of the transaction that created that input and that input's index. The input state object itself is not part of the transaction.
+      The diagram also does not show reference states https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4304077197/States#Reference-states , 
+      which is also a component of the transaction.       
+      <img src="img/merkleTreeFull.png"/>
+
+    <strong>SubMerkle Tree Notary</strong><br/>
+     The following diagram shows transaction fields that are disclosed to a standard non-validating notary. This is known as transaction tear-offs, 
+     and is used to hide components of the transaction for privacy purposes. Transaction fields and data disclosed to a standard non-validating notary are:
+
+       - Transaction hash (root of the Merkle Tree)
+       - Input state references
+       - Notary, which is used to identify the notary
+       - Time window bounds, which is used to specify the time range to validate the transaction
+       - Number of output states (not shown in the diagram)
+       - Reference states (not shown in the diagram) 
+      <img src="img/SubMerkleTree_Notary.png"/>
+
+
+
+
+  attackers:
+    # - REFID: ANONYMOUS
+    #   description: |
+    #    Anonymous internet user
+
+    #    Can call APIs: [post_hello](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Hello-RPC-API/operation/post_hello) and 
+    #    [get_hello_getprotocolversion](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Hello-RPC-API/operation/get_hello_getprotocolversion)
+    #   inScope: true
+#     - ID: CORDAPP_PUBLISHER
+#       description: | 
+#         Creates and signs CPKs and CPBs
+
+#         **Main use cases:**
+
+#         - Distribute his public key/sign certificate
+#         - Signs and publish CPKs and CPBs
+# #           - Distribute his public key/sign certificate (R.F.I.: pls confirm CORDAPP_PUBLISHER identity verification)
+
+#       inScope: true
+    - ID: CORDAPP_USER
+      description: |
+        Cordapp user that calls the Flow REST API on a specific VNode.
+
+         **Main use cases:**
+
+          - Call and retrieve CordApp Flows:
+             - Gets all flows that can be used by the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Info-API/operation/get_flowclass__holdingidentityshorthash_)
+             - Starts a new instance for the specified flow for the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/post_flow__holdingidentityshorthash_)
+             - gets the current status of the specified flow instance [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/get_flow__holdingidentityshorthash___clientrequestid_)
+      inScope: true
+
+    - ID: COUNTERPARTY
+      description: |
+        Cordapp user of a peer VNode.
+
+         **Main use cases:**
+
+          - Call and retrieve CordApp Flows:
+             - Gets all flows that can be used by the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Info-API/operation/get_flowclass__holdingidentityshorthash_)
+             - Starts a new instance for the specified flow for the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/post_flow__holdingidentityshorthash_)
+             - gets the current status of the specified flow instance [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/get_flow__holdingidentityshorthash___clientrequestid_)
+      inScope: true
+
+    - ID: NOTARY
+      description: |
+        A virtual node notary that can access a notary service Uniqueness database.
+
+         **Main use cases:**
+
+          - Notarise transactions
+             - Check transaction inputs against double spent
+             - Sign transactions
+             - Maintain database of spent and unspent states 
+
+      inScope: true
+
+  assets:
+    - ID: States
+      type: Data
+      title: State
+      description: An immutable object that can represent a fact. It references 
+        a contract that governs the evolution of states. An example of a state 
+        could be a bank account.
+      inScope: true
+    - ID: Transactions
+      type: Data
+      title: Transaction
+      description: |
+        A proposal to update the ledger. They manage state transitions.  
+      inScope: true
+
+    - ID: UTXO
+      type: Data
+      title: Unspent transactions output
+      description: An (unspent) unconsumed transactions outputs. This is also 
+        called the current state.
+      inScope: true
+
+    - ID: Contract
+      type: A JAR file
+      title: Contract
+      description: A JAR file that is used to validate transactions conformity 
+        to applicable business rules
+      inScope: true
+
+    - ID: LEDGER_KEYS
+      title: Ledger Key
+      type: key
+      description: (A.K.A. VNode private ledger signing key) public and private 
+        VNode ledger keys. Key is used to sign flows and consume Corda network 
+        ledger states. This key is critical for availability.
+      inScope: true
+      properties:
+        location: CRYPTO_WORKER Java memory process, VNODE_DB (encrypted with 
+          wrapping keys), TBC
+        format: ECDSA / EDDSA / RSA
+        length: 256
+        type: Public/Private signature key
+      applicationRelated: true
+      infrastructureRelated: false
+
+  assumptions:
+    - ID: IDENTIFICATION_AUTHENTICATION
+      description: >
+        Corda is a permissioned network, where all participants are identified and
+        authenticated.  Participants communicate confidentially in peer-to-peer, and
+        mutual identification and authentication  takes place prior to any ledger
+        operation.      
+    - ID: TXID_SENSITIVITY_SECRET
+      description: >
+        TXID are considered to be secret and are not meant to be disclosed except
+        in the following cases,
+
+        - particpants to the transaction
+        - the notary assigned to notarize the transaction
+        - backchain validation: participants to future transactions that are related
+        to that transaction states      
+           
+analysis: |
+
+threats:
+  - ID: HASH_AGILITY
+    title: Use of weak or broken hash algorithms
+    # impact: |
+    #   High loss on confidentiality transaction fields and/or forging of transactions.
+    impactedSecObj:
+      - REFID: LEDGER_TX_CONFIDENTIALITY
+      - REFID: LEDGER_INTEGRITY
+
+    assets:
+      - REFID: Transactions
+      - REFID: UTXO
+    attackers:
+      - REFID: COUNTERPARTY
+      - REFID: CORDAPP_PUBLISHER
+      - REFID: CORDAPP_USER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:H/A:N/E:U/RC:R
+    threatType: Double spend and information disclosure
+    attack: |
+      The choice of the hash algorithm used by the system is not hard coded instead is configurable.
+      An attacker could abuse this feature to use a broken hash or even no hash at all. 
+      Currently only one hash function (SHA256) is available
+      meaning that an attack is not currently possible.
+      This potential attack would be realised by an attacker exploiting a weakness in the implementation of hash algorithm selection
+      and specifying either directly or indirectly a weak hash algorithm that could be subsequently exploited.
+      A weak hash algorithm can have different weaknesses with different consequences; it can be reversible 
+      making it possible to know the hashed data (the original data) and affect the confidentiality, 
+      or it can be feasible to find collisions i.e. two different data sets that result into the same hash value. 
+      This can be potentially used to change a signed transaction data without invalidating the signature.   
+      (RFI: Which hash algorithm and in which context can be specified? is it the Merkle tree hashing algorithm or the hash function used in the signature algorithm?)
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    lastReview: 2024-04-05
+    countermeasures:
+      - ID: HASH_ALLOW_LIST
+        title: Allow list secure hash algorithms
+        description: |
+          Restrict the possible hashing algorithms to secure ones. This list should be not configurable by RPC users. 
+        operational: false
+        inPlace: false
+        public: true
+      - ID: CHECK_HASH_ALGORITHM_USED
+        title: Participants check the hash algorithm used
+        description: |
+          Participants should check that the hash algorithm used is a secure one. 
+        operational: true
+        operator: VNODE_OPERATOR
+        inPlace: true
+        public: true
+
+
+
+  - ID: DELAY_TRANSACTION_FINALITY
+    title: Delay or stalling transaction finality
+    impactDesc: |
+      Cause financial loss. 
+    assets:
+      - REFID: UTXO
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:N/A:L
+    threatType: Denial of service
+    attack: |
+      A Counterparty delays signing the transaction effectively freezing finalisation until economic conditions change favourably. 
+      For example Alice is buying goods and locks the price at x, but she delays finalizing the transaction until the goods value 
+      change to y.     
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-01
+    pentestTestable: true
+    countermeasures:
+      - ID: TIME_WINDOW
+        title: Limited time window
+        description: |
+          Use time window that enforces transaction finalization within agreed time duration. 
+          Time windows with a defined end time are mandatory in Corda 5. 
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        inPlace: true
+        public: true
+  - ID: BACKCHAIN_DISCLOSURE
+    title: Backchain disclosure during UTXO validation
+    impactDesc: |
+      Disclose states history and reveal information about the identity of previous owners. 
+    impactedSecObj:
+      - REFID: LEDGER_TX_CONFIDENTIALITY
+    assets:
+      - REFID: States
+      - REFID: Transactions
+      - REFID: UTXO
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:N/A:N
+    threatType: Information disclosure
+    attack: |
+      A Counterparty requests backchain states to verify inputs of a transaction. 
+      Because the backchain contains historical states, this could impact privacy of historical states and participants.
+      This attack is use case and application specific, i.e. it may not matter to some applications but could have serious consequences
+      in other cases.       
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-05
+    pentestTestable: true
+    countermeasures:
+      - ID: REISSUANCE
+        title: Burn state and mint a new one
+        description: |
+          Create a transaction that burns the state and another transaction that issues a new state. 
+          This is also called chain snipping.
+          [Re-issuance CordDapp](https://docs.r3.com/en/platform/corda/4.7/enterprise/cordapps/reissuing-states.html) 
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        inPlace: true
+        public: true
+  - ID: TX_STATE_DISCLOSURE
+    title: Transactions and states disclosure in query transaction by ID
+    impactDesc: |
+      Disclose information about states and their owners.
+    impactedSecObj:
+      - REFID: LEDGER_TX_CONFIDENTIALITY
+
+    assets:
+      - REFID: Transactions
+      - REFID: States
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:N/A:N
+
+    threatType: Information disclosure
+    attack: |
+      When a network participant knows/guess a TX id of a TX it is not participating to by knowing a transaction ID a counterparty can query transaction fields from another participant database in the same network. 
+      The attacker can get all pre-hash leaves of the transaction Merkle Tree. This includes references of the inputs of the transaction
+      -known as input state references- given by TXID | index. 
+      The attacker can query all back chain transactions.   
+
+    public: true
+    fullyMitigated: true
+    lastReview: 2024-04-05
+    pentestTestable: true
+    countermeasures:
+      - ID: NONCE
+        title: Use random salt when generating Transaction ID
+        description: |
+          Combine a random salt (nonce) with Merkle tree leaves when generating transaction ID. This makes it infeasible for an
+          attacker to guess the transaction ID.  
+
+        operational: false
+        inPlace: true
+        public: true
+
+      - ID: ACCESS_CONTROL_POLICY
+        title: Selective disclosure of relevant transaction fields
+        description: |
+          Just knowing only the TXID is not enough to gain access to all transaction fields. 
+          Access control policies could be used to authorise access
+          only to selective fields of the transaction based on the identity of the requester. 
+
+        operational: false
+        inPlace: false
+        public: true
+
+      - REFID: REISSUANCE
+
+  - ID: TX_STATE_DISCLOSURE2
+    title: Transactions disclosure to the notary using query transaction by ID
+    impactDesc: |
+      Disclose information about states.
+    impactedSecObj:
+      - REFID: LEDGER_TX_CONFIDENTIALITY
+    assets:
+      - REFID: Transactions
+      - REFID: States
+    attackers:
+      - REFID: NOTARY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:R/S:U/C:H/I:N/A:N
+    lastReview: 2024-04-05
+    pentestTestable: true
+    threatType: Information disclosure
+    attack: |
+      This attack can be carried by a notary to obtain full transaction data and compromise the counterparties privacy 
+      provided by the non-validating notarisation protocol.
+      By Design a filtered transaction is sent to the notary for non-validating notarisation, where all of the transaction fields are hidden from the 
+      notary except certain fields needed for that type of notarisation. 
+      However, the snooping notary obtains all transaction details by quering the counterparty requesting notarization
+       using the transaction ID. Thus the privacy provided by the non-validating protocol
+      is fully compromised. The attacker must have read access to the notary uniqueness database (or can eavesdrop the notary
+      communication), and able to communicate with the counterpary virtual node. 
+      The attack can also be enhanced if the attacker has an access to the notary list 
+      that maps notarised transactions to the counterparty requesting notarisation.    
+
+    public: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: ACCESS_CONTROL_POLICY
+        title: Selective disclosure of relevant transaction fields
+        description: |
+          Just knowing only the TXID is not enough to gain access to all transaction fields. 
+          Access control policies could be used to authorise access
+          only to selective fields of the transaction based on the identity of the requester. 
+
+        operational: false
+        inPlace: false
+        public: true
+
+
+
+  - ID: CONTRACT_DOWNGRADE
+    title: Referencing a vulnerable version of a contract
+    impactDesc: |
+      This can be as varying as the type of vulnerability in the contract, including remote code execution (RCE), denial of service, 
+      information disclosure,
+        or even signing arbitrary transactions.
+    impactedSecObj:
+      - REFID: LEDGER_SPOOFING_PREVENTION
+      - REFID: LEDGER_TX_CONFIDENTIALITY
+      - REFID: AVAILABILITY
+
+    assets:
+      - REFID: Transactions
+      - REFID: States
+      - REFID: UTXO
+    attackers:
+      - REFID: COUNTERPARTY
+    CVSS:
+      # vector: CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:H/I:N/A:H/E:U  - I am unsure why AV:L and PR:H?
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:R/S:U/C:H/I:N/A:L
+    threatType: Information disclosure, Denial of Service, Spoofing
+    attack: |
+      Downgrade attacks can occur when a transaction references an older (but vulnerable) version of a contract.
+       This can happen when validating historical transactions referencing vulnerable contracts and 
+       this scenario can happen when validating the backchain.
+       Alternatively, an attacker could directly mount an attack by referencing an existing vulnerable contract 
+       in a new transaction and sending it to a victim counterparty.
+       (RFI: @Bassem, what is the countermeasure on a single node? RBAC on Flow protocol versions? )          
+    public: true
+    fullyMitigated: false
+    lastReview: 2024-04-05
+    countermeasures:
+      - ID: SANDBOX
+        title: Use sandboxing to contain Cordapps
+        description: |
+          Corda 5 design uses sandboxes to run each cordapp separately safely. 
+
+        operational: false
+        inPlace: true
+        public: true
+      - ID: CONTRACT_DENYLIST
+        title: Use denylist of vulnerable contracts
+        description: |
+          A node operator needs to be able to form a denylist of vulnerable versions of contract. 
+          The deny list can be managed directly by the node operator or published by the MGM. 
+        operational: false
+        inPlace: false
+        public: true
+
+
+  - ID: CONTRACT_UPGRADE
+    title: Adding a vulnerable version of a contract
+    impactDesc: |
+      This can be as varying as the type of vulnerability in the contract, including RCE, denial of service, information disclosure,
+        or even signing arbitrary transactions.
+    impactedSecObj:
+      - REFID: LEDGER_SPOOFING_PREVENTION
+      - REFID: LEDGER_TX_CONFIDENTIALITY
+      - REFID: AVAILABILITY
+
+    assets:
+      - REFID: Transactions
+      - REFID: States
+      - REFID: UTXO
+    attackers:
+      - REFID: CORDAPP_PUBLISHER
+    CVSS:
+      # vector: CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:H/I:L/A:L/E:U/RC:U/MPR:H
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:H/I:L/A:L/E:U/RC:U/MPR:H
+    threatType: Spoofing, Information disclosure, Denial of Service
+    attack: |
+      An attacker in control of a CORDAPP publisher code-signing key would be able to send malicious contract binaries 
+      to a victim on the 
+      same network. This attack could ultimately result in arbitrary RCE, with the likely consequence of the attack gaining 
+      control of the node's signing key [contracts upgrade constraints](https://r3-cev.atlassian.net/wiki/spaces/SEC/pages/3744890980/Corda+Security+Model+-+Flow+Framework#Contract-Constraints)  
+      Contract upgrade can only happen through CPI upgrade.
+               
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: SECURE_KEY
+        title: Protect CPI Signing key
+        description: |
+          A contract upgrade attack can only happen through manual CPI upgrades, which must be signed by the CPI authority.               
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        inPlace: true
+        public: true
+
+      - ID: KEY_BLOCKLIST
+        title: Block list compromised signing keys
+        description: |
+          A node operator should be able to blocklist compromised signing keys.
+                   
+        operational: true
+        operator: CLUSTER_OPERATOR
+        inPlace: false
+        public: true
+
+      - ID: CPK_CERTIFICATE_REVOCATION
+        title: Check CPK certificate revocation
+        description: |
+          Verify the signature of the CPK and respect the revocation status of the code signing certificate.
+          Should the CPK author's key be compromised they can instruct their CA to revoke it.  
+                   
+        operational: true
+        operator: CLUSTER_OPERATOR
+        inPlace: false
+        public: true
+
+
+  - ID: VULNERABLE_CORDAPP
+    lastReview: 2024-04-01
+    title: A cordapp accessing transaction's signing keys of another cordapp
+    impactDesc: |
+      This could result into signing arbitrary transactions, potentially causing financial loss.
+    impactedSecObj:
+      - REFID: LEDGER_SPOOFING_PREVENTION
+    assets:
+      - REFID: Transactions
+      - REFID: States
+      - REFID: UTXO
+    attackers:
+      - REFID: CORDAPP_PUBLISHER
+      - REFID: COUNTERPARTY
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:H/I:L/A:L
+    threatType: Spoofing
+    attack: |
+      A vulnerable cordapp could be used to access signing keys used by other cordapps installed on the same node.   
+               
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: CORDA5_VNODE_ARCHITECTURE
+        title: Use a separate virtual node for each cordapp
+        description: |
+          Corda 5 design runs each different cordapp on a separate virtual node. Thus a vulnerable or malicious cordapp is separated 
+          from other cordapps.
+
+        operational: false
+        inPlace: true
+        public: true
+      - ID: SANDBOX
+        title: Use sandboxing to contain cordapps
+        description: |
+          Corda 5 design uses sandboxes to run each cordapp safely. 
+          Access to any signing key including its own signing key should be strictly prohibited from the contract.  
+
+        operational: false
+        inPlace: true
+        public: true
+
+
+
+  # - ID: ECDSA_SIGNING_KEY_LEAK
+  #   title: Weak random nonce in ECDSA implementation  
+  #   impact: |
+  #     This can be used to sign arbitrary transactions.
+  #   impacts:
+  #     - REFID: LEDGER_SPOOFING_PREVENTION
+  #   assets:
+  #      - ID: UTXO
+  #   attackers:
+  #     - ID: COUNTERPARTY
+  #   CVSS:
+  #     vector: 
+  #   threatType: Spoofing
+  #   attack: | 
+  #    The attacker can guess the private key of an ECDSA from previous usage. This attack is only possible
+  #     when the nonce (parameter k) in the ECDSA signature algorithm is not generated uniformly at random.
+  #     "[Attacks against Weak ECDSA Signatures](https://eprint.iacr.org/2019/023.pdf)"     
+    # public: true
+    # fullyMitigated: true
+    # countermeasures:
+      # - ID: HIGH_ENTROPY_SOURCE 
+      #   title: Secure_ECDSA_Signature_Algorithm_Implementation   
+      #   description: | 
+      #     Implementation of the key signing algorithm should use secure random generating keys with high entropy.
+      #   operational: true
+      #   inPlace: true
+      #   public: true
+      # - ID: SINGLE_USE_PRIVATE_KEY 
+      #   title: Different Signing key for each UTXO     
+      #   description: | 
+      #     Use a signing key only once. Use a different signing key for each UTXO.
+      #   operational: false
+      #   inPlace: false
+      #   public: true

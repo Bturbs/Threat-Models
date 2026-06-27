@@ -1,0 +1,1220 @@
+ID: SolanaTrustedNotary
+schemaVersion: 2
+title: Solana Trusted Notary
+version: 0.1
+# authors: |
+#    David Cervigni (derived from Solana Notary design document)
+parent: CordaSolanaToolkit
+
+scope:
+  description: |
+    This threat model covers the design of a Corda notary service that is backed by a Solana program.
+    In this "Trusted Model", a Corda notary node still exists, but instead of using a traditional relational database for state tracking, it interacts with a Solana cluster to record and verify the spendable status of Corda states.
+    The primary function is to perform notarisation (preventing double-spends) by leveraging Solana's blockchain capabilities.
+    A key feature enabled by this architecture is the atomic invocation of other Solana programs (CPIs) alongside Corda transaction notarisation.
+    This document focuses on the Solana-side program (`commit` instructions) and its interaction with the Corda notary node.
+
+  assets:
+    # Systems / Components
+    - ID: SOLANA_NOTARY_PROGRAM
+      type: system
+      title: Solana Notary Program
+      description: |
+        The on-chain Solana program containing the logic for `commit`, 
+        and other administrative instructions. It manages NotarisedTransactionAccount PDAs.
+      inScope: true
+
+    - ID: CORDA_NOTARY_NODE_SOLANA
+      type: system
+      title: Corda Notary Node (Solana Integrated)
+      description: |
+        The Corda notary node in the trusted model that interacts with the Solana Notary Program instead of a local database. It constructs and submits Solana transactions for notarisation.
+      inScope: true
+
+    - ID: SOLANA_CLUSTER
+      type: system
+      title: Solana Cluster
+      description: |
+        The underlying Solana blockchain network that executes the Solana Notary Program and stores its state.
+      inScope: false
+
+    - ID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+      type: data # Stored on Solana, so data
+      title: NotarisedTransactionAccount PDA
+      description: |
+        A Program Derived Address (PDA) on Solana storing the spent status (bitset) of output states for a specific Corda transaction ID, and its time window.
+      inScope: true
+
+    - ID: NOTARY_AUTHORIZATION_PDA
+      type: data
+      title: Notary Authorization PDA
+      description: |
+        Every authorized notary is represented by an on-chain account created using a Program Derived Address (PDA). In this project, the PDA is derived using a seed (the string literal for notary authorization) combined with the notary's public key. The resulting PDA is used as the account address where the authorization data—in particular the notary’s public key—is stored. This ensures the account is controlled by the program and ties the authorization specifically to the intended notary.
+      inScope: true
+    # - ID: JUMBO_COMMIT_PARAMETERS_ACCOUNT_PDA
+    #   type: data
+    #   title: JumboCommitParametersAccount PDA
+    #   description: |
+    #     A temporary PDA used to store encrypted parameters for Corda transactions that are too large to fit in a single Solana transaction's instruction data.
+    #   inScope: true
+    # - ID: CROSS_NETWORK_COMMIT_PARAMETERS_ACCOUNT_PDA
+    #   type: data
+    #   title: CrossNetworkCommitParametersAccount PDA
+    #   description: |
+    #     A temporary PDA used to store encrypted parameters for one leg of a cross-Corda-network atomic notarisation.
+    #   inScope: true
+    # - ID: NOTARY_DAO
+    #   type: system
+    #   title: Notary DAO (Global Model)
+    #   description: |
+    #     A Decentralized Autonomous Organization responsible for administering the global Solana Notary Program, including network registration and parameter setting.
+    #   inScope: true # For Global Trusted Model
+    # - ID: EXTERNAL_SOLANA_PROGRAM
+    #   type: system
+    #   title: External Solana Program (CPI Target)
+    #   description: |
+    #     Other Solana programs that can be invoked atomically during the notarisation process via Cross-Program Invocation (CPI).
+    #   inScope: true
+
+    # Data
+    - ID: COMMIT_INSTRUCTION_PARAMS
+      type: data
+      title: Commit Instruction Parameters
+      description: |
+        Data passed to the `commit` instruction, including input/reference StateRefs, time window, output hashes, component group hashes, Corda signatures, and potentially CPI instructions.
+      inScope: true
+
+    - ID: CORDA_STATE_REF_SOLANA
+      type: data
+      title: Corda StateRef (for Solana)
+      description: |
+        Tuple of Corda transaction_id (hash) and output_index, used by the Solana program to uniquely identify states.
+      inScope: true
+
+    - ID: SPENT_STATE_BITSET
+      type: data
+      title: Spent State Bitset
+      description: |
+        Bitset within NotarisedTransactionAccount PDA indicating whether each output state is spendable (1) or spent (0).
+      inScope: true
+
+    - ID: CORDA_TX_SIGNATURES_FOR_SOLANA
+      type: data
+      title: Corda Transaction Signatures (for Solana)
+      description: |
+        Ed25519 signatures from Corda transaction participants, verified by the `commit` instruction against the derived Corda transaction ID.        
+      inScope: true
+
+    - ID: CPI_INSTRUCTIONS_DATA
+      type: data
+      title: CPI Instructions Data
+      description: |
+        Serialized Solana `Instruction` data to be executed via CPI as part of the `commit` process.
+      inScope: true
+    # - ID: ENCRYPTED_JUMBO_PARAMETERS
+    #   type: data
+    #   title: Encrypted Jumbo Transaction Parameters
+    #   description: |
+    #     Corda transaction parameters (inputs, references, etc.) encrypted and stored in JumboCommitParametersAccount PDA.
+    #   inScope: true
+    # - ID: ENCRYPTED_X_NETWORK_PARAMETERS
+    #   type: data
+    #   title: Encrypted Cross-Network Transaction Parameters
+    #   description: |
+    #     Parameters for a leg of a cross-network transaction, including required signers, encrypted and stored in a CrossNetworkCommitParametersAccount PDA.
+    #   inScope: true
+
+    # - ID: SHARED_ENCRYPTION_KEY_X_NETWORK
+    #   type: credential
+    #   title: Shared Encryption Key (Cross-Network)
+    #   description: |
+    #     AES-GCM key derived from a shared secret, used to encrypt/decrypt parameters for cross-network notarisation.
+    #   inScope: true
+
+    # - ID: NETWORK_ID_GLOBAL
+    #   type: data
+    #   title: Network ID (Global Model)
+    #   description: |
+    #     Identifier (e.g., u16) assigned to each Corda network using the global notary program, stored in NotarisedTransactionAccount PDAs.
+    #   inScope: true
+
+    - ID: STN_ADMIN_PUBLIC_KEY
+      type: key#
+      title: Solana Notary Program Admin Public Key
+      description: |
+        The Solana public key authorized to perform administrative functions on the
+         Solana Notary Program (e.g., held by network operator or DAO).
+      inScope: true
+      properties:
+        - name: type
+          value: Ed25519
+        - name: lenght
+          value: 256 bits
+        - name: Key Usage
+          value: Administrative functions for the Solana Notary Program
+
+    - ID: STN_ADMIN_PRIVATE_KEY
+      type: key
+      title: Solana Notary Program Admin Private Key
+      description: |
+        The private key corresponding to the Solana [Notary Program admin public key](#STN_ADMIN_PUBLIC_KEY),
+         used for signing administrative transactions.
+      inScope: true
+      properties:
+        - name: type
+          value: Ed25519
+        - name: length
+          value: 256 bits
+        - name: Key Usage
+          value: Administrative functions for the Solana Notary Program
+
+    - ID: STN_PUBLIC_KEY
+      type: key
+      title: Solana Notary Program Public Key
+      description: |
+        The public key of the Solana Notary Program, used to derive PDAs (TODO verify this) and verify program signatures.
+        (STN_ADMIN_KEY)[] can called authorize_notary with this key.
+      inScope: true
+      properties:
+        - name: type
+          value: Ed25519
+        - name: length
+          value: 256 bits
+
+    - ID: STN_PRIVATE_KEY
+      type: key
+      title: Solana Notary Program Private Key
+      description: |
+        Private key on an [STN_PUBLIC_KEY](#STN_PUBLIC_KEY) that is used to sign notarizatio instructions.
+      inScope: true
+      properties:
+        - name: type
+          value: Ed25519
+        - name: length
+          value: 256 bits
+
+    - ID: ADMIN_PDA
+      type: data
+      title: Admin PDA
+      description: |
+        A Program Derived Address (PDA) that holds the admin key for the Solana Notary Program, created during initialization.
+        This PDA is used to validate administrative actions and ensure only the
+         designated admin can authorize or revoke notaries.
+      inScope: true
+
+    # Dataflows
+    - ID: NOTARY_NODE_TO_SOLANA_PROGRAM
+      type: dataflow
+      title: Corda Notary Node to Solana Notary Program
+      description: |
+        Submission of `commit` (or jumbo/cross-network commit) instructions and parameters 
+        from the Corda Notary Node to the Solana Notary Program.
+      inScope: true
+
+    - ID: ADMIN_TO_SOLANA_PROGRAM
+      type: dataflow
+      title: Administrator to Solana Notary Program
+      description: |
+        Invocation of administrative instructions like `authorize_notary`, `initialize` by the program administrator (Network Operator or DAO).
+      inScope: true
+    - ID: SOLANA_PROGRAM_CPI_CALL
+      type: dataflow
+      title: Solana Notary Program to External Solana Program (CPI)
+      description: |
+        Cross-Program Invocation from the Solana Notary Program's `commit` instruction to another Solana program.
+      inScope: true
+    - ID: DF_STN_INIT_PROGRAM
+      type: dataflow
+      title: Initialize Notary Program
+      description: |
+        Dataflow for initializing the Solana Notary Program, including creating required PDAs, 
+        setting initial parameters, and registering administrator accounts.
+
+        The program creates an administration PDA as part of its initialization (the owner of the program is not the caller by default).
+         The [ADMIN_PDA](#ADMIN_PDA) is generated using a fixed seed (e.g., `"\admin\\"`) and is funded and assigned
+          based on the initializer's signature during the `Initialize` instruction. The [ADMIN_PDA](#ADMIN_PDA) then holds
+           the admin key, and the program logic later uses it to validate that only the designated admin
+            can authorize or revoke notaries. So yes, the admin PDA is established during initialization,
+             and the program assigns its special rights based on that identity.
+      inScope: true
+
+    - ID: DF_STN_REVOKE_NOTARY
+      type: dataflow
+      title: Revoke Notary Account
+      description: |
+        Dataflow for revoking a notary account by the program administrator, removing it from the list of authorized notaries.
+        This is done by calling the `revoke_notary` instruction with the notary's public key.
+      inScope: true
+
+    - ID: DF_STN_SUBMIT_REQUEST
+      type: dataflow
+      title: Submit Notarisation Request
+      description: |
+        Dataflow from Corda Participant to Corda Notary Node, submitting notarisation requests with Corda transaction parameters.
+      inScope: true
+    - ID: DF_STN_INVOKE_COMMIT
+      type: dataflow
+      title: Invoke Commit Instruction
+      description: |
+        Dataflow from Corda Notary Node to Solana Notary Program, invoking the `commit` instruction with notarisation parameters.
+      inScope: true
+    - ID: DF_STN_CHECK_PDA_EXISTENCE
+      type: dataflow
+      title: Check PDA Existence
+      description: |
+        Dataflow within Solana Notary Program to check for the existence of a NotarisedTransactionAccount PDA for the transaction ID.
+      inScope: true
+    - ID: DF_STN_RETURN_SUCCESS
+      type: dataflow
+      title: Return Success (Idempotency Ensured)
+      description: |
+        Dataflow from Solana Notary Program to Corda Notary Node, returning success if the PDA already exists, ensuring idempotency.
+      inScope: true
+    - ID: DF_STN_VALIDATE_TIME_WINDOW
+      type: dataflow
+      title: Validate Time Window
+      description: |
+        Dataflow within Solana Notary Program to validate the transaction's `time_window` against Solana's `Clock::get()?.unix_timestamp`.
+      inScope: true
+    - ID: DF_STN_RETURN_FAILURE
+      type: dataflow
+      title: Return Failure (Invalid Time Window)
+      description: |
+        Dataflow from Solana Notary Program to Corda Notary Node, returning failure if the transaction's time window is invalid.
+      inScope: true
+
+    - ID: DF_STN_CREATE_PDA
+      type: dataflow
+      title: Create NotarisedTransactionAccount PDA
+      description: |
+        Dataflow within Solana Notary Program to create a new NotarisedTransactionAccount PDA for the transaction ID.
+        Pubkey::find_program_address is a Solana SDK function that deterministically derives a "Program Derived Address" (PDA) using a set of seed values and the program ID.
+          The seeds used here are [REF](https://github.com/corda/enterprise/blob/e8b0346eae512a178c5316bfab74efdfe28ee645/solana-aggregator/notary-program/programs/corda-notary/src/commit.rs#L135C8-L136C1):
+
+          - "corda_tx".as_bytes() — a static string indicating this is related to a "corda_tx".
+          - txhash.as_ref() — the transaction hash, unique per transaction.
+          - notary.key.as_ref() — the public key of the notary.
+          - ctx.program_id is the ID of the smart contract (program).      
+      inScope: true
+    - ID: TX_PDA
+      type: data
+      title: Transaction PDA
+      description: |
+        The Program Derived Address (PDA) for the NotarisedTransactionAccount, derived from the transaction ID and notary public key.
+        This PDA is used to store the spent state bitset and other transaction metadata.
+        TODO: StateRef is a tuple of transaction_id (hash) and output_index, 
+        which uniquely identifies a Corda state.
+      inScope: true
+    - ID: DF_STN_UPDATE_BITSET
+      type: dataflow
+      title: Update Spent State Bitset
+      description: |
+        Dataflow within Solana Notary Program to update the spent state bitset in the NotarisedTransactionAccount PDA.
+      inScope: true
+    - ID: DF_STN_DOUBLE_SPENDING_FAILURE
+      type: dataflow
+      title: Return Failure (Double Spending Detected)
+      description: |
+        Dataflow from Solana Notary Program to Corda Notary Node, returning failure if double spending is detected.
+      inScope: true
+    - ID: DF_STN_NOTARISATION_SUCCESS
+      type: dataflow
+      title: Return Success (Transaction Notarised)
+      description: |
+        Dataflow from Solana Notary Program to Corda Notary Node, returning success after successful transaction notarisation.
+      inScope: true
+    - ID: DF_STN_NOTIFY_RESULT
+      type: dataflow
+      title: Notify Notarisation Result
+      description: |
+        Dataflow from Corda Notary Node to Corda Participant, notifying the result of the notarisation process.
+      inScope: true
+    - ID: DF_STN_VERIFY_ACCOUNT_COUNT
+      type: dataflow
+      title: Verify Account Count
+      description: |
+        Dataflow within Solana Notary Program to verify the number of accounts passed in during the `commit` instruction.
+        Ensures the correct number of accounts are provided for processing the transaction.
+      inScope: true
+
+    - ID: NOTARY_WALLET_STN
+      type: credential
+      title: Notary Wallet
+      description: |
+        Solana wallet owned by the authorized notary for the Corda network.
+        Used to sign `Commit` instructions on the Solana Notary Program.
+        Holds the public key that is authorized to perform notarization operations.
+      inScope: true
+      properties:
+        location: Secure key storage, out-of-band management
+        format: Ed25519 keypair (public + private key)
+        publicKeyLength: 256 bits
+        privateKeyLength: 256 bits
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: ADMIN_WALLET_STN
+      type: credential
+      title: Admin Wallet
+      description: |
+        Solana wallet owned by the administrator of the Corda Notary program.
+        Used to sign administrative instructions such as `Initialize`, `AuthorizeNotary`, `RevokeNotary`, and `CreateNetwork`.
+        Controls the Authorization and Network PDA state.
+      inScope: true
+      properties:
+        location: Secure key storage, out-of-band management
+        format: Ed25519 keypair (public + private key)
+        publicKeyLength: 256 bits
+        privateKeyLength: 256 bits
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CORDA_NODE_CA_KEYPAIR_STN
+      type: credential
+      title: Corda Node CA Keypair
+      description: |
+        Node Certificate Authority keypair used to issue the node’s identity certificates
+        for the Solana-integrated notary node.
+      inScope: true
+      properties:
+        location: |
+          nodekeystore.jks (alias: nodeca) or HSM-backed crypto service
+        format: X.509 certificate + private key
+        algorithm: RSA-2048/4096 or ECDSA P-256 (configurable)
+        keyLength: 2048-4096 bits (RSA) or 256 bits (ECDSA)
+      applicationRelated: false
+      infrastructureRelated: true
+
+    - ID: CORDA_LEGAL_IDENTITY_KEYPAIR_STN
+      type: credential
+      title: Corda Legal Identity Keypair
+      description: |
+        Legal identity signing keypair used by the notary node to sign Corda transactions.
+      inScope: true
+      properties:
+        location: |
+          nodekeystore.jks (alias: identity-private-key) or HSM-backed crypto service
+        format: X.509 certificate + private key
+        algorithm: RSA-2048/4096 or ECDSA P-256 (configurable)
+        keyLength: 2048-4096 bits (RSA) or 256 bits (ECDSA)
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CORDA_TLS_KEYPAIR_STN
+      type: credential
+      title: Corda TLS Keypair
+      description: |
+        TLS keypair used by the notary node for node-to-node and RPC/TLS communication.
+      inScope: true
+      properties:
+        location: sslkeystore.jks or messaging server SSL keystore (if Corda 
+          Firewall is used)
+        format: X.509 certificate + private key
+        algorithm: RSA-2048/4096 or ECDSA P-256 (configurable)
+        keyLength: 2048-4096 bits (RSA) or 256 bits (ECDSA)
+      applicationRelated: false
+      infrastructureRelated: true
+
+  assumptions:
+    - ID: R3_PROGRAM_DEPLOYMENT_AND_ADMIN
+      description: |
+        The Solana Notary Program is deployed and administered by R3 (the Corda platform maintainer).
+        R3 performs the initial `initialize` instruction, becoming the single admin for the deployed program.
+        Each Corda network operator that wishes to use this shared program instance must apply to R3 for network creation and notary authorization.
+        This ensures a trusted bootstrapping phase and centralized governance of the program instance.
+    - ID: SOLANA_INFRA_SECURE
+      description: |
+        The underlying Solana cluster is assumed to be secure, available, and correctly executing smart contracts according to its protocol. Solana's own consensus and security are out of scope of this specific model.
+    - ID: TRUSTED_CORDA_NOTARY_NODE
+      description: |
+        In the "Trusted Model", the Corda Notary Node is trusted to correctly form and submit valid notarisation requests to the Solana Notary Program based on legitimate Corda transactions.
+    - ID: TRUSTED_PROGRAM_ADMIN
+      description: |
+        The administrator of the Solana Notary Program (R3) is trusted to manage the program correctly and not abuse administrative privileges.
+    - ID: CRYPTO_PRIMITIVES_SECURE
+      description: |
+        Cryptographic primitives used (SHA-256, Ed25519 signatures, AES-GCM encryption, KDFs) are assumed to be cryptographically secure and correctly implemented.
+    - ID: CORDA_TX_COMPONENTS_GENUINE
+      description: |
+        The Corda transaction components (inputs, references, outputs, time window, signatures) provided to the `commit` instruction are assumed to be genuine parts of the Corda transaction being notarised. The `commit` instruction verifies their assembly and signatures.
+    - ID: SOLANA_TX_FEES_EXIST
+      description: |
+        Standard Solana transaction fees and compute unit limits provide some baseline protection against trivial DoS attacks.
+    - ID: CPI_TARGET_PROGRAM_SECURITY
+      description: |
+        The security of external Solana programs called via CPI is the responsibility of those external programs. The Notary Program ensures atomicity but not necessarily the internal security of the CPI target.
+    - ID: STN_PROGRAM_SINGLE_CALLER
+      description: |
+        The notary program do not allow for other callers (e.g. Other Notaries in different Corda Networks or other participant)
+        to execute calls, even if only for verification purposes.
+  attackers:
+    - ID: MALICIOUS_CORDA_PARTICIPANT_STN
+      description: |
+        A Corda network participant attempting to exploit the Solana Notary, e.g., by trying to double-spend, submit malformed requests to the Corda Notary Node, or find flaws in the Solana program logic via interactions.
+      inScope: true
+    - ID: COMPROMISED_CORDA_NOTARY_NODE_STN
+      description: |
+        The Corda Notary Node (Solana Integrated) is compromised, allowing an attacker to send arbitrary or malicious requests to the Solana Notary Program.
+        Note: only attacks from a Notary to a different network are in scope (trusted for its own Corda network only)
+      inScope: false
+    - ID: MALICIOUS_SOLANA_PROGRAM_ADMIN_STN
+      description: |
+        An individual or entity with administrative control over the Solana Notary Program (e.g., network operator) acting maliciously.
+      inScope: false
+    - ID: ATTACKER_ON_SOLANA_NETWORK_STN
+      description: |
+        An attacker with capabilities on the Solana network (e.g., observing transactions, attempting to exploit Solana vulnerabilities, DoS Solana nodes) trying to impact the Notary Program.
+      inScope: true
+
+analysis: |2
+
+  <img src="img/STN_sequence1_SIMPLE.svg"/>
+
+  <img src="img/STN_sequence1.svg"/>
+
+
+   **Data Model**
+
+  <img src="img/SolanaTrustedNotaryDataModel.svg"/>
+
+  On top the standard taxonomies of threats (e.g. STRIDE) this analysis takes into considereation Solana specific potential vulnerabilities like
+
+  - https://github.com/sherlock-audit/2024-09-orderly-network-solana-contract-judging/issues/69 
+
+
+
+threats:
+
+  - ID: STN_UNAUTHORISED_NOTARISATION
+    title: Unauthorised Notarisation
+    attack: |
+      A malicious Corda participant submits a notarisation request to the Solana Notary Program even with valid transaction parameters, but without being a legitimate Notary.
+
+    threatType: Elevation of Privilege
+    impactDesc: |
+      TODO: evaluate the impact of this attack. (this would be a feature of trustless notary)
+    impactedSecObj:
+      - REFID: LEDGER_INTEGRITY # From parent
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+      - REFID: COMMIT_INSTRUCTION_PARAMS
+      - REFID: NOTARY_AUTHORIZATION_PDA
+    attackers:
+      - REFID: MALICIOUS_CORDA_PARTICIPANT_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:N/I:H/A:N' # High integrity impact
+    fullyMitigated: true
+    countermeasures:
+      - ID: STN_NOTARY_AUTHENTICATION
+        title: Notary Authorization via Signed instructions
+        description: |
+          The `commit` instruction checks if the notary public key in the PDA (#SolanaTrustedNotary.NOTARY_AUTHORIZATION_PDA)[] matches the public key of the signer of the instruction.
+          If they do not match, the instruction fails, preventing unauthorised notarisation.
+          The Solana Notary Program should only be callable by the Corda Notary Node, 
+          preventing arbitrary PDA creation by other accounts.
+          This ensures that only the Notary Node can create PDAs for notarisation, 
+          preventing front-running attacks and ensuring that PDAs are created in a controlled manner.
+          The notary program do not allow for other callers (e.g. Other Notaries in different Corda Networks or other participant)
+          to execute calls, even if only for verification purposes.
+          This relates to the (STN_PROGRAM_SINGLE_CALLER)[#STN_PROGRAM_SINGLE_CALLER] assumption.
+        inPlace: true
+        public: true
+
+
+
+  - ID: DENIAL_OF_STATE_VIA_SOLANA
+    title: Denial of State via Solana Notary State Disclosure
+    attack: |
+      This special Denial of State attack is a easier exploitable version of the Denial of State 
+      in the usual Corda model of non valiating notary.
+      An attacker that participates in the Corda network can query the Solana Notary Program to discover 
+      which states are currently spendable, and which are not. The attacker can then craft a transaction and send it to the Trusted
+      Notary Program, which will flag the token as spent. 
+    threatType: Denial of Service, Tampering
+    impactDesc: |
+      The attacker can prevent the legitimate owner of the state to use/spend it, by marking it as spent.
+      This is a special case of Denial of Service, where the attacker can prevent the legitimate 
+      owner to use their own states.
+    # impactedSecObj:
+    #   - REFID: SPENDABLE_STATE # From parent
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+      - REFID: SPENT_STATE_BITSET
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: true
+    ticketLink: https://r3-cev.atlassian.net/browse/ENT-14870
+    countermeasures:
+      - ID: NOTARY_STORE_HASHED_STATE_IDS
+        title: Notary Store Hashed State IDs
+        description: |
+          The Solana Notary Program should store only the hash of the Corda StateRef (transaction_id, output_index) instead of the full StateRef.
+          This prevents an attacker from discovering the full StateRef and its spendable status.
+          This coutnermeasure reduces the attack surface, as most attackers cannot discover the full 
+          StateRef and its spendable status. This is still to be considered a partial mitigation.
+        inPlace: false
+        public: true
+
+      - ID: HASH_LOCK_STATES
+        title: Hash-Locked States
+        description: |
+          Using hash-locks on states can prevent them from being consumed by a 
+          malicious node, as they would require the pre-image to unlock the state.
+        inPlace: false # CorDapp design choice
+        public: true
+
+      - ID: FULL_VALIDATING_NOTARY
+        title: Full Validating Notary
+        description: |
+          Using a full validating notary can prevent this attack, as the notary would 
+          verify the transaction before notarising it.
+        inPlace: true # CorDapp design choice
+        operational: true
+        operator: Corda Network operator
+        public: true
+
+  - ID: STN_DOUBLE_SPEND_VIA_PROGRAM_FLAW
+    title: Double Spend via Solana Notary Program Flaw
+    attack: |
+      A malicious actor (e.g., compromised Corda Notary Node or direct interaction if permitted) exploits a flaw in the `commit` instruction's logic or PDA state management.
+      Examples:
+
+      1. Bypassing the check for an existing `NotarisedTransactionAccount` PDA for a re-submitted transaction, allowing re-notarisation after states are spent.
+      2. Incorrectly updating or checking the `uncommitted_states_*` bitset in the `NotarisedTransactionAccount` PDA, allowing a spent state to be marked as unspent or an unspent state to be ignored.
+      3. Race conditions in PDA creation or updates if not handled atomically by Solana.
+    threatType: Tampering
+    impactDesc: |
+      Successful double-spend, violating uniqueness consensus and corrupting Corda ledger integrity. Financial loss or invalid asset duplication.
+    impactedSecObj:
+      - REFID: LEDGER_INTEGRITY # From parent
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+      - REFID: SPENT_STATE_BITSET
+      - REFID: COMMIT_INSTRUCTION_PARAMS
+    attackers:
+      - REFID: COMPROMISED_CORDA_NOTARY_NODE_STN
+      - REFID: MALICIOUS_CORDA_PARTICIPANT_STN # If they can influence notary node's input
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:N/I:H/A:N' # High impact, complex attack
+    fullyMitigated: true
+    countermeasures:
+      - ID: STN_ATOMIC_PDA_OPERATIONS
+        title: Atomic PDA Operations and Checks
+        description: |
+          The `commit` instruction must ensure that checks for existing PDAs (for idempotency) and updates to `NotarisedTransactionAccount` PDAs (marking states spent, creating new ones) are performed atomically as per Solana's transaction model.
+          Input states' PDAs are checked for the specific `output_index` bit being 1 (unspent), and then set to 0 (spent).
+          New output states' PDAs are initialized with bits set to 1 for valid indices.
+        inPlace: true # Design intent
+        public: true
+      - ID: STN_IDEMPOTENCY_CHECK
+        title: Idempotency Check via PDA Existence
+        description: |
+          If a `NotarisedTransactionAccount` PDA for the transaction ID already exists, `commit` returns success without reprocessing, preventing errors on resubmission and accidental re-spending.
+        inPlace: true # Design intent
+        public: true
+      - ID: STN_TIME_WINDOW_VALIDATION
+        title: Time Window Validation
+        description: |
+          The `commit` instruction verifies `Clock::get()?.unix_timestamp` is within the Corda transaction's `time_window`.
+        inPlace: true # Design intent
+        public: true
+
+  - ID: STN_INVALID_CORDA_TX_NOTARISED
+    title: Invalid Corda Transaction Parameters Notarised
+    attack: |
+      The Notary Still needs to validate the Merrkle tree of the tranasction before calling 'commit', for example:
+
+      1. Mismatched `component_group_hashes` provided, leading to a derived transaction ID that doesn't match the actual Corda transaction.
+      2. Invalid or insufficient `corda_signatures` provided, or signatures that don't verify against the (potentially incorrect) derived transaction ID.
+      3. `inputs`, `references`, or `output_hashes` that are not part of the Merkle tree whose root is the claimed transaction ID.
+
+    threatType: Tampering, Spoofing
+    impactDesc: |
+      The Solana Notary Program records states as notarised which are not backed by a valid Corda transaction, leading to ledger inconsistencies, potential theft, or repudiation issues.
+    impactedSecObj:
+      - REFID: LEDGER_INTEGRITY # From parent
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: COMMIT_INSTRUCTION_PARAMS
+      - REFID: CORDA_TX_SIGNATURES_FOR_SOLANA
+      - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+    attackers:
+      - REFID: COMPROMISED_CORDA_NOTARY_NODE_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:L' # High integrity impact
+    fullyMitigated: true
+    countermeasures:
+      - ID: STN_MERKLE_PROOF_VERIFICATION
+        title: Transaction Merkle Proof Verification
+        description: |
+          The Trusted Notary reconstructs the Corda transaction ID by:
+
+          1. Serializing and hashing `inputs`, `references`, `time_window`, `output_hashes` to get their respective component group hashes (or sub-Merkle roots).
+          2. Verifying these match the provided `component_group_hashes` at the correct indices.
+          3. Calculating the root of the `component_group_hashes` Merkle tree to derive the transaction ID.
+        inPlace: true # Design intent
+        public: true
+      - ID: STN_CORDA_SIGNATURE_VERIFICATION
+        title: Corda Signature Verification
+        description: |
+          The `commit` instruction verifies each Ed25519 `CordaSignature` in `corda_signatures` against the derived Corda transaction ID.
+        inPlace: true # Design intent
+        public: true
+
+  - ID: STN_DOS_AGAINST_NOTARY_PROGRAM
+    title: Denial of Service against Solana Notary Program
+    attack: |
+      An attacker attempts to make the Solana Notary Program unavailable or excessively costly to use.
+      Examples:
+
+      1. Flooding the `commit` instructions with numerous requests, consuming Solana compute units and potentially hitting rate limits or increasing fees for legitimate users.
+      2. Creating many `NotarisedTransactionAccount` PDAs, leading to rent costs or clutter.
+      3. Exploiting Solana's transaction size limits by crafting transactions that are difficult for the `commit_jumbo` mechanism to handle efficiently.
+    threatType: Denial of Service
+    impactDesc: |
+      Legitimate Corda transactions cannot be notarised, halting network activity dependent on this notary. Increased operational costs.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: CORDA_NOTARY_NODE_SOLANA # As a vector for submitting requests
+      - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA # If abused for storage
+    attackers:
+      - REFID: MALICIOUS_CORDA_PARTICIPANT_STN
+      - REFID: COMPROMISED_CORDA_NOTARY_NODE_STN
+      - REFID: ATTACKER_ON_SOLANA_NETWORK_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:N/A:H'
+    fullyMitigated: true
+    countermeasures:
+      - REFID: STN_NOTARY_AUTHENTICATION # Already mitigates unauthorised requests
+      - ID: STN_SOLANA_FEES_COMPUTE_LIMITS
+        title: Solana Transaction Fees and Compute Limits
+        description: |
+          Solana's native transaction fees and compute unit limits provide a baseline defense against spam by making attacks costly.
+        inPlace: true # Solana platform feature
+        public: true
+      - ID: STN_GC_MECHANISM
+        title: Garbage Collection Mechanism
+        description: |
+          Garbage collection instruction that allows an administrator to clean up fully spent and expired `NotarisedTransactionAccount` PDAs, reclaiming rent and reducing state bloat. `commit` may also GC.
+        inPlace: false
+        public: true
+      - ID: STN_JUMBO_TRANSACTION_HANDLING
+        title: Jumbo Transaction Handling
+        description: |
+          The `commit_jumbo` instruction with `JumboCommitParametersAccount` PDAs allows processing of large Corda transactions that would exceed single Solana transaction limits.
+        inPlace: false # Design intent
+        public: true
+
+  - ID: STN_UNAUTHORISED_ADMIN_ACCESS
+    title: Unauthorized Administrative Access to Notary Program
+    attack: |
+      An attacker gains unauthorized access to administrative functions of the Solana Notary Program.
+      Examples:
+      1. Compromising the private key of the program administrator (Network Operator or DAO).
+      2. Exploiting a flaw in the program's access control logic for admin instructions (`initialize`, `authorize_notary`, `revoke_notary`).
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      Attacker can add rogue Corda Notary Node accounts, remove legitimate ones, change critical program parameters, or disable the service.
+    impactedSecObj:
+      - REFID: CORDA_NETWORK_AUTH
+      - REFID: LEDGER_INTEGRITY
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: STN_ADMIN_PRIVATE_KEY # The private key for the program administrator
+      # - REFID: NOTARY_DAO # If DAO controls admin key
+    attackers:
+      - REFID: MALICIOUS_SOLANA_PROGRAM_ADMIN_STN # If admin key is stolen by another
+      - REFID: ATTACKER_ON_SOLANA_NETWORK_STN # If they can exploit a program flaw
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:L/I:H/A:H' # High impact, assumes admin key compromise
+    fullyMitigated: true
+    countermeasures:
+      - ID: AUTH_FOR_ADMIN_FUNCTIONS
+        title: Key Access Control for Admin Functions
+        description: |
+          The Solana Notary Program implements checks ensuring that administrative instructions (e.g. authorize_notary) can only be invoked by the designated admin accounts.
+          At the STN_PROGRAM deployment time, the program creates an `ADMIN_PDA` that holds the [#STN_ADMIN_PUBLIC_KEY].
+          Only the [#STN_ADMIN_PRIVATE_KEY] can sign administrative transactions.
+        inPlace: true # Design intent
+        public: true
+      - ID: STN_SECURE_ADMIN_KEY_MANAGEMENT
+        title: Secure Admin Key Management
+        description: |
+          The private key for the program administrator must be securely managed (e.g., using a hardware wallet, multi-sig if DAO).
+        inPlace: false # Operational responsibility
+        operational: true
+        operator: Corda Network operator
+        public: true
+      # - ID: STN_DAO_GOVERNANCE_FOR_GLOBAL_ADMIN
+      #   title: DAO Governance for Global Admin
+      #   description: |
+      #     In the Global Trusted Model, a DAO with secure governance protocols manages administrative functions, providing checks and balances.
+      #   inPlace: true # Design intent for global model
+      #   public: true
+
+  # - ID: STN_JUMBO_XNETWORK_PARAM_LEAKAGE
+  #   title: Parameter Leakage from Jumbo/Cross-Network PDAs
+  #   attack: |
+  #     An attacker reads the data from a `JumboCommitParametersAccount` or `CrossNetworkCommitParametersAccount` PDA before it is processed and deleted, and the encryption is weak, key is compromised, or data is stored unencrypted.
+  #   threatType: Information Disclosure
+  #   impactDesc: |
+  #     Sensitive Corda transaction details (inputs, outputs, CPI intent, required signers for cross-network) are exposed prematurely, potentially revealing business intentions.
+  #   impactedSecObj:
+  #     - REFID: DATA_CONFIDENTIALITY
+  #   assets:
+  #     - REFID: JUMBO_COMMIT_PARAMETERS_ACCOUNT_PDA
+  #     - REFID: CROSS_NETWORK_COMMIT_PARAMETERS_ACCOUNT_PDA
+  #     - REFID: ENCRYPTED_JUMBO_PARAMETERS
+  #     - REFID: ENCRYPTED_X_NETWORK_PARAMETERS
+  #     - REFID: SHARED_ENCRYPTION_KEY_X_NETWORK
+  #   attackers:
+  #     - REFID: ATTACKER_ON_SOLANA_NETWORK_STN # Anyone who can read Solana chain state
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N' # High confidentiality impact if encryption fails
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: STN_ENCRYPTION_OF_TEMPORARY_PARAMS
+  #       title: Encryption of Temporary Parameters
+  #       description: |
+  #         Parameters stored in `JumboCommitParametersAccount` and `CrossNetworkCommitParametersAccount` PDAs are encrypted using AES-GCM. The encryption key for jumbo parameters is single-use. For cross-network, a shared key is derived via KDF from a secret group ID.
+  #       inPlace: true # Design intent
+  #       public: true
+  #     - ID: STN_PROMPT_DELETION_OF_TEMP_PDAS
+  #       title: Prompt Deletion of Temporary PDAs
+  #       description: |
+  #         The `commit_jumbo` and `commit_x_network` instructions delete their respective temporary parameter PDAs upon successful completion. If commit fails, caller is responsible for deletion.
+  #       inPlace: true # Design intent
+  #       public: true
+  #     - ID: STN_SECURE_KEY_DERIVATION_X_NETWORK
+  #       title: Secure Key Derivation for Cross-Network
+  #       description: |
+  #         The shared AES-GCM key for cross-network parameters is derived using a KDF from a `secret_group_id` and other inputs, ensuring all legs can derive the same key without exposing the raw secret. GCM mode provides authentication.
+  #       inPlace: true # Design intent
+  #       public: true
+
+
+
+
+  # - ID: STN_MALICIOUS_CPI_EXECUTION
+  #   title: Malicious Cross-Program Invocation (CPI) Execution
+  #   attack: |
+  #     The `commit` instruction is manipulated or flawed, leading to unintended or malicious CPI calls.
+  #     Examples:
+  #     1. A compromised Corda Notary Node injects malicious `Instruction` data into the `CommitParams`.
+  #     2. The Solana Notary Program incorrectly constructs or forwards CPI calls (e.g., wrong parameters, wrong target program).
+  #     3. A notary-specific external program fails to validate that it's being called by the correct Notary Program or that `corda_signers` are trustworthy.
+  #     4. A native external program has vulnerabilities exploited by the CPI call crafted within the Corda transaction.
+  #   threatType: Tampering, Elevation of Privilege
+  #   impactDesc: |
+  #     Unauthorized actions on other Solana programs, potential theft of assets from accounts controlled by CPI targets, data corruption on external systems, or violation of Corda transaction's intent.
+  #   impactedSecObj:
+  #     - REFID: LEDGER_INTEGRITY
+  #   assets:
+  #     - REFID: SOLANA_NOTARY_PROGRAM
+  #     - REFID: EXTERNAL_SOLANA_PROGRAM
+  #     - REFID: CPI_INSTRUCTIONS_DATA
+  #     - REFID: COMMIT_INSTRUCTION_PARAMS
+  #   attackers:
+  #     - REFID: COMPROMISED_CORDA_NOTARY_NODE_STN
+  #     - REFID: MALICIOUS_CPI_TARGET_DEVELOPER # If they collude or exploit notary
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:L'
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: STN_CORDA_SIDE_CPI_VALIDATION
+  #       title: Corda-Side CPI Validation
+  #       description: |
+  #         CorDapp contracts should validate that the CPI instructions included in a Corda transaction are appropriate for the state transitions being proposed. A new Corda component group for CPIs is used.
+  #       inPlace: true # Design intent (requires Corda API changes)
+  #       public: true
+  #     - ID: STN_CPI_SIGNER_FORWARDING
+  #       title: Verified Corda Signer Forwarding for Notary-Specific CPIs
+  #       description: |
+  #         For notary-specific CPIs, the `commit` instruction appends the list of verified Corda signer public keys to the CPI data, allowing the target program to perform its own authorization based on Corda identities.
+  #       inPlace: true # Design intent
+  #       public: true
+  #     - ID: STN_CPI_TARGET_VERIFICATION
+  #       title: CPI Target Program Verification
+  #       description: |
+  #         Notary-specific programs called via CPI should verify they are being invoked from within the `commit` transaction of the trusted Solana Notary Program (e.g., using Solana's `Instructions` sysvar).
+  #       inPlace: true # Recommendation for CPI target developers
+  #       public: true
+  #     - ID: STN_NATIVE_CPI_SOLANA_SIGNER_REQUIREMENT
+  #       title: Native CPIs Rely on Solana Transaction Signers
+  #       description: |
+  #         For CPIs to native Solana programs, authorization relies on the signers of the overall Solana transaction that includes the `commit` call. The Corda participant initiating the CPI must also sign the Solana transaction.
+  #       inPlace: true # Design intent
+  #       public: true
+
+  # - ID: STN_GLOBAL_NOTARY_DAO_COMPROMISE
+  #   title: Global Notary DAO Compromise or Malice
+  #   attack: |
+  #     The DAO governing the global Solana Notary Program is compromised, or a significant portion acts maliciously.
+  #     Examples:
+  #     1. Maliciously adding/removing Corda network operator keys or their associated `network_id`s.
+  #     2. Changing program parameters (e.g., idempotency window, transaction size limits) to disrupt services or favor certain networks.
+  #     3. Censoring registration of new networks or updates to existing ones.
+  #     4. Mismanaging the program upgrade process.
+  #   threatType: Tampering, Denial of Service, Elevation of Privilege
+  #   impactDesc: |
+  #     Disruption of notarisation services for multiple Corda networks, unfair treatment of networks, potential for widespread ledger integrity issues if critical parameters are altered maliciously.
+  #   impactedSecObj:
+  #     - REFID: CORDA_NETWORK_AUTH
+  #     - REFID: LEDGER_INTEGRITY
+  #   assets:
+  #     - REFID: NOTARY_DAO
+  #     - REFID: SOLANA_NOTARY_PROGRAM
+  #     - REFID: NETWORK_ID_GLOBAL
+  #   attackers:
+  #     - REFID: MALICIOUS_GLOBAL_DAO_MEMBER
+  #     - REFID: ATTACKER_ON_SOLANA_NETWORK_STN # If they can compromise DAO mechanism
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:N/I:H/A:H' # High impact, DAO compromise
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: STN_ROBUST_DAO_GOVERNANCE_MECHANISMS
+  #       title: Robust DAO Governance Mechanisms
+  #       description: |
+  #         The Notary DAO should employ secure and transparent governance protocols, including voting mechanisms, proposal systems, and potentially time-locks for critical changes.
+  #       inPlace: false # Dependent on DAO implementation
+  #       public: true
+  #     - ID: STN_DAO_TREASURY_STAKING
+  #       title: DAO Staking/Bonding for Network Operators
+  #       description: |
+  #         Network operators might stake tokens or provide bonds to the DAO to gain access, creating economic incentives for good behavior and disincentives for abuse.
+  #       inPlace: true # Design suggestion
+  #       public: true
+  #     - ID: STN_NETWORK_ID_SEGREGATION
+  #       title: Network ID Segregation in Program Logic
+  #       description: |
+  #         The Solana Notary Program, when in global mode, must strictly enforce segregation based on `network_id` to ensure states from one network cannot be consumed or affected by another, and that `commit` calls are authorized for the caller's network.
+  #       inPlace: true # Design intent
+  #       public: true
+
+  # - ID: STN_XNETWORK_NOTARISATION_ATTACK
+  #   title: Cross-Network Notarisation Attack
+  #   attack: |
+  #     An attacker attempts to exploit the `commit_x_network` mechanism for atomic notarisation across multiple Corda networks.
+  #     Examples:
+  #     1. Manipulating `group_id`, `leg_index`, or `secret_group_id` to cause mismatches or link unrelated legs.
+  #     2. Compromising the shared `enc_key` to decrypt parameters of other legs or inject a malicious leg.
+  #     3. One leg submitting parameters but others failing, leading to orphaned encrypted PDAs or failed atomic swaps.
+  #     4. Bypassing the `required_signers` check for a counterparty leg.
+  #     5. Replay attack by using a `group_id` from a previous transaction.
+  #   threatType: Tampering, Information Disclosure, Denial of Service
+  #   impactDesc: |
+  #     Failed atomic swaps (one leg completes, other doesn't), financial loss, exposure of cross-network transaction details, denial of service for cross-network operations.
+  #   impactedSecObj:
+  #     - REFID: LEDGER_INTEGRITY
+  #     - REFID: LEDGER_INTEGRITY # From parent
+  #     - REFID: CORDA_NETWORK_AUTH
+  #   assets:
+  #     - REFID: SOLANA_NOTARY_PROGRAM # commit_x_network instruction
+  #     - REFID: CROSS_NETWORK_COMMIT_PARAMETERS_ACCOUNT_PDA
+  #     - REFID: ENCRYPTED_X_NETWORK_PARAMETERS
+  #     - REFID: SHARED_ENCRYPTION_KEY_X_NETWORK
+  #     - REFID: COMMIT_INSTRUCTION_PARAMS # For each leg
+  #     - REFID: DF_STN_CREATE_PDA
+  #   attackers:
+  #     - REFID: MALICIOUS_CORDA_PARTICIPANT_STN # Participant in one of the legs
+  #     - REFID: COMPROMISED_CORDA_NOTARY_NODE_STN
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:L'
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: STN_XNETWORK_SECURE_GROUP_ID_KEY_GEN
+  #       title: Secure Group ID and Key Generation for Cross-Network
+  #       description: |
+  #         `group_id` is derived from hashing `secret_group_id` and sorted `network_id`s. The shared `enc_key` is derived via KDF from `enc_key_part` values, which are themselves derived from `group_seed`. This process aims to ensure only legitimate group members can derive the key and identify the group.
+  #       inPlace: true # Design intent
+  #       public: true
+  #     - ID: STN_XNETWORK_REQUIRED_SIGNER_CHECKS
+  #       title: Cross-Network Required Signer Checks
+  #       description: |
+  #         Each leg specifies trusted Corda signers for other legs. The `commit_x_network` instruction verifies these signatures before committing the entire group.
+  #       inPlace: true # Design intent
+  #       public: true
+  #     - ID: STN_XNETWORK_ALL_LEGS_SUBMITTED_CHECK
+  #       title: All Legs Submitted Check for Cross-Network Commit
+  #       description: |
+  #         `commit_x_network` only proceeds with decryption and notarisation when all `CrossNetworkCommitParametersAccount` PDAs for the group have their `enc_key_part` populated, indicating all legs are ready.
+  #       inPlace: true # Design intent
+  #       public: true
+  #     - ID: STN_XNETWORK_GROUP_ID_IN_CORDA_TX
+  #       title: Group ID as Corda Transaction Component
+  #       description: |
+  #         The `group_id` for cross-network notarisation is included as a new Corda transaction component group. This binds the Corda transaction to a specific cross-network attempt, preventing replays in different groups and ensuring intent.
+  #       inPlace: true # Design intent
+  #       public: true
+
+
+  # - ID: STN_IDEMPOTENCY_EXPLOITATION
+  #   title: Idempotency Exploitation
+  #   attack: |
+  #     An attacker exploits the idempotency of the Solana Notary Program to manipulate transaction outcomes.
+  #     Examples:
+
+  #     1. Repeatedly submitting a `commit` with the same transaction ID, causing the program to return success without processing, even if the states were already spent.
+  #     2. Crafting transactions that rely on the idempotent behavior to bypass normal state transitions or validations.
+  #     3. CPI calls from other Solana programs may imply the spend is legit (no error returned) while it is a double spending attempt without an error returned.
+  #   threatType: Tampering, Denial of Service
+  #   impactDesc: |
+  #     The attacker can cause legitimate transactions to be ignored, leading to potential financial loss or state corruption.
+  #   impactedSecObj:
+  #     - REFID: LEDGER_INTEGRITY  # From parent
+  #   assets:
+  #     - REFID: SOLANA_NOTARY_PROGRAM
+  #     - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+  #     - REFID: COMMIT_INSTRUCTION_PARAMS
+  #     - REFID: DF_STN_RETURN_SUCCESS
+  #     - REFID: DF_STN_CHECK_PDA_EXISTENCE
+  #   attackers:
+  #     - REFID: MALICIOUS_CORDA_PARTICIPANT_STN # If they can influence notary node's input
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:N'
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: DISABLE_IDEMPOTENCY
+  #       title: Disable Idempotency
+  #       description: |
+  #         The Solana Notary Program should not allow idempotent behavior for `commit` calls. If a transaction ID already exists, it should return an error instead of success.
+  #         This prevents attackers from exploiting the idempotency semantics to bypass state transitions or validations.
+  #       inPlace: true
+  #       public: true
+  #     - ID: DISABLE_IDEMPOTENTCY_CPI_CALLS
+  #       title: Disable Idempotent in CPI Calls
+  #       description: |
+  #         The Solana Notary Program should not allow CPI calls to be idempotent. If a CPI call is made with the same transaction ID, it should return an error instead of success.
+  #         This prevents attackers from exploiting the idempotency semantics to bypass state transitions or validations.
+  #       inPlace: false
+  #       public: true
+  #     - ID: STN_IDEMPOTENCY_DOCUMENTATION
+  #       title: Pervasive Idempotency Documentation
+  #       description: |
+  #         The Solana Notary Program should document the idempotency semantics clearly, so that developers and users understand the implications and do not rely on it for state transitions or validations.
+  #       inPlace: true # Design intent
+  #       public: true
+
+
+  - ID: STN_PDA_CREATION_DOS
+    title: PDA Creation Denial of Service
+    attack: |
+      An attacker creates a PDA (Program Derived Address) for a transaction ID 
+      using a third-party Solana program before the Solana Notary Program can create it.
+       This blocks the legitimate creation of the PDA by the Notary Program, causing a denial
+        of service.
+      A more severe attack involves front-running the notarisation 
+      transaction by submitting a conflicting PDA creation transaction through an anonymous Solana
+       bot. This allows any participant of the transaction to block it with plausible deniability.
+      A general version of this attack is described in: [lamsy - PDA Initialization Front-running Vulnerability #69](https://github.com/sherlock-audit/2024-09-orderly-network-solana-contract-judging/issues/69) 
+      This is a Solana-specific attack that exploits the PDA creation mechanism, which is not unique to the Notary Program.
+      This derives from design trade-offs in Solana's PDA creation process to make programs 
+      completely stateless (defferent of Ethereum's contract creation process),
+       where PDAs are created based on a seed and a program ID, and the first transaction to create a PDA with a specific seed wins.
+       where the first transaction to create a PDA with a specific seed wins,
+       and subsequent attempts with the same seed fail.
+       
+
+    threatType: Denial of Service
+    impactDesc: |
+      The legitimate notarisation process is blocked, 
+      preventing the transaction from being notarised. 
+      This disrupts the Corda network's operations and could lead to financial or operational 
+      losses.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: NOTARISED_TRANSACTION_ACCOUNT_PDA
+      - REFID: DF_STN_VERIFY_ACCOUNT_COUNT
+    attackers:
+      - REFID: ATTACKER_ON_SOLANA_NETWORK_STN
+      - REFID: MALICIOUS_CORDA_PARTICIPANT_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: true
+    countermeasures:
+      - REFID: STN_NOTARY_AUTHENTICATION
+      - ID: SOLANA_PDA_COLLISION_PREVENTION
+        title: Solana PDA Collision Prevention
+        description: |
+          Only a specific program can create PDAs for itself because the program ID is cryptographically
+          bound into the derivation. The formula is essentially: PDA = hash(program_id + seeds + bump).
+          Front-Running Protection
+          Other programs cannot front-run to steal a PDA because:
+
+          - They can't create the same PDA (different program ID = different result)
+          - PDAs are designed to be off-curve (not valid Ed25519 public keys), so no one can sign transactions as that account
+          - The owning program is the only one with authority to write to that PDA
+        inPlace: false
+        public: true
+      - ID: UNPREDICTABLE_PDA_SEEDS
+        title: Unpredictable PDA Seeds
+        description: |
+          PDA seeds are derived from transaction-specific data (e.g., Corda transaction hashes) rather than static or predictable values, making it infeasible for an attacker to precompute addresses in advance.
+          This provides defense-in-depth: while the signature-based authorization layer is the primary protection against unauthorized execution, unique seeds per transaction ensure that even if authorization logic were somehow bypassed, distinct PDAs would prevent state collisions across different transactions.
+        inPlace: true
+        public: true
+
+  - ID: STN_INITIALIZE_FRONT_RUNNING
+    title: Front-Running during Program Initialization
+    attack: |
+      An attacker bot monitors the blockchain for new program deployments and attempts to front-run the legitimate deployer's `initialize` instruction by submitting their own transaction first. This could result in unauthorized initialization of the program, potentially compromising its intended functionality.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Unauthorized initialization of the program could lead mainly to the loss of avilability on the initialization of a Trusted Notary Program.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    pentestTestable: true
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: ADMIN_PDA
+    attackers:
+      - REFID: ATTACKER_ON_SOLANA_NETWORK_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:N/I:N/A:H'
+    fullyMitigated: true
+    countermeasures:
+      - ID: STN_DEPLOYER_SPEED_ADVANTAGE
+        title: Deployer Speed Advantage with automation and right sequence of 
+          operations
+        description: |
+          The deployer uses a scripted workflow to immediately submit the `initialize` transaction upon confirmation of the program deployment. This minimizes the time window for an attacker to front-run the initialization process.
+          This requires the deployer to have a ready generated Admin key before or instantly after the program deployment (though automation).
+          This also requires de deployer to be able to re-execute the `initialize` instruction in case of a front-running attack. This means is this attack happens the configuration of the program ID in the Corda Notary code (uniquenessProvider coniguration) may also needs to after a successful initialization (not only after program deployment as it may be invalidated by a reactive attacker/bot).
+        inPlace: true
+        public: true
+      - ID: STN_UPGRADE_AUTHORITY_CHECK
+        title: Upgrade Authority Verification
+        description: |
+          The `initialize` instruction verifies that the signer of the transaction matches the program's designated `upgrade_authority`. This ensures that only the legitimate deployer can successfully initialize the program.
+        inPlace: false
+        public: true
+      - ID: STN_HARD_CODE_ADMIN_KEY
+        title: Hardcoding the Admin Key
+        description: |
+          The Solana Notary Program should hardcode the admin public key into its logic during deployment. This ensures that the admin key cannot be altered or replaced post-deployment, preventing unauthorized administrative access.
+        inPlace: false
+        public: true
+      - ID: STN_ATOMIC_INITIALIZATION_TX
+        title: Atomic Multi-Instruction Initialization Transaction
+        description: |
+          All initialization instructions (`initialize`, `create_network`, `authorize_notary`) are batched into a single Solana transaction, executing atomically in sequence.
+          This prevents an attacker from front-running only the `initialize` instruction—they would need to front-run the entire atomic transaction, which is significantly harder because:
+          1. The attacker cannot partially intercept (all-or-nothing execution)
+          2. Detecting success/failure requires observing the full tx outcome
+          3. Racing against a bundled multi-instruction tx is harder than racing a single instruction
+        inPlace: false
+        public: true
+
+      - ID: STN_POST_INIT_VERIFICATION
+        title: Post-Initialization Administrative Verification
+        description: |
+          After the `initialize` and `authorize_notary` instructions complete, an off-chain automated script immediately verifies that:
+          1. The `administration.admin` field matches the expected administrator public key
+          2. All expected notaries were successfully authorized with correct network IDs
+          If verification fails (indicating successful front-running), the deployment is rolled back or recovery procedures are triggered.
+          This provides rapid detection (within the same block) and actionable recovery paths.
+        operational: true
+        operator: Corda Network operator
+        inPlace: false
+        public: true
+
+  - ID: NETWORK_ID_SPOOFING1
+    title: NeworkID Spoofing by different Corda Network
+    attack: |
+      A malicious Corda network operator register its own corda network.
+      They then configure a compromised Corda Notary Node to use the Solana Notary Program with the spoofed `network_id`.
+      This could allow them to notarise transactions for that network without proper authorization.
+    threatType: Spoofing, Elevation of Privilege
+    impactDesc: |
+      Unauthorized notarisation of transactions for a Corda network, leading to potential ledger inconsistenciesi, complete denial of states, and trust issues.
+    impactedSecObj:
+      - REFID: CORDA_NETWORK_AUTH
+      - REFID: LEDGER_INTEGRITY
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: COMMIT_INSTRUCTION_PARAMS
+      - REFID: DF_STN_INVOKE_COMMIT
+    attackers:
+      - REFID: NETWORK_ATTACKER
+    pentestTestable: true
+
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: true
+    countermeasures:
+      - ID: STN_NETWORK_ID_VERIFICATION
+        title: Network ID Verification during commit
+        description: |
+          The `commit` instruction does **not** trust any `network_id` supplied by the caller. Instead it:
+          1. Loads the NotaryAuthorization PDA for the signing notary and reads `authorization.network_id`.
+          2. Re-derives the expected NotarisedTransactionAccount PDA using the seeds:
+             `['corda_tx', tx_id, authorization.network_id]` (see commit.rs:122-140).
+          3. Compares the provided output account key against the expected PDA.
+          If the caller spoofs a different `network_id`, the PDA derivation does not match and the
+          instruction fails with `InvalidAccounts`.
+          This cryptographically enforces network isolation: a notary authorized for Network A cannot
+          notarise transactions in Network B's state space.
+
+          Test coverage: [solana-program/programs/corda-notary/tests/test_security.rs](solana-program/programs/corda-notary/tests/test_security.rs)
+          (`network_id_spoofing_attack_should_fail`) validates the failure path and expected error.
+        inPlace: true
+        public: true
+      - ID: SOLANA_DEFAULT_CHECKS
+        public: true
+        inPlace: false
+        title: Solana Default Checks
+        description: |
+          The Solana Notary Program relies on Solana's native transaction signing and accounti
+           ownership mechanisms to ensure that only authorized Corda Notary Nodes can invoke the 
+           `commit` instruction for their registered `network_id`s.
+          This includes verifying that the transaction is signed by the private key corresponding 
+          to the Corda Notary Node's Solana account, which is linked to its authorized networks.
+
+  - ID: DEVKEYS_IN_PRODUCTION
+    title: Use of Development Keys in Production
+    attack: |
+      An attacker exploits the presence of hardcoded or default development keys used by the Solana Notary Program or associated Corda Notary Nodes in a production environment.
+      Examples:
+
+      1. Using known default keys to impersonate a Corda Notary Node and submit fraudulent notarisation requests.
+      2. Exploiting weak or publicly known keys to gain unauthorized access to administrative functions of the Notary Program.
+      3. Program deployment used for upgrade or initialization uses development keys that are compromised.
+
+
+    threatType: Spoofing, Elevation of Privilege
+    pentestTestable: true
+    impactDesc: |
+      Unauthorized notarisation of transactions, potential ledger inconsistencies, and compromise of administrative controls.
+    impactedSecObj:
+      - REFID: CORDA_NETWORK_AUTH
+      - REFID: LEDGER_INTEGRITY
+    assets:
+      - REFID: SOLANA_NOTARY_PROGRAM
+      - REFID: CORDA_NOTARY_NODE_SOLANA
+      - REFID: STN_ADMIN_PRIVATE_KEY
+    attackers:
+      - REFID: ATTACKER_ON_SOLANA_NETWORK_STN
+      - REFID: MALICIOUS_CORDA_PARTICIPANT_STN
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L'
+    fullyMitigated: true
+    countermeasures:
+      - ID: STN_SECURE_KEY_MANAGEMENT
+        title: Secure Key Management Practices
+        description: |
+          All private keys used by the Solana Notary Program and associated Corda Notary Nodes must be securely generated, stored, and managed.
+          Development or default keys must never be used in production environments.
+          Recommended practices include using hardware security modules (HSMs), secure key vaults, and regular key rotation policies.
+        inPlace: true # Operational responsibility
+        operational: true
+        operator: Corda Network operator
+        public: true

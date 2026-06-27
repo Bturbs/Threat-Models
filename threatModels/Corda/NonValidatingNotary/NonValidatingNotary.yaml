@@ -1,0 +1,232 @@
+ID: NonValidatingNotary
+schemaVersion: 2
+title: Non-Validating Notary
+
+scope:
+  description: |
+    This threat model describes the risks associated with a non-validating notary in a Corda network. 
+
+analysis: <img src="img/NonValidatingNotary_seq1.svg"/>
+
+threats:
+  - ID: LARGE_SPENTSTATES_DB
+    title: Large Spent States Database
+    attack: |
+      The spent transactions are ever growing in number without the possibility to garbage collect spent transactions 
+      the notary does not know the number of output of every transaction, so it cannot efficiently track spent
+       states a completely consumed transaction with all spent outputs. The Notary has a ever growing database of
+        that becomes which can lead to performance issues and increased resource consumption.
+    threatType: Denial of Service
+    impactDesc: |
+      Can lead to increased latency and resource consumption in the network, affecting transaction processing times.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L' # High impact on availability
+    fullyMitigated: false
+    countermeasures:
+      - ID: UTXO_TRACKING_STRATEGY
+        title: UTXO Tracking Mechanism
+        description: |
+          Implement a mechanism to track unspent transaction outputs (UTXOs) instead of spent states, 
+          allowing the notary to manage double spending more efficiently.
+        inPlace: false # CorDapp design choice
+        public: true
+      - ID: SCALABLE_NOTARY_ARCHITECTURE
+        title: Scalable Notary Architecture
+        description: |
+          Design the notary service to handle large databases efficiently,
+           possibly using sharding or partitioning strategies.
+        inPlace: true # CorDapp design choice
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+
+
+
+
+  # - ID: NON_VALIDATING_NOTARY
+  #   title: Non-Validating Notary
+  #   attack: |
+  #     A non-validating notary does not validate the transactions it notarizes,
+  #      which can lead to the notarization of invalid or malicious transactions.
+  #   threatType: Tampering, Spoofing
+  #   impactDesc: |
+  #     Allows malicious nodes to submit invalid transactions,
+  #      potentially leading to loss of funds or incorrect ledger states.
+  #   impactedSecObj:
+  #     - REFID: LEDGER_INTEGRITY
+  #   assets:
+  #     - REFID: TRANSACTION
+  #     - REFID: NOTARY
+  #   attackers:
+  #     - REFID: MALICIOUS_NODE
+  #     - REFID: MALICIOUS_NOTARY
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H' # High impact on confidentiality, integrity, and availability
+  #   fullyMitigated: false # Depends on notary governance and network policies
+  #   countermeasures:
+
+  #     - ID: NOTARY_GOVERNANCE
+  #       title: Notary Governance Policies
+  #       description: |
+  #         Establish clear governance policies for notaries to ensure they validate transactions before notarization.
+  #       inPlace: true # Assumed network governance feature
+  #       public: true
+
+
+
+  - ID: DENIAL_OF_STATE
+    title: Denial of State
+    attack: |
+      A malicious node is able to block the transfer of states between participating 
+      peers on the network. In this scenario, the attacker does not own any of the 
+      states, but is able to consume them by notarizing an invalid transaction, 
+      thereby blocking the states in any future transaction.
+    threatType: Denial of Service, Tampering
+    impactDesc: |
+      Prevents legitimate ledger updates, disrupts business processes, and potentially locks up assets.
+    impactedSecObj:
+      - REFID: LEDGER_INTEGRITY
+      - REFID: AVAILABILITY
+    assets:
+      - REFID: STATE_OBJECT
+      - REFID: TRANSACTION
+      - REFID: NOTARY
+    attackers:
+      - REFID: MALICIOUS_NODE
+      - REFID: MALICIOUS_NOTARY
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H' # High impact on availability and integrity
+    fullyMitigated: false # Depends on notary behavior and governance
+    countermeasures:
+
+      - ID: NOTARY_VALIDATION
+        title: Notary Validation of Transactions
+        description: |
+          Notaries validate transactions against contract rules to prevent the 
+          notarization of invalid transactions that could lead to state denial.
+        inPlace: true # Depends on Notary type
+        public: true
+
+      - ID: NETWORK_GOVERNANCE
+        title: Network Governance Policies
+        description: |
+          Clear network governance policies and dispute resolution mechanisms are needed to address and remediate denial-of-state scenarios.
+        inPlace: true # Assumed network governance feature
+        public: true
+
+      - ID: HASH_LOCK_STATES
+        title: Hash-Locked States
+        description: |
+          Using hash-locks on states can prevent them from being consumed by a 
+          malicious node, as they would require the pre-image to unlock the state.
+        inPlace: false # CorDapp design choice
+        public: true
+
+  - ID: INFO_DISCLOSURE_TO_NOTARY
+    title: Information Disclosure to Notary
+    attack: |
+      The filtered transaction and the P2P protocol used for collecting signatures 
+      disclose the identities of the sender and receiver to the notary. This can 
+      lead to privacy concerns as the notary gains visibility into transaction participants.
+    threatType: Information Disclosure
+    impactDesc: |
+      Compromises the privacy of transaction participants by exposing their identities 
+      to the notary, potentially leading to misuse of sensitive information.
+    impactedSecObj:
+      - REFID: DATA_CONFIDENTIALITY
+    attackers:
+      - REFID: MALICIOUS_NOTARY
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N'
+    fullyMitigated: true
+    countermeasures:
+      - REFID: CORDA_CONFIDENTIAL_IDENTITIES
+
+      - ID: ZERO_KNOWLEDGE_PROOFS
+        title: Use of Zero-Knowledge Proofs
+        description: |
+          Leverage zero-knowledge proofs to validate transactions without revealing 
+          the identities of the sender and receiver to the notary.
+        inPlace: false
+        public: true
+      - ID: FILTERED_TRANSACTIONS
+        title: Filtered Transaction Protocol
+        description: |
+          Implement a protocol that allows the notary to verify transactions without 
+          needing to know the full details of the participants' identities and output states.
+        inPlace: true # CorDapp design choice
+        public: true
+      - ID: NON_VALIDATING_NOTARY
+        title: Non-Validating Notary Design
+        description: |
+          Design the notary to not validate transactions, thus limiting the information 
+          it needs to access about transaction participants.
+          ><table>
+            <thead>
+              <tr>
+                <th>Transaction components</th>
+                <th>Validating</th>
+                <th>Non-validating</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Input states</td>
+                <td>Fully visible</td>
+                <td>References only [1]</td>
+              </tr>
+              <tr>
+                <td>Output states</td>
+                <td>Fully visible</td>
+                <td>Hidden</td>
+              </tr>
+              <tr>
+                <td>Commands (with signer identities)</td>
+                <td>Fully visible</td>
+                <td>Hidden</td>
+              </tr>
+              <tr>
+                <td>Attachments</td>
+                <td>Fully visible</td>
+                <td>Hidden</td>
+              </tr>
+              <tr>
+                <td>Time window</td>
+                <td>Fully visible</td>
+                <td>Fully visible</td>
+              </tr>
+              <tr>
+                <td>Notary identity</td>
+                <td>Fully visible</td>
+                <td>Fully visible</td>
+              </tr>
+              <tr>
+                <td>Signatures</td>
+                <td>Fully visible</td>
+                <td>Hidden</td>
+              </tr>
+              <tr>
+                <td>Network parameters</td>
+                <td>Fully visible</td>
+                <td>Fully visible</td>
+              </tr>
+            </tbody>
+          </table>
+          [REF](https://docs.r3.com/en/platform/corda/4.12/enterprise/key-concepts-notaries.html#data-visibility)
+        inPlace: true # CorDapp design choice
+        public: true
+        operational: true
+        operator: NETOWRK_OPERATOR
+      - ID: NOTARYDATA_ACCESS_CONTROL
+        title: Strict Access Control for Notary data
+        description: |
+          Enforce strict access control policies on notary data to ensure that 
+          sensitive information about transaction participants is not misused.
+        inPlace: true
+        public: true
+        operational: true
+        operator: NODE_OPERATOR
+
+

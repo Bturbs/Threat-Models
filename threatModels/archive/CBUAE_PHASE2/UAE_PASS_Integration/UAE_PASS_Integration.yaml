@@ -1,0 +1,401 @@
+ID: UAE_PASS_Integration
+schemaVersion: 2
+parent: CBUAE_PHASE2
+scope:
+  assumptions:
+    - ID: UAE_PASS_ONBOARDED_USERS
+      description: |
+        Users have successfully registered with the UAE PASS system and 
+        then been onboarded within the LFI system.
+
+        **Refs:** [HLD - 5.2 Solution Analysis/User onboarding procedure](#HLD)
+    - ID: UAE_PASS_API_INTEGRATION_MODE
+      description: |
+        UAE PASS supports two modes of integration options:
+
+         - API
+         - SDK
+
+        We will be using the API-based integration pattern, as it provides flexibility with the
+         integration to R3's IDM platform, and also offers options to add customization to
+          the authentication flow; for example, to implement a second level of verification.
+
+        **Refs:** [LLD - 12.8 Identity and Access Management (IAM)/Identity and user federation](#LLD)
+    - ID: RETAIL_USERS_ONBOARDED_LFI
+      description: |
+        Retail users are onboarded to the LFI core banking system.
+
+        **Refs:** [HLD - 5.2 Solution Analysis/User onboarding procedure](#HLD)
+    - ID: RETAIL_USERS_ONBOARDED_CBDC
+      description: |
+        Retail users are onboarded to the CBDC system.
+
+        **Refs:** [HLD - 5.2 Solution Analysis/User onboarding procedure](#HLD)
+    - ID: FI_ONBOARDED_UAE_PASS
+      description: |
+        LFI is onboarded to the UAE PASS and has obtained necessary details required for the integration.
+
+        **Refs:** [LLD - 12.8.3 Identity and Access Management (IAM)/Identity and user federation/Solution design](#LLD)
+    - ID: FI_CREATED_WALLET
+      description: |
+        LFI has created a wallet for the retail user.
+
+        **Refs:** [LLD - 1.4.4.1 Wallet Services/Wallet Service implementation/Wallet management workflows/Create Wallet workflow](#LLD)
+    - ID: FI_LINKED_UAE_PASS_ID
+      description: |
+        LFI has linked the UAE PASS ID with an identifier such as an IBAN/Emirates ID/email address/phone number, as decided by the LFI.
+
+        **Refs:** [LLD - 12.8.4.5 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 4 - User directory synchronization service](#LLD)
+    - ID: UAE_PASS_MFA
+      description: |
+        Multi-factor authentication (MFA) is offered by the UAE PASS system to enhance security.
+
+        **Refs:** [LLD - 12.3.1 Identity and Access Management (IAM)/Architecture/context/Authentication](#LLD)
+    - ID: SECURE_CONNECTIVITY_IDM_UAE_PASS
+      description: |
+        Secure connectivity and integration is implemented between R3's IDM software and UAE PASS.
+
+        **Refs:** [LLD - 12.9.3.1 Identity and Access Management (IAM)/Securing the identity provider/Keycloak data/Data in transit](#LLD)
+  assets:
+
+    - ID: UAE_PASS_AUTH_URL
+      type: configuration
+      title: UAE PASS URL
+      description: |
+        In the context of OAuth/OpenID Connect (OIDC), the `UAE_PASS_AUTH_URL` is the 
+        authorization endpoint URL. This URL is used by client applications to redirect users for
+         authentication. When users access this URL, they are prompted to log in and grant
+          permissions. Upon successful authentication, the authorization server issues an 
+          authorization code or token,
+         which the client application can use to access user's wallets.
+
+        **Refs:** [LLD - 12.7.4.3 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Authentication protocol and configuration](#LLD)
+      inScope: true
+    - ID: UAEPASS_CLIENT_ID
+      type: credential
+      title: UAE PASS Client ID
+      description: |
+        The `UAEPASS_CLIENT_ID` is a public identifier for the client application (Keycloak). 
+        It is used to identify the client application to the authorization server.
+
+        **Refs:** [LLD - 12.7.4.4 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Configuring a client application](#LLD)
+      inScope: true
+
+    - ID: UAE_PASS_API_SECRET
+      title: UAE PASS API Secret
+      description: |
+        The `UAE_PASS_API_SECRET` is a secret key that Keycloak
+        uses to verify the UAE PASS access token.
+        [REF](https://docs.uaepass.ae/guides/authentication/token-validation-api/integration-steps/1.-obtaining-resource-server-or-sp-access-token)
+
+        **Refs:** [LLD - 12.9.5 Identity and Access Management (IAM)/Securing the identity provider/Secrets management](#LLD)
+      type: credential
+      applicationRelated: true
+      infrastructureRelated: false
+      inScope: true
+      properties:
+        location: Injected in Keycloak from Kubernetes secret from secrets 
+          manager (HASHICORP)
+        type: Basic auth credentials
+
+    - ID: UAE_PASS_SYSTEM
+      type: service
+      title: UAE PASS System
+      description: |
+        National digital identity platform for users in the UAE. 
+        Authenticates retail users, returning a token on successful login.
+
+        **Refs:** [LLD - 12.8.1 Identity and Access Management (IAM)/Identity and user federation/Overview](#LLD)
+      inScope: true
+
+    - ID: UAE_PASS_USER_MNG_FLOWS
+      type: dataflow
+      title: UAE PASS User password management flows
+      description: |
+        Flows like: forgotten password etc.
+      inScope: false
+
+    - ID: DF_VERIFY_UAE_PASS_TOKEN
+      type: dataflow
+      title: Verify UAE PASS Token
+      description: |
+        Data flow to verify the UAE PASS token with the UAE PASS system; this is called 
+        by Keycloak to verify the UAE token.
+        This dataflow needs to follow the recommended steps in:
+         https://docs.uaepass.ae/guides/authentication/token-validation-api/validation-decisions
+
+         ...including the check: `IF active=false THEN reject token`
+
+        **Refs:** [LLD - 12.8.3.2 Identity and Access Management (IAM)/Identity and user federation/Solution design/Sequence and interactions](#LLD)
+      inScope: true
+    - ID: DF_UAE_PASS_DELEGATED_AUTH
+      type: dataflow
+      title: UAE PASS Delegated Authentication
+      description: |
+        UAE PASS Delegated Authentication flows.
+
+        **Refs:** [LLD - 12.8.4.2 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 1 - Identity brokering](#LLD)
+      inScope: false
+
+    - ID: TOKEN_UAE_PASS
+      type: credential
+      title: UAE PASS Token
+      description: |
+        Token returned from UAE PASS upon successful login. 
+        Used by the IDM to issue a final JWT for the Digital Dirham mobile app.
+
+        **Refs:** [LLD - 12.7.4.5 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Scopes and tokens](#LLD)
+      inScope: true
+
+    - ID: DF_UAE_PASS_TO_IDM
+      type: dataflow
+      title: UAE PASS to IDM Communication
+      description: |
+        API-based data flow between UAE PASS and the IDM platform for authentication responses.
+
+        **Refs:** [LLD - 12.8.3.2 Identity and Access Management (IAM)/Identity and user federation/Solution design/Sequence and interactions](#LLD)
+      inScope: true
+
+    - ID: DF_IDM_TO_CLIENT
+      type: dataflow
+      title: IDM to Retail User Client Flow
+      description: |
+        Data flow of returning a signed JWT token from the IDM to the Digital Dirham mobile app.
+
+        **Refs:** [LLD - 12.7.4.5 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Scopes and tokens](#LLD)
+      inScope: true
+    - ID: DF_SIGN_JWT
+      type: dataflow
+      title: Sign JWT with Hashicorp Transit
+      description: |
+        Sign JWT with Hashicorp Transit.
+
+        **Refs:** [LLD - 12.9.4 Identity and Access Management (IAM)/Securing the identity provider/Certificate and key management](#LLD)
+      inScope: true
+
+    - ID: DF_INIT_HASHICORP_TRANSIT_CREDENTIALS
+      type: dataflow
+      title: Initialize Hashicorp Transit Credentials
+      description: |
+        Initialize Hashicorp Transit Credentials. Injected by Kubernetes
+
+        **Refs:** [LLD - 10.12.2.3 Cryptography and Public Key Infrastructure/Authentication with Vault/Solution design/Component 1 - Kubernetes authentication for secrets retrieval](#LLD)
+      inScope: true
+
+    - ID: RETAIL_CLIENT_JWT_SIGNING_KEY
+      type: asymetric key
+      title: JWT signing key
+      description: |
+        JWT signing key used by the client application to sign JWT tokens.
+
+        **Refs:** [LLD - 12.9.4.1 Identity and Access Management (IAM)/Securing the identity provider/Certificate and key management/Sequence of generation of keys and certificates for JWT signing](#LLD)
+      inScope: true
+      properties:
+        location: HASHICORP vault, used via TRANSIT
+        format: PKCS#8 PEM TBC
+        length: 4096
+        type: RSA private key
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: DF_USER_DIRECTORY_SYNC
+      type: dataflow
+      title: User Directory Sync
+      description: |
+        Data flow to sync LFI's user directory with identity broker (Keycloak).
+
+        **Refs:** [LLD - 12.8.4.5 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 4 - User directory synchronization service](#LLD)
+      inScope: true
+
+
+analysis: |
+  UAE PASS integration relies on a federated identity pattern. 
+  The IDM platform never stores user credentials; instead, it relies on UAE PASS 
+  to authenticate and returns a second-level validated token to the client.
+
+  **Refs:** [LLD - 12.8 Identity and Access Management (IAM)/Identity and user federation](#LLD), [HLD - 4.7 Solution Design/Identities and access management](#HLD)
+
+  <img src="img/UAEPASS_analysis.svg"/>
+
+threats:
+  - ID: MISCONFIGURED_IDP_FEDERATION
+    title: Misconfigured Federation Settings
+    attack: |
+      Improperly set federation endpoints (for example, wrong client secret or 
+      incorrect redirect URIs) could allow an attacker to inject fake tokens or 
+      bypass authentication checks.
+
+      **Refs:** [LLD - 12.8.4.2 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 1 - Identity brokering](#LLD)
+    impactDesc: |
+      Can compromise the identity flow, allowing malicious users to gain access 
+      without proper validation.
+
+      **Refs:** [LLD - 12.9.7.1 Identity and Access Management (IAM)/Securing the identity provider/Application security/Keycloak application security](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    fullyMitigated: true
+    threatType: Tampering
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:L
+    countermeasures:
+      - ID: FEDERATION_CONFIG_REVIEW
+        title: Regular Federation Configuration Review
+        description: |
+          Validate configured endpoints, credentials, and redirect URIs. 
+          Use test suites for federation flows to detect misconfiguration.
+
+          **Refs:** [LLD - 12.8.4.2 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 1 - Identity brokering](#LLD)
+        inPlace: true
+        public: true
+        operational: true
+        operator: Keycloack Admin
+
+
+  - ID: TOKEN_TAMPERING
+    title: Token Tampering or Forgery
+    attack: |
+      An attacker may tamper with or forge UAE PASS tokens or the subsequent IDM-issued tokens 
+      to impersonate legitimate users.
+
+      **Refs:** [LLD - 12.9.4.2 Identity and Access Management (IAM)/Securing the identity provider/Certificate and key management/Certificate trust chain augmented token checks](#LLD)
+    impactDesc: |
+      Grants unauthorized access to protected resources, leading to potential data theft or unauthorized transactions.
+
+      **Refs:** [LLD - 12.11.4.7 Identity and Access Management (IAM)/Authorization services/Component 1 - Policy Decision Service/Security guarantees](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    fullyMitigated: true
+    threatType: Spoofing
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N
+    countermeasures:
+      - ID: TOKEN_SIGNATURE_VALIDATION
+        title: Validate Token Signatures
+        description: |
+          Validate the signature of incoming UAE PASS tokens before issuing a final JWT. 
+          Use well-known JWKS endpoints or established key rotation.
+
+          **Refs:** [LLD - 12.9.4.2 Identity and Access Management (IAM)/Securing the identity provider/Certificate and key management/Certificate trust chain augmented token checks](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: AVAILABILITY_OUTAGE
+    title: Availability Issues in UAE PASS or IDM
+    attack: |
+      Network outages or system failures may make UAE PASS or IDM unreachable, 
+      blocking user logins.
+
+      **Refs:** [LLD - 12.10 Identity and Access Management (IAM)/Identity management performance, scalability & resiliency](#LLD)
+    impactDesc: |
+      Prevents lawful users from authenticating, impacting business operations and system usability.
+
+      **Refs:** [LLD - 12.10.6 Identity and Access Management (IAM)/Identity management performance, scalability & resiliency/High availability strategies](#LLD)
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    fullyMitigated: true
+    threatType: Denial of Service
+    pentestTestable: false
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+    countermeasures:
+      - ID: HA_SETUP
+        title: High Availability Setup
+        description: |
+          Implement HA with multiple UAE PASS and IDM instances, load balancing, 
+          and failover strategies across zones to reduce downtime.
+
+          **Refs:** [LLD - 12.10.6 Identity and Access Management (IAM)/Identity management performance, scalability & resiliency/High availability strategies](#LLD)
+        inPlace: true
+        public: true
+
+
+  - ID: OPEN_REDIRECT_KEYCLOAK
+    title: Potential Open Redirect Exploit
+    attack: |
+      An attacker could manipulate the redirect URL in the authentication flow 
+      if not properly whitelisted, leading to phishing or credential theft.
+
+      **Refs:** [LLD - 12.9.7.1 Identity and Access Management (IAM)/Securing the identity provider/Application security/Keycloak application security](#LLD)
+    impactDesc: |
+      Users may be redirected to malicious sites, exposing their credentials and undermining trust in the system.
+
+      **Refs:** [LLD - 12.9.7.2 Identity and Access Management (IAM)/Securing the identity provider/Application security/Client-side security](#LLD)
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: INTEGRITY
+    fullyMitigated: true
+    threatType: Spoofing
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N
+    countermeasures:
+      - ID: REDIRECT_URL_WHITELIST
+        title: Strict Whitelisting of Redirect URLs
+        description: |
+          Configure Keycloak to only allow pre-approved redirect URIs, preventing open redirects 
+          to untrusted domains.
+
+          **Refs:** [LLD - 12.7.4.4 Identity and Access Management (IAM)/Identity management system fundamentals/Solution design/Configuring a client application](#LLD)
+        inPlace: true
+        implementationInPlace: true
+        tested: true
+        testRef: (https://github.com/corda/...
+        public: true
+  - ID: INSECURE_DIRECTORY_SYNC
+    title: Insecure User Directory Sync
+    attack: |
+      The data flow DF_USER_DIRECTORY_SYNC may be unencrypted or improperly authenticated, 
+      allowing attackers to intercept, modify, or inject user directory data.
+
+      **Refs:** [LLD - 12.8.4.5 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 4 - User directory synchronization service](#LLD)
+    impactDesc: |
+      Malicious data could compromise synchronization integrity, 
+      leading to unauthorized user accounts, 
+      incorrect permissions, and potential data breaches.
+
+      **Refs:** [LLD - 12.12.7 Identity and Access Management (IAM)/Security information and event management (SIEM), monitoring and alerting/User Sync Service monitoring](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+      - REFID: ZERO_TRUST
+    fullyMitigated: true
+    threatType: Tampering, Spoofing, Elevation of Privilege
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:L
+    countermeasures:
+      - ID: SECURE_DIRECTORY_SYNC
+        title: Encrypted and Authenticated User Directory Sync dataflow
+        description: |
+          Ensure the DF_USER_DIRECTORY_SYNC flow uses TLS with mutual authentication 
+          or other secure protocols to prevent unauthorized access and tampering.
+
+          **Refs:** [LLD - 12.9.3.1 Identity and Access Management (IAM)/Securing the identity provider/Keycloak data/Data in transit](#LLD), [LLD - 12.8.4.5 Identity and Access Management (IAM)/Identity and user federation/Implementation components/Component 4 - User directory synchronization service](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: UAEPASS_CROSS_DEVICE_NOTIFICATION_PHISHING
+    title: Phishing via UAE PASS Notification on a Different Device
+    attack: |
+      An attacker convinces a victim to aprove UAE PASS login request on a second device and 
+      responds to authentication notifications there.
+    threatType: Spoofing
+    impactDesc: |
+      Enables unauthorized approvals, exposing user data and enabling fraudulent transactions.
+
+      **Refs:** [LLD - 12.9.7.2 Identity and Access Management (IAM)/Securing the identity provider/Application security/Client-side security](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N
+    fullyMitigated: true
+    countermeasures:
+      - REFID: DEVICE_AUTHENTICATION_VIA_UAEPASS_MOBILEFLOW_ONLY
+
+title: Uae Pass Integration

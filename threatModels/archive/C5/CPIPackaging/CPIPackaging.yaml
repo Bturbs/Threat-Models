@@ -1,0 +1,410 @@
+parent: C5
+ID: CPIPackaging
+schemaVersion: 2
+title: C.P.I. packaging
+
+# gantt:
+#   startDate: 2022-10-17
+#   endDate: 2022-11-01
+#   status: done
+
+scope:
+  description: |
+    There are mainly 2 part in the scope:
+
+     1. CorDapp CPI file internal structure
+     2. CordDapp CPI file creation, verification and deployment    
+
+    **CPI file internal structure:** 
+
+    <img src="img/CPI-packaging.svg"/>
+
+    How to create and distribute testing CPKs/CPBs and CPIs is out of scope.
+
+    **Reference Documentation**
+
+    * [REF: Build personas](https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/packaging/build-personas.md)
+    * [REF: Cordapp Packaging](https://github.com/corda/corda-runtime-os/wiki/CorDapp-Packaging)
+    * [REF: Group Policy generation](https://github.com/corda/corda-runtime-os/blob/release/os/5.0/tools/plugins/mgm/README.md)
+  assets:
+    - ID: PLATFORM_ROLES
+      title: platform Roles
+      inScope: true
+      type: configuration
+      description: |
+        Platform roles (mbm, notary, member) [REF](https://github.com/corda/platform-eng-design/blob/27c1a9074cff41ff7bdc6136dec5c61e7db80aee/core/corda-5/corda-5.0/identity-pki/network-data-structures.md#group-properties)
+    # - ID: APPLICATION_ROLES
+    #   inScope: true
+    #   title: CordApp Roles
+    #   type: configuration
+    #   description: Application Roles for Members (defined in the CPI)
+
+    - ID: PUBLISHER_KEYS1
+      inScope: false
+      title: CPI publisher key
+      type: certificate
+      description: Code-signing key for publishing CPIs. Corda validates that 
+        uploaded CPIs are signed with a trusted key. Code-signing certificates 
+        can be added to a node's trust store for this purpose.
+      properties:
+        location: CPI publisher (off-line)
+        format: X.509
+        length: 256
+        type: Public signature verification key
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: PUBLISHER_KEYS_CPB
+      inScope: false
+      title: CPB signing key
+      type: certificate
+      description: Code-signing key for publishing CPIs. Used by an application 
+        publisher to sign an application bundle (CPB) before sending it to the 
+        network operator.
+      properties:
+        location: Application publisher (off-line)
+        format: X.509
+        length: 256
+        type: Public signature verification key
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: PUBLISHER_KEYS_CPK
+      inScope: false
+      title: CPK signing key
+      type: certificate
+      description: Code-signing key for publishing CPKs. Used by an application 
+        developer to sign an application package (CPK) before bundling it into a
+        CPB.
+      properties:
+        location: Application publisher (off-line)
+        format: X.509
+        length: 256
+        type: Public signature verification key
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CPI_TOOL
+      inScope: false
+      type: tool
+      description: tool
+      title: command line tool for CPI +Checks
+
+    - ID: GRADLE_PLUGIN
+      title: Gradle tool
+      description: Tool used to sign and verify CPIs, it contains default 
+        trusted credentials used for development
+      type: configuration
+      inScope: true
+
+    - ID: CPI_VALIDATION_LIBRARY
+      title: CPI validation library
+      type: library
+      description: |
+        CPI validation library that runs validation in the DB processor
+        [ref](https://r3-cev.atlassian.net/wiki/spaces/CB/pages/4091084940/Packaging+Validation+Checks)
+        used inPlace:
+         - CPI upload
+         - command line tool
+         Up to the caller to workflow the validation (TODO create assumption)
+      inScope: true
+
+    - ID: CPI_READING_LIBRARY
+      type: library
+      title: CPI reading library
+      description: Up to the caller to workflow the validation (TODO create 
+        assumption) 
+        https://github.com/corda/corda-runtime-os/tree/release/os/5.0/libs/packaging
+      inScope: true
+    - ID: DF_CPK_DISTRIBUTION
+      type: dataflow
+      title: CPK distribution to CORDAPP_PUBLISHER
+      description: CPK distribution to CORDAPP_PUBLISHER
+      inScope: false
+    - ID: DF_CPB_VERIFY
+      type: dataflow
+      title: CPB verification
+      description: Group Network Operator checks the validity
+      # TODO: add threat authorization (ELEVATION OF PRIVILEGES)
+      inScope: true
+
+
+analysis: |
+  **CPI packaging nested structure**
+  <img src="img/corda5-Packaging CPI_analysis1.svg" width="90%"/>
+
+  **Annotated High level abstraction of a production (non test) CordApp lifecycle development and deployment**
+
+  <img src="img/corda5-Packaging CPI_analysis2.png" width="90%"/>
+
+  Based on the analysis of the scope two main wide areas of secure design concern emerged, 
+  every are can be expanded in several design threats. Mainly S.T.R.I.D.E. 
+  security taxonomy is applied to the scope to identify potential threats:
+
+  **1. Implications of untrusted (previous) packages provider**
+
+  Within the context of nested signed packages there is an implied chain of trust where signer the outer package has implicitly trusted the contained packages.
+  It resembles more a reversed graph structure in the final party verifies all the Nodes. Even if verifying (and re-verifying, following the supply chain of CPK-CPBs etc)
+  may seem to apply the *defense in depth* principle, and in some sort it is, it creates a whole category of potential threats:
+    
+    * **Signature pollution** (repudiation, tampering, spoofing, elevation of privileges), having to trust several parties there are trust overlaps, 
+    this can threat the origin of CordApp artifacts and associated properties. Also the non standard nested verification process is prone to design and implementation security bugs and vulnerabilities.
+    * **Unclear accountability** (repudiation, Denial of Service): a failed verification of a nested artifact is difficult to attribute 
+    to one party. For example does a tampered 
+    CPK resulting in signature verification failure is the responsibility of the CPK author or the Application Publisher or the Network
+     Operator? 
+    a failed verification is difficult to attribute to one party. Few example: Is the packager using a outdated signature? who is responsible for fails in nested verification over time? 
+      The Final CPI provider? the library developer?
+
+  Here are two extracts from the sequence diagram annotated with relations of trust (pink arrows):
+
+  **Trusting and verifying all package provider provider in the supply chain (current design):**
+  <img src="img/CPI_trust_all.png"/>
+
+  **Trusting and verifying only the last package provider provider in the supply chain (alternative design):**
+  <img src="img/CPI_trust_last_provider.png"/>
+
+
+  **2. CPI Zip file format malleability**
+
+    Every signature verification, by design, is a *jar-signer* like verification. 
+    This is a non standard (other than used in some Java ecosystem supply chain) 
+    schema for artifact verification as opposed to code signature schemas and PGP.
+    The jar-signer schema suffers from a variety of teh issues of the previous 'Untrusted provider' category and also from the fact that the verified material is sparse inside an zIP archive 
+    that is not itself verified. The categories of threat that emerges from this design are all the threats of the ZIP file category (zip bombs, Denial of Services, path traversal, ZIP client vulnerabilities exploits)
+
+
+threats:
+
+  - ID: ZIP_MALLEABILITY
+    threatType: Tampering, Elevation of Privileges
+    title: Wrong CPI validation design and implementation
+    assets:
+      - REFID: DF_CPI_UPLOAD
+    impactDesc: Remote code upload vector
+    impactedSecObj:
+      - REFID: FULL_CIA
+    pentestTestable: true
+    attack: |
+      An attacker can tamper the CPI and still have it validated by the NEtwork participants. This is due to the Jarsigner non-strict validation default logic.
+      The signature inside the CPI does not cover the containing ZIP/CPI itself (chicken-egg problem). 
+      It is possible for an attacker to repackage a ZIP file, for example adding files while the signatures are still valid
+      [REF](https://www.crowdstrike.com/blog/how-to-prevent-zip-file-exploitation/)
+
+       > From Oracle jarsigner doc:
+
+       >   *JAR File Verification
+          A successful JAR file verification occurs when the signatures are valid, and none of 
+          the files __that were in the JAR__ file when the signatures were generated have changed since then.*
+          [REF](https://docs.oracle.com/javase/7/docs/technotes/tools/windows/jarsigner.html)
+          
+      Attacks like [Zip Bomb](https://en.wikipedia.org/wiki/Zip_bomb) or [Zip Slip](https://security.snyk.io/research/zip-slip-vulnerability)
+      are also possible.
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H/E:U/RL:U/RC:R
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: SIGNATURE_EXTERNAL_TO_FILE
+        title: Signature external to the CPI zip package
+        description: |
+          Create a signature external to the CPI zip package, ensuring the integrity on the overall CPI(ZIP) file, for example, using PGP signatures.
+        public: false
+        inPlace: false
+
+      - ID: JARSIGNER_IMPL
+        title: Jarsigner logic re-implementation
+        description: |
+          Re-Implement a `jarsigner` logic in the Corda cluster.
+          This implementation will be stricter than the `jarsigner` tool. 
+          By default it doesn't not allow unsigned files (same as  `-strict` option in `jarsigner`).
+        public: true
+        inPlace: true
+
+      - ID: PRE_CPI_INSTALL_CHECK
+        title: Check the CPI safety prior uploading it to the cluster
+        description: |
+          Before uploading the CPI the CLUSTER_OPERATOR checks for:
+
+            - Normal unzipped file size, to prevent [Zip Bomb](https://en.wikipedia.org/wiki/Zip_bomb)
+            - Valid code signatures (`jarsigner` like tool)
+            - Absence of dangerous [Zip Slip](https://security.snyk.io/research/zip-slip-vulnerability) files that should not belong to the CPIs.
+
+        public: true
+        inPlace: true
+        operational: true
+        operator: CLUSTER_OPERATOR
+
+  - ID: ROLE_NAME_COLLISION
+    title: Role name collision in CPI metadata
+    attackers:
+      - REFID: CORDAPP_PUBLISHER
+    threatType: Tampering, Elevation of Privileges
+    impactedSecObj:
+      - REFID: FULL_CIA
+    attack: |
+      An Application Publisher can upload a CPI containing application roles that collide 
+      with platform roles gaining unintended privileges.
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H/E:U/RL:U/RC:R
+    fullyMitigated: true
+
+    countermeasures:
+      - ID: CPI_ROLE_DEF_VALIDATION
+        title: Validate CPI role names
+        description: |
+          Check that the application role names must not collide with the platform role names. 
+          This check is performed by (RFI: are CPI roles even implemented or in the design anymore?)
+        inPlace: true
+        public: true
+  - ID: GRADLE_DEFAULT_CPI_CRED
+    title: CPI Tampering via Development CPI signing credentials accepted in 
+      production
+    threatType: Elevation of privileges
+    attack: An attacker can produce a fake and still trusted CPI signature using
+      DEV gradle trusted private key
+    # impact: Forging signature and attacks on the Clusters with malicious code
+    pentestTestable: true
+    impactedSecObj:
+      - REFID: FULL_CIA
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:L
+    fullyMitigated: true
+    countermeasures:
+      - ID: DENY_DEV_CRED_IN_PROD
+        title: Deny DEV signature by default
+        description: validation against denyList of public gradle credential in 
+          production
+        inPlace: false
+        public: true
+      - ID: DO_NOT_RELEASE_REV_KEYS
+        title: Do not release with DEV trusted keys
+        description: Delete the gradle default verification key at all. This is 
+          performed by a specific at release time
+        inPlace: false
+        public: true
+      - ID: MANUALLY_REVOKE_DEV_KEYS
+        title: Manually remove trusted development key
+        description: |
+          Manually remove DEV gradle trusted CPI signing key from trusted
+          configuration used for developing and testing purposes. This can be done via API (RFI: @Bassem could you pls add an API call example?)
+        inPlace: true
+        public: true
+        operational: true
+        operator: CLUSTER_OPERATOR
+
+  # - ID: unavailable PCK keys
+  #   threatType: DoS
+  #   attack: when there are multiple CPK signer for the same CPK and one is not 
+  #     signing anymore (refuses, lost x500 name ownership)
+  #   impact: not possible to update with new versions
+
+  # - ID: CPISignatureSet1
+  #   title: 
+  #   threatType: Elevation of Privileges
+  #   assets: 
+  #     - ID: DF_CPI_UPLOAD
+  #   attack: |
+  #    One of the signing keys is compromised and CPK is malicious
+  #    different set of signature keys from app publisher CPK, when
+  #    there are multiple signer
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:H/E:U/RL:U/RC:R
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: CPI_SAME_SIGNATURE_SET
+  #       description: |
+  #         When attempting upload CPI there is a validation on the signatures:
+  #           - same set of signer across the all files 
+  #       inPlace: false
+  #       public: true
+  #     - ID: CPI_PER_DOMAIN_SIGNER
+  #       description: |
+  #         Trusted CPI signing keys are associated with classes domain/packages.
+  #         [REF OSGi signer](https://docs.osgi.org/specification/osgi.core/7.0.0/framework.security.html#framework.security.filterbasedpermissions)
+  #          (RFI: is it the case in CPI verification?)
+  #       inPlace: false
+  #       public: true
+
+
+  - ID: CPI_SIGNER_SET
+    title: CPB re-signing by different trusted CORDAPP_PUBLISHER
+    threatType: Elevation of Privileges
+    assets:
+      - REFID: DF_CPI_UPLOAD
+    attackers:
+      - REFID: CORDAPP_PUBLISHER
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:L/E:U/RL:U/RC:R
+    attack: |
+      A malicious CORDAPP_PUBLISHER tampers a CPB from another CORDAPP_PUBLISHER: 
+      it stripes out all signatures and re-sign CPKs/CPBs with a
+       key that is also trusted but different from the original one of the original CPK.
+    pentestTestable: true
+    impactDesc: Execution of malicious flow and contract code from CPI, 
+      ultimately able to disclose sensitive data and forge signatures.
+    impactedSecObj:
+      - REFID: FULL_CIA
+    fullyMitigated: false
+    countermeasures:
+      - ID: CPI_SAME_SIGNATURE_SET
+        title: Enforce same signer per package on upgrades
+        description: |
+          When attempting upload CPI there is a validation on the signatures:
+            - same set of signer across the all CPB files
+        inPlace: false
+        public: true
+      - ID: CPI_PER_DOMAIN_SIGNER
+        title: Trusted CPI signing keys per domain
+        description: |
+          Trusted CPI signing keys are associated with classes domain/packages.
+          [REF OSGi signer](https://docs.osgi.org/specification/osgi.core/7.0.0/framework.security.html#framework.security.filterbasedpermissions)
+           (RFI: is it the case in CPI verification?)
+        inPlace: false
+        public: true
+      - ID: ONLY_TRUST_MGM
+        title: Verify only MGM's outer CPI signature
+        description: |
+          Only verify outer CPI signature form the MGM. This would have several effects and needs to be vastly analyzed, some effects are:
+           - Clearly delegates the role of due diligence (trusted source of CordApps/CPIs to the MGM)
+           - Reduces the need to multiple roots of trusts (every root of trust added is an additional 
+             potential point of failure in the whole supply chain, that is not controlled by the cluster). 
+             In this sense contributing toward `Full multi-tenancy` operational mode security model and compliance.
+           - Effectively reduces the implementation complexity and potential for bugs in verification logic
+           - Reduces the operational cost of maintaining up to date set of trusted root certificates on the cluster
+        inPlace: false
+        public: true
+  # - ID: distributeCPK1
+  #   threatType: DoS
+  #   attackers:
+  #     - ID: Library Developer
+  #   assets:
+  #     - ID: DF_CPK_DISTRIBUTION
+  #   attack: A library developer distribute a non truster CPK
+  #   impact: | 
+  #    The build pipeline of the Application Publisher will cerate a compromised CPB, that will fail to validate later on
+  #    in the Membership Group Manager (CPI signature)
+  #   countermeasures:
+  #     - ID: 1
+  #       description: The signature of the CPK needs to be verified in the Application Publisher pipeline
+  #       deferred: true
+  #       inPlace: No
+  #       public: true
+
+  # - ID: distributeCPK1
+  #   threatType: DoS
+  #   attackers:
+  #     - ID: Library Developer
+  #   assets:
+  #     - ID: DF_CPK_DISTRIBUTION
+  #   attack: A library developer distribute a non truster CPK
+  #   impact: | 
+  #    The build pipeline of the Application Publisher will cerate a compromised CPB, that will fail to validate later on
+  #    in the Membership Group Manager (CPI signature)
+  #   countermeasures:
+  #     - ID: 1
+  #       description: The signature of the CPK needs to be verified in the Application Publisher pipeline
+  #       deferred: true
+  #       inPlace: TBC
+  #       public: true

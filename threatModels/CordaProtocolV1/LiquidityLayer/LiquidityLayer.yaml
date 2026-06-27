@@ -1,0 +1,590 @@
+ID: LiquidityLayer
+schemaVersion: 2
+title: Liquidity Layer
+version: '0.1'
+status: Under Review
+parent: CordaProtocolV1
+
+authors: |
+  Security Research team at R3
+  Updated: 2025-07-11
+
+scope:
+  description: |
+    **Archived child model**
+
+    The standalone Liquidity Program was removed from `corda-protocol-mvp`
+    in commit `a85d60c5`. This child model is kept only as historical
+    reference and is no longer included from the active root threat model.
+
+    Section covering the Liquidity Program as the sync investment/redemption
+    layer on top of the Vault Program.
+
+    The Liquidity Program offers two modes of operation:
+
+    **Synchronous (instant) swaps** — Investor swaps USDC↔vTokens directly against
+    the pool's inventory. Price is derived from the vault's live oracle-wrapper-
+    backed price plus a markup (invest) or minus a spread (redeem). Subject to
+    per-transaction limits (sync_invest_limit, sync_redeem_limit). Per-investor
+    daily limits were removed from the on-chain program in PROT-1404 and
+    delegated to the off-chain indexer.
+
+    **Asynchronous (routed) investments/redemptions** - Investor transactions can
+    still be CPI-forwarded to the Vault Program, but the async proposal,
+    matching, batch-snapshot, cancellation, rejection, and settlement threat
+    surfaces are modeled in sibling child models `AsyncInvestmentFlows` and
+    `AsyncRedemptionFlows`. This child keeps only pool-specific concerns and
+    manager-driven rebalance interactions.
+
+    **Program:** Liquidity Program
+    (Program ID: CPLQjvNfmVigH2DzkEc17dk8qA8Vf3AEhWA1jiYA6Krd)
+
+    **Roles:**
+
+    - **Manager** — Single authority (`pool.manager`, `has_one` constraint).
+      Controls: deposit/withdraw USDC and vTokens, update pool config
+      (limits, markup, spread), pause/resume, trigger rebalance operations.
+    - **Investor** — Any signer. For sync flows, must be whitelisted (vault
+      whitelist checked on-chain). For async flows, delegated to vault constraints.
+
+    **Key Instructions:**
+
+    - `invest_sync` — Instant USDC→vTokens swap from pool inventory
+    - `redeem_sync` — Instant vTokens→USDC swap from pool inventory
+    - `invest_async` — CPI to vault `create_investment_proposal`
+    - `redeem_async` — CPI to vault `create_redemption_proposal`
+    - `rebalance_invest_async` — Manager converts pool USDC→vTokens via vault
+    - `rebalance_redeem_async` — Manager converts pool vTokens→USDC via vault
+    - `deposit_usdc` / `withdraw_usdc` — Manager inventory management
+    - `deposit_vtokens` / `withdraw_vtokens` — Manager inventory management
+    - `initialize_pool` / `update_pool_config` — Pool setup and config
+    - `pause` / `resume` — Circuit breaker
+
+    **Architecture Diagram:**
+
+    <img src="img/LiquidityLayer-flowSEQ1.svg" alt="Liquidity Layer Flow Diagram"/>
+
+  assets:
+    - ID: DF_SYNC_INVEST
+      type: dataflow
+      title: Sync Investment Flow
+      description: |
+        Investor sends USDC to pool, receives vTokens from pool inventory.
+        Price computed from vault TVL + markup_bps.
+      inScope: true
+
+    - ID: DF_SYNC_REDEEM
+      type: dataflow
+      title: Sync Redemption Flow
+      description: |
+        Investor sends vTokens to pool, receives USDC from pool inventory.
+        Price computed from vault TVL - spread_bps.
+      inScope: true
+
+    - ID: DF_REBALANCE
+      type: dataflow
+      title: Manager Rebalance via Vault CPI
+      description: |
+        Manager triggers CPI to vault to convert between USDC and vTokens,
+        replenishing pool inventory. Pool PDA acts as investor in vault.
+      inScope: true
+
+    - ID: POOL_USDC_ATA
+      type: system
+      title: Pool USDC Account (ATA)
+      description: |
+        Pool-owned USDC token account. Authority: LiquidityPool PDA.
+        Receives investor USDC on invest_sync, pays out on redeem_sync.
+        Manager can deposit/withdraw freely.
+      inScope: true
+
+    - ID: POOL_VTOKEN_ATA
+      type: system
+      title: Pool vToken Account (ATA)
+      description: |
+        Pool-owned vToken token account. Authority: LiquidityPool PDA.
+        Pays out vTokens on invest_sync, receives on redeem_sync.
+        Manager can deposit/withdraw freely.
+      inScope: true
+
+  assumptions:
+    - ID: LL_MANAGER_TRUSTED
+      description: |
+        The pool manager is a trusted role. However, compromise of the manager
+        key gives full control over pool funds and configuration. This is an
+        in-scope threat.
+
+    - ID: LL_VAULT_PRICE_SOURCE_TRUSTED
+      description: |
+        Sync swap pricing depends on the vault's live price source via
+        `vault.get_vtoken_price(...)`. The pool trusts the vault's pinned
+        oracle-wrapper configuration for pricing. Oracle-wrapper abuse or
+        misconfiguration is covered in the parent threat model
+        (ORACLE_WRAPPER_ADMIN_ABUSE).
+
+    - ID: LL_POOL_WHITELISTED
+      description: |
+        The LiquidityPool PDA must be whitelisted in the vault's whitelist
+        for rebalance operations (rebalance_invest_async,
+        rebalance_redeem_async) to succeed.
+
+analysis: |
+  The Liquidity Program acts as the sync liquidity layer and pool inventory
+  manager around the Vault Program, offering instant swaps from a pre-funded
+  inventory. Key risk areas:
+
+  **Pricing Attack Surface:**
+
+  - Sync flows consume the vault's live oracle-wrapper price, so the pool inherits
+    the same feed misconfiguration and timing risks as vault settlement.
+  - The manager controls markup_bps and spread_bps, directly affecting swap pricing.
+  - No independent pool-side price oracle — full dependency on the vault's
+    configured price source.
+
+  **Fund Custody:**
+
+  - The manager has unrestricted deposit/withdraw authority over both USDC and
+    vToken pool inventories. No timelocks, limits, or multi-sig requirements.
+  - Pool funds are custodied in ATAs owned by the LiquidityPool PDA, but the
+    manager is the sole authorized signer for withdrawals.
+
+  **Operational Risks:**
+
+  - Pool inventory can be exhausted by large sync swaps, causing denial of service.
+  - Per-investor daily limits removed from on-chain (PROT-1404); only per-transaction
+    caps remain. Volume throttling is now off-chain (indexer).
+  - All config changes are instant — no timelock for markup/spread/limit changes.
+
+  **Sequence Diagram:**
+
+  <object type="image/svg+xml" data="img/LiquidityLayer-flowSEQ1.svg" style="width:100%; height:auto;">
+  <img src="img/LiquidityLayer-flowSEQ1.svg"/>
+  </object>
+
+threats:
+  - ID: LL_MANAGER_FUND_DRAIN
+    title: Manager Drains Pool Funds
+    attack: |
+      The pool manager calls withdraw_usdc and/or withdraw_vtokens to transfer
+      all pool inventory to their own token accounts. The only constraint is
+      `has_one = manager` — there are no:
+
+      - Withdrawal limits or caps
+      - Timelock or delay on withdrawals
+      - Multi-signature requirements
+      - Minimum reserve requirements
+
+      A compromised manager key grants immediate, unrestricted access to all pool
+      funds. The withdrawal instructions transfer to the manager's personal token
+      accounts (manager_usdc, manager_vtoken).
+
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      Complete loss of pool liquidity:
+
+      - All USDC and vTokens drained from pool
+      - invest_sync and redeem_sync immediately fail (InsufficientInventory)
+      - Investors lose access to instant swap service
+      - Pool funds irrecoverable on-chain (transferred to manager's accounts)
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: LIQUIDITY_POOL_MANAGER
+    assets:
+      - REFID: LIQUIDITY_POOL_PDA
+      - REFID: POOL_USDC_ATA
+      - REFID: POOL_VTOKEN_ATA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: LL_WITHDRAWAL_TIMELOCK
+        title: Timelock on Pool Withdrawals
+        description: |
+          Implement a timelock on withdraw_usdc and withdraw_vtokens:
+
+          - Manager announces withdrawal (amount + destination)
+          - Delay period (e.g., 24-48h) before execution
+          - During delay, a guardian or multisig can cancel
+          - Immediate withdrawals only up to a small daily limit
+
+        inPlace: false
+        public: true
+
+      - ID: LL_MULTISIG_WITHDRAWALS
+        title: Multi-Signature Withdrawal Requirement
+        description: |
+          Require multi-signature authorization for withdrawals above a threshold.
+          The pool manager alone should not be able to drain all funds.
+
+        inPlace: false
+        public: true
+
+      - ID: LL_MIN_RESERVE_RATIO
+        title: Enforce Minimum Reserve Ratio
+        description: |
+          After any withdrawal, require that the pool retains a minimum percentage
+          of USDC and vToken inventory relative to recent sync volume. Prevents
+          full drain while allowing operational adjustments.
+
+        inPlace: false
+        public: true
+
+  - ID: LL_MARKUP_SPREAD_MANIPULATION
+    title: Manager Manipulates Markup and Spread for Value Extraction
+    attack: |
+      The manager calls update_pool_config to set extreme values for
+      markup_bps and/or spread_bps:
+
+      - **High markup** (e.g., 5000 bps = 50%): investors receive far fewer
+        vTokens per USDC in invest_sync. The pool accumulates excess vTokens.
+      - **High spread** (e.g., 5000 bps = 50%): investors receive far fewer
+        USDC per vToken in redeem_sync. The pool accumulates excess USDC.
+      - **Colluding attack:** Set markup to 0, allow a colluding investor to
+        invest_sync at par, then increase spread to 0 and redeem_sync at par,
+        extracting value from the pool.
+
+      There is no on-chain maximum cap on markup_bps or spread_bps. The only
+      constraint is `has_one = manager`.
+
+    threatType: Tampering
+    impactDesc: |
+      Investors receive unfair pricing on sync swaps:
+
+      - Significantly fewer vTokens when investing
+      - Significantly less USDC when redeeming
+      - No on-chain warning or protection for investors
+      - Manager or colluding parties extract value from the pool inventory
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: LIQUIDITY_POOL_MANAGER
+    assets:
+      - REFID: LIQUIDITY_POOL_PDA
+      - REFID: DF_SYNC_INVEST
+      - REFID: DF_SYNC_REDEEM
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: LL_MAX_MARKUP_SPREAD_CAP
+        title: On-Chain Maximum for Markup and Spread
+        description: |
+          Enforce on-chain maximum values for markup_bps and spread_bps
+          (e.g., 500 bps = 5% max each). Reject update_pool_config calls
+          that attempt to set values above the cap.
+
+        inPlace: false
+        public: true
+
+      - ID: LL_CONFIG_CHANGE_TIMELOCK
+        title: Timelock on Pool Configuration Changes
+        description: |
+          Apply a timelock to update_pool_config changes. The new configuration
+          is announced and takes effect after a delay (e.g., 24h), giving
+          investors time to react before new pricing takes effect.
+
+        inPlace: false
+        public: true
+
+  - ID: LL_TVL_PRICING_DEPENDENCY
+    title: Sync Swap Pricing Depends on Manipulable Vault TVL
+    attack: |
+      The Liquidity Program prices sync swaps by calling the vault's live
+      `get_vtoken_price(...)` path:
+
+      - invest_sync: `vtoken_out = usdc_amount × 1e6 / (nav × (1 + markup_bps))`
+      - redeem_sync: `usdc_out = vtoken_amount × nav × (1 - spread_bps) / 1e6`
+
+      The pool therefore inherits the vault's configured oracle-wrapper program,
+      wrapper config PDA, and feed account as its pricing trust boundary.
+
+      Since a compromised oracle-wrapper or bad initialization can distort the
+      vault price source (see parent threat ORACLE_WRAPPER_ADMIN_ABUSE), a
+      compromised operator can manipulate pool pricing:
+
+      - Feed a price that is too high → redeem_sync pays excess USDC
+      - Feed a price that is too low → invest_sync gives cheap vTokens
+      - Use stale feed data to trade against delayed vault operators
+
+    threatType: Tampering
+    impactDesc: |
+      A compromised price source can use the liquidity pool as a secondary
+      extraction point for vault price manipulation:
+
+      - Extract excess USDC via redeem_sync at an inflated price
+      - Acquire cheap vTokens via invest_sync at a deflated price
+      - Per-transaction limits restrict individual swap size but do not protect
+        against price manipulation
+      - The pool has no independent price feed or oracle
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+      - REFID: CURATOR
+    assets:
+      - REFID: LIQUIDITY_POOL_PDA
+      - REFID: VAULT_PDA
+      - REFID: DF_SYNC_INVEST
+      - REFID: DF_SYNC_REDEEM
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: LL_DAILY_LIMITS
+        title: Per-Transaction Sync Limits (Daily Limits Removed)
+        description: |
+          The liquidity pool enforces per-transaction caps:
+
+          - sync_invest_limit — max USDC per invest_sync transaction
+          - sync_redeem_limit — max USDC payout per redeem_sync transaction
+
+          The former per-investor rolling 24h daily limits (InvestorSyncUsage PDA,
+          daily_sync_invest_limit, daily_sync_redeem_limit) were removed in
+          PROT-1404. Per-investor volume throttling is now delegated to the
+          off-chain indexer.
+
+          Per-transaction limits restrict individual swap size but do not protect
+          against cumulative volume from a single investor or price manipulation.
+
+        inPlace: true
+        public: true
+
+      - ID: LL_INDEPENDENT_PRICE_GUARD
+        title: Pool NAV Sanity Check Against Independent Source
+        description: |
+          Add a check in sync swap instructions that compares vault vtoken_price
+          against a pool-stored reference price (updated independently, e.g., via
+          oracle or TWAP). If the deviation exceeds a threshold, reject the swap.
+          This prevents the pool from acting as a secondary extraction point
+          for vault AUM manipulation.
+
+        inPlace: false
+        public: true
+
+  - ID: LL_INVENTORY_EXHAUSTION_DOS
+    title: Pool Inventory Exhaustion Denies Sync Service
+    attack: |
+      An attacker (or set of attackers) performs sync swaps to deplete one
+      side of the pool's inventory:
+
+      - Repeated invest_sync drains pool vTokens (attackers get vTokens, pool
+        only has USDC)
+      - Repeated redeem_sync drains pool USDC (attackers get USDC, pool only
+        has vTokens)
+
+      With the removal of per-investor daily limits (PROT-1404), on-chain
+      protection is limited to per-transaction caps and wallet whitelisting.
+      An attacker with multiple whitelisted wallets can drain inventory faster.
+
+      Manager rebalancing (rebalance_invest_async, rebalance_redeem_async)
+      is asynchronous and requires vault settlement — it cannot instantly
+      replenish inventory.
+
+    threatType: Denial of Service
+    impactDesc: |
+      Pool becomes one-sided, unable to serve one direction of sync swaps:
+
+      - InsufficientVTokenInventory blocks invest_sync
+      - InsufficientUsdcInventory blocks redeem_sync
+      - Investors forced to use slower async vault flows
+      - Rebalancing takes hours/days (async vault settlement)
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: POOL_USDC_ATA
+      - REFID: POOL_VTOKEN_ATA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L'
+    fullyMitigated: false
+    countermeasures:
+      - REFID: LL_DAILY_LIMITS
+        # NOTE: Now only per-tx limits; daily caps removed (PROT-1404)
+
+      - REFID: ONCHAIN_WALLET_WHITELISTING
+
+      - ID: LL_AUTO_PAUSE_LOW_INVENTORY
+        title: Auto-Pause on Low Inventory Threshold
+        description: |
+          Automatically pause the affected sync direction when inventory falls
+          below a configurable threshold (e.g., 10% of target). This prevents
+          full depletion and provides a signal for the manager to rebalance.
+
+        inPlace: false
+        public: true
+
+      - ID: LL_BALANCED_SWAP_INCENTIVE
+        title: Dynamic Spread to Incentivize Balanced Flows
+        description: |
+          Increase spread_bps when redeem_sync inventory is low (discouraging
+          redemptions) and decrease markup_bps when invest_sync inventory is
+          low (encouraging investments). This creates a market-based balancing
+          mechanism.
+
+        inPlace: false
+        public: true
+
+  # --- OBSOLETE: LL_DAILY_LIMIT_WINDOW_BOUNDARY ---
+  # Removed in PROT-1404: InvestorSyncUsage PDA and daily limits deleted from
+  # on-chain code. The window boundary attack no longer applies.
+  # Original ticket: none (identified during threat modeling).
+  # Keeping commented for historical reference.
+  #
+  # - ID: LL_DAILY_LIMIT_WINDOW_BOUNDARY
+  #   title: Daily Limit Circumvention at Window Boundary
+  #   attack: |
+  #     The InvestorSyncUsage rolling 24h window resets cleanly when
+  #     `now - window_started_at >= 86400 seconds`. An investor can:
+  #
+  #     1. Use their full daily limit just before the window expires
+  #     2. Wait for the window to reset (window_started_at moves to `now`)
+  #     3. Immediately use the full daily limit again
+  #
+  #     This effectively doubles the daily volume within a short time span
+  #     (minutes around the boundary).
+  #
+  #   threatType: Tampering
+  #   impactDesc: |
+  #     Investor can execute up to 2× the intended daily volume in a short burst:
+  #
+  #     - 2× daily_sync_invest_limit in USDC invested near window boundary
+  #     - 2× daily_sync_redeem_limit in USDC redeemed near window boundary
+  #     - Can contribute to faster inventory depletion
+  #
+  #   impactedSecObj:
+  #     - REFID: INTEGRITY
+  #   attackers:
+  #     - REFID: MALICIOUS_USER
+  #   assets:
+  #     - REFID: INVESTOR_SYNC_USAGE_PDA
+  #   CVSS:
+  #     vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N'
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: LL_SLIDING_WINDOW
+  #       title: True Sliding Window Rate Limiting
+  #       description: |
+  #         Replace the clean window reset with a true sliding window that tracks
+  #         individual transaction timestamps. Alternatively, use an exponentially
+  #         decaying counter that gradually frees up capacity rather than resetting
+  #         all at once.
+  #
+  #       inPlace: false
+  #       public: true
+
+  - ID: LL_POOL_WHITELIST_REVOCATION
+    title: Pool PDA De-Whitelisted Breaks Rebalancing
+    attack: |
+      The LiquidityPool PDA must be whitelisted in the vault's whitelist for
+      rebalance operations to work:
+
+      - rebalance_invest_async: pool PDA is the "investor" in the vault
+        CPI call to create_investment_proposal
+      - rebalance_redeem_async: pool PDA is the "investor" in the vault CPI
+        call to create_redemption_proposal (requires whitelist check)
+
+      If the vault admin removes the pool PDA from the whitelist (via
+      remove_from_vtoken_whitelist), all rebalance operations fail. The pool
+      can still serve sync swaps from existing inventory, but cannot replenish.
+
+    threatType: Denial of Service
+    impactDesc: |
+      Pool loses ability to rebalance inventory via the vault:
+
+      - Cannot convert excess USDC to vTokens (rebalance_invest fails)
+      - Cannot convert excess vTokens to USDC (rebalance_redeem fails)
+      - Pool inventory gradually depletes without replenishment
+      - Eventually, both invest_sync and redeem_sync fail
+
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: ACL_AUTHORITY
+    assets:
+      - REFID: LIQUIDITY_POOL_PDA
+      - REFID: WHITELIST_ENTRY_PDA
+      - REFID: DF_REBALANCE
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: LL_POOL_WHITELIST_OPERATIONAL_CONTROL
+        title: Operational Control for Pool Whitelisting
+        description: |
+          Establish an operational procedure that the pool PDA must remain
+          whitelisted at all times. The whitelist removal of the pool PDA
+          should require multi-party approval and explicit acknowledgement
+          of the impact on liquidity operations.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Vault Admin Team
+
+  - ID: LL_STALE_FEE_ACCRUAL_PRICING
+    title: Sync Swap Pricing Ignores Pending Fee Accrual
+    attack: |
+      invest_sync and redeem_sync now call the vault's live oracle-wrapper price
+      path instead of deriving price locally from TVL.
+
+      If that live price feed drifts from the vault's intended operational price
+      basis, or if operators expect snapshot-style price locking but sync flows
+      continue to use the live wrapper value, sync swaps can execute at a price
+      that does not match adjacent async settlement.
+
+      This means:
+
+      - invest_sync and redeem_sync can diverge from sealed async cycle pricing
+      - Users can trade around stale or delayed operational expectations
+      - The pool inherits every oracle-wrapper freshness and governance mistake
+
+    threatType: Tampering
+    impactDesc: |
+      Pricing drift in sync mode can create systematic unfairness:
+
+      - Sync users can receive a materially different price than async users
+      - The pool becomes another venue for exploiting oracle timing drift
+      - Manager-set spreads amplify the impact of a bad live price source
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DF_SYNC_INVEST
+      - REFID: DF_SYNC_REDEEM
+      - REFID: VAULT_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N'
+    fullyMitigated: false
+    countermeasures:
+      - ID: LL_EXPLICIT_SYNC_PRICE_POLICY
+        title: Define sync pricing policy against the live wrapper price
+        description: |
+          Document and enforce whether sync flows are expected to use the live
+          oracle-wrapper price or a cycle-locked price. Reject sync trades during
+          sealed batch windows if the live price would violate that policy.
+
+        inPlace: false
+        public: true
+
+      - ID: LL_SYNC_PRICE_SANITY_CHECK
+        title: Sanity-check sync price against operational reference data
+        description: |
+          Add a guard that compares the live wrapper price against an expected
+          operational reference or recent sealed snapshot price before allowing
+          large sync swaps.
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: Infrastructure Team

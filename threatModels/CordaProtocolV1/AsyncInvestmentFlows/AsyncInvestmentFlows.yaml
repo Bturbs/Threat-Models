@@ -1,0 +1,356 @@
+ID: AsyncInvestmentFlows
+schemaVersion: 2
+title: Async Investment Flows
+version: '0.1'
+status: Draft
+parent: CordaProtocolV1
+
+authors: |
+  Security Research team at R3
+  Updated: 2026-05-14
+
+scope:
+  description: |
+    Child threat model covering the current async investment flows in the Vault
+    Program. This is the merged proposal-based deposit path used by the live
+    codebase; the older threshold-based "large investment" distinction is no
+    longer present in code.
+
+    This flow usually involves these steps:
+
+    1. **Tx 1** — Investor calls `create_investment_proposal` and USDC moves to the vault.
+    2. **Tx 2** — Curator may call `transfer_to_tokenizer`, which offboards remaining
+       proposal USDC to the vault's pinned `offboard_destination` and marks the
+       proposal `Accepted`.
+    3. **Optional batch path** - Curator can create a deposit snapshot,
+       incrementally add pending proposals, seal the snapshot to freeze
+       membership, call `set_deposit_snapshot_totals` to bind batch totals
+       against oracle tolerance, and then call
+       `settle_from_deposit_snapshot` to distribute vTokens proportionally
+       across many proposals.
+    4. **Optional cross-netting path** - Curator may call
+       `match_deposit_redemption` to partially or fully net a pending
+       investment against an async redemption before the remaining amount is
+       settled.
+    5. **Tx 3 / Tx N** - Curator calls `settle_investment` to mint vTokens for
+       an individual proposal using curator-supplied `investor_vtokens`
+       constrained by on-chain oracle tolerance checks, or
+       `reject_investment` to refund a still-pending proposal.
+    6. **Off-chain** - Capital is deployed and pricing updated by operations for
+       offboarded proposals.
+
+    Key trust assumptions: curator controls settlement timing, offboarded capital
+    leaves the vault before settlement, batch snapshots are curator-controlled,
+    and the pinned offboard destination must belong to the intended tokenizer/fund
+    path.
+
+
+  assets:
+    - ID: DF_CURATOR_TO_TOKENIZER
+      type: dataflow
+      title: USDC Transfer to Offboard Destination
+      description: |
+        `transfer_to_tokenizer` sends proposal USDC from `usdc_vault` to the
+        vault's pinned `offboard_destination` account.
+      inScope: true
+
+    - ID: DF_BATCH_DEPOSIT_SETTLEMENT
+      type: dataflow
+      title: Batch Deposit Snapshot Settlement
+      description: |
+        The `batch_deposit` instruction family creates curator-controlled deposit
+        snapshots, seals proposal membership, binds batch totals via
+        `set_deposit_snapshot_totals`, and proportionally distributes minted
+        vTokens across many pending investment proposals.
+      inScope: true
+
+    - ID: DF_OFFCHAIN_CAPITAL_DEPLOYMENT
+      type: dataflow
+      title: Off-Chain Capital Deployment and Pricing Feedback
+      description: |
+        After offboarding, capital is deployed off-chain and later reflected in
+        settlement pricing and operations.
+      inScope: true
+
+  assumptions:
+    - ID: IP_CURATOR_TRUSTED
+      description: |
+        The curator is a trusted role appointed by the admin. Curator authority
+        over transfer, rejection, and settlement is an in-scope threat surface.
+
+    - ID: IP_OFFBOARD_DESTINATION_OPERATED
+      description: |
+        The pinned `offboard_destination` is expected to be operated by the
+        intended tokenizer/fund workflow. Misconfiguration or compromise of that
+        destination is in scope.
+
+analysis: |
+  The async investment flow is the current deposit-side primitive. Its main
+  attack surface is no longer threshold routing or receipt-token lifecycle, but
+  rather:
+
+  - Offboarding of vault USDC to the pinned destination
+  - Batch deposit snapshots that let the curator choose grouping and sealing time
+  - A second pricing step where curator-supplied batch totals are accepted if
+    implied price remains within configured oracle tolerance
+  - Curator control over reject vs. settle timing
+  - Partial cross-netting against async redemptions before final settlement
+  - Curator-controlled batch snapshot creation, sealing, and distribution
+  - Operational dependency on off-chain capital deployment
+  - Settlement after capital has already left the vault
+
+  **Sequence Diagram:**
+  <img src="img/InvestmentProposal-flowSEQ1.svg" alt="Investment Proposal Flow Sequence Diagram"/>
+
+threats:
+  - ID: IP_CURATOR_UNCAPPED_FUND_LOSS
+    title: Curator attempts repeated or inflated offboarding
+    attack: |
+      A compromised or malicious curator tries to move more USDC than one
+      proposal authorizes by either:
+
+      - Replaying `transfer_to_tokenizer` on the same proposal
+      - Exploiting settlement state transitions around partially netted proposals
+
+    threatType: Tampering
+    impactDesc: |
+      Loss of investor funds exceeding the intended proposal amount. Vault USDC
+      could be drained beyond what the proposal should permit.
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: CURATOR
+      - REFID: VAULT_MANAGER
+    assets:
+      - REFID: USDC_VAULT_ATA
+      - REFID: INVESTMENT_PROPOSAL_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: true
+    countermeasures:
+      - ID: IP_IDEMPOTENT_TRANSFER
+        title: Idempotent transfer with proposal status gate
+        description: |
+          `transfer_to_tokenizer` only accepts proposals in `Pending` or
+          `Accepted` status and becomes a no-op when already `Accepted`.
+          This prevents double-transfer of the same proposal.
+        inPlace: true
+        public: true
+
+      - ID: IP_HARDCODED_PROPOSAL_AMOUNT
+        title: Transfer amount derived from proposal state
+        description: |
+          The transfer amount is derived from `proposal.usdc_amount -
+          proposal.netted_usdc`, not from a curator-supplied amount parameter.
+        inPlace: true
+        public: true
+
+      - ID: IP_PROPOSAL_PDA_REQUIRED
+        title: Valid proposal PDA required
+        description: |
+          The offboarding flow requires a valid `InvestmentProposal` PDA bound to
+          the vault via seeds and `has_one` constraints.
+        inPlace: true
+        public: true
+
+  - ID: IP_CURATOR_FUND_DIVERSION
+    title: Offboard destination misconfiguration or diversion
+    attack: |
+      USDC is offboarded to an unintended destination because the vault's pinned
+      `offboard_destination` is configured incorrectly or controlled by an
+      attacker.
+
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      Investor USDC leaves the vault but never reaches the intended fund path.
+      Settlement cannot complete honestly and capital recovery depends on
+      external operations.
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: CURATOR
+      - REFID: VAULT_MANAGER
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+    assets:
+      - REFID: DF_CURATOR_TO_TOKENIZER
+      - REFID: TOKENIZER_USDC_ATA
+      - REFID: VAULT_PDA
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: IP_PINNED_OFFBOARD_DESTINATION
+        title: Pinned on-chain offboard destination
+        description: |
+          The destination account is pinned on the Vault PDA and enforced in
+          `transfer_to_tokenizer`, preventing arbitrary curator-supplied payout
+          accounts during offboarding.
+        inPlace: true
+        public: true
+
+      - ID: IP_OFFBOARD_DESTINATION_GOVERNANCE
+        title: Governance control over offboard destination updates
+        description: |
+          Changes to `offboard_destination` should be protected by operational
+          review, multi-party approval, and monitoring because this field is now
+          a critical custody control.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Vault Admin Team
+
+  - ID: IP_CURATOR_BLOCK_FUNDS
+    title: Curator delays or refuses settlement
+    attack: |
+      The curator delays or never calls `settle_investment` after capital has
+      already been offboarded. The proposal remains unresolved and the investor
+      has no unilateral on-chain cancel path.
+
+      The same risk extends to the batch-deposit path if the curator creates or
+      seals a deposit snapshot but does not complete
+      `settle_from_deposit_snapshot` for included proposals.
+
+    threatType: Denial of Service
+    impactDesc: |
+      Investor funds are locked indefinitely. Capital has left the vault but
+      investor vTokens are not minted, so the investor cannot use or redeem the
+      position on-chain.
+
+      Batch settlement can amplify this by delaying many pending investors behind
+      one curator-controlled snapshot lifecycle.
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: CURATOR
+      - REFID: VAULT_MANAGER
+    assets:
+      - REFID: INVESTMENT_PROPOSAL_PDA
+      - REFID: DF_CURATOR_TO_TOKENIZER
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:N/A:L'
+    fullyMitigated: false
+    countermeasures:
+      - ID: IP_CURATOR_REJECT_WHILE_PENDING
+        title: Curator can reject while proposal remains pending
+        description: |
+          Before offboarding, an authorized curator can reject the proposal and
+          refund USDC to the investor. This reduces but does not remove the
+          post-offboarding lockup window.
+        inPlace: true
+        public: true
+
+      - ID: IP_SETTLEMENT_TIMEOUT
+        title: On-chain timeout or operational SLA for unresolved accepted proposals
+        description: |
+          Accepted proposals should be subject to a timeout, escalation path, or
+          enforceable operational SLA so funds cannot remain offboarded and
+          unresolved indefinitely.
+        inPlace: false
+        public: true
+
+  - ID: IP_OFFCHAIN_DEPLOYMENT_DEFAULT
+    title: Offboarded capital never returns value for settlement
+    attack: |
+      After `transfer_to_tokenizer`, the off-chain workflow fails to deploy or
+      recover value necessary for honest settlement. The proposal may remain
+      unresolved or be settled on adverse terms.
+
+    threatType: Denial of Service
+    impactDesc: |
+      Capital has left the vault, but the investor receives no timely on-chain
+      representation of that value. Recovery depends on external business and
+      legal controls rather than programmatic guarantees.
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: CURATOR
+    assets:
+      - REFID: DF_OFFCHAIN_CAPITAL_DEPLOYMENT
+      - REFID: DF_CURATOR_TO_TOKENIZER
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:N/A:H'
+    fullyMitigated: false
+    countermeasures:
+      - ID: IP_OFFCHAIN_SLA_OR_BOND
+        title: Operational SLA or bonded off-chain counterparty
+        description: |
+          The off-chain destination and deployment workflow should be covered by
+          enforceable operational commitments, collateral, or equivalent business
+          controls to reduce investor loss on default.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Legal/Business Team
+
+  - ID: IP_DEPOSIT_SNAPSHOT_ADMISSION_RACE
+    title: Deposit snapshot settles proposals that were netted after admission
+    attack: |
+      A curator can add a proposal to a deposit snapshot when `netted_usdc == 0`,
+      then later call `match_deposit_redemption` on that same proposal before
+      `settle_from_deposit_snapshot` runs.
+
+      If per-proposal snapshot settlement does not re-validate that the proposal
+      is still fully unmatched at execution time, the snapshot path can settle
+      using full `proposal.usdc_amount` semantics after part of the proposal has
+      already been netted.
+
+    threatType: Tampering, Denial of Service
+    impactDesc: |
+      Post-admission state drift can break accounting integrity and batch liveness:
+
+      - Value distribution can diverge from intended netted remainder semantics
+      - Snapshot settlement can fail mid-batch due to inconsistent assumptions
+      - Operators may need emergency manual intervention to unwind stuck cycles
+
+    impactedSecObj:
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: INTEGRITY
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: CURATOR
+      - REFID: VAULT_MANAGER
+    assets:
+      - REFID: DF_BATCH_DEPOSIT_SETTLEMENT
+      - REFID: INVESTMENT_PROPOSAL_PDA
+      - REFID: DF_MATCH_DEPOSIT_REDEMPTION
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:H'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: IP_REVALIDATE_UNMATCHED_AT_SETTLE
+        title: Re-validate unmatched state inside per-proposal snapshot settlement
+        description: |
+          Require `proposal.netted_usdc == 0` and `proposal.status == Pending`
+          again in `settle_from_deposit_snapshot`, not only during
+          `add_to_deposit_snapshot` admission.
+
+          Example guard pattern:
+
+          ```rust
+          require!(proposal.status == ProposalStatus::Pending, VaultError::ProposalAlreadyProcessed);
+          require!(proposal.netted_usdc == 0, VaultError::ProposalAlreadyProcessed);
+          ```
+
+        inPlace: false
+        public: true
+
+      - ID: IP_SNAPSHOT_MEMBERSHIP_LOCK
+        title: Lock proposal against matching while it belongs to an open snapshot
+        description: |
+          Add a snapshot-membership flag or snapshot reference on proposals so
+          `match_deposit_redemption` rejects proposals currently enrolled in an
+          unfinalized deposit snapshot.
+
+          Example enforcement point:
+
+          ```rust
+          require!(!proposal.in_open_deposit_snapshot, VaultError::ProposalAlreadyProcessed);
+          ```
+
+        inPlace: false
+        public: true

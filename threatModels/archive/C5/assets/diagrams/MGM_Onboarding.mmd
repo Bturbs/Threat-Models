@@ -1,0 +1,40 @@
+sequenceDiagram
+
+box MGM onboarding
+Actor NETWORK_OPERATOR as Network Operator
+participant MGM as MGM Cluster
+%%participant CA as Certification Authority <br/> +OSCP   
+end
+
+NETWORK_OPERATOR->>NETWORK_OPERATOR: Create an MGM GroupPolicy.json
+NETWORK_OPERATOR->>NETWORK_OPERATOR: Package MGM GroupPolicy.json file<br/> into an MGM CPI
+
+NETWORK_OPERATOR->>+MGM: Upload the CPI to your cluster
+MGM-->>-NETWORK_OPERATOR: return CPI ID
+
+NETWORK_OPERATOR->>+MGM: CPI get status API
+MGM-->>-NETWORK_OPERATOR: cpiFileChecksum
+
+NETWORK_OPERATOR->>+MGM: Create a virtual node in your cluster for the MGM(cpiFileChecksum, x500Name)
+MGM-->>-NETWORK_OPERATOR: return: holding identity ID
+
+NETWORK_OPERATOR->>+MGM: Assign required HSMs for the MGM 
+MGM-->>-NETWORK_OPERATOR: SESSION KEY ID
+
+NETWORK_OPERATOR->>+MGM: Create required keys, and optionally import required certificates
+MGM-->>-NETWORK_OPERATOR: ECDH KEY ID
+
+NETWORK_OPERATOR->>+MGM: Use the register endpoint to finalise the MGM setup so that it is ready to accept members
+MGM-->>-NETWORK_OPERATOR:  
+
+NETWORK_OPERATOR->>+NETWORK_OPERATOR: Build registration context
+
+NETWORK_OPERATOR->>+MGM: Register MGM membership/$MGM_HOLDING_ID(action=requestJoin, REGISTRATION_CONTEXT)
+MGM-->>-NETWORK_OPERATOR: return SUBMITTED
+
+NETWORK_OPERATOR->>+MGM: Configure P2P TLS cert(SESSION KEY ID)
+MGM-->>-NETWORK_OPERATOR: return
+
+
+NETWORK_OPERATOR->>+MGM: export group policy for group 
+MGM-->>-NETWORK_OPERATOR: return GroupPolicy.json

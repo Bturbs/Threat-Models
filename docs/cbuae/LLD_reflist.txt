@@ -1,0 +1,704 @@
+TABLE OF CONTENTS	3
+TABLE OF FIGURES	27
+FIGURES GLOBAL LEGEND	33
+TABLE OF TABLES	34
+1	WALLET SERVICES	37
+1.1	Overview	37
+1.1.1	Summary	37
+1.1.2	Background	37
+1.1.3	Terminology	37
+1.2	Wallets architecture	38
+1.3	Wallet Service solution design	39
+1.3.1	Wallet Service interactions and containers	39
+1.3.2	Wallet Service components	40
+1.3.2.1	Create component	40
+1.3.2.2	Status component	40
+1.3.2.3	Tags component	40
+1.3.2.4	View component	40
+1.3.2.5	Transfer component	40
+1.3.2.6	Add component	40
+1.3.2.7	Deduct component	41
+1.3.2.8	Contract component	41
+1.3.2.9	Wallet Manager component	41
+1.3.2.10	Transaction Manager component	41
+1.3.2.11	Contract Manager component	41
+1.4	Wallet Service implementation	41
+1.4.1	API	41
+1.4.1.1	Digital Currency APIs	41
+1.4.1.2	Wallet Management APIs	42
+1.4.1.3	Contract Management APIs	42
+1.4.1.4	View API	43
+1.4.1.5	Shared Wallets APIs	43
+1.4.2	Wallet Service data models	43
+1.4.2.1	Wallet data model	43
+1.4.2.2	Hierarchical wallets data model	45
+1.4.2.3	Contract data model	45
+1.4.2.4	Transaction data model	46
+1.4.2.5	Database tables and ERD	47
+1.4.3	Authorization and access control	51
+1.4.4	Wallet management workflows	54
+1.4.4.1	Create Wallet workflow	54
+1.4.4.2	Associate Wallet with User workflow	55
+1.4.4.3	Disassociate Wallet from User workflow	56
+1.4.4.4	Activate/Suspend Wallet workflow	57
+1.4.4.5	Add/Remove Tags workflow	59
+1.4.4.6	View API	60
+1.4.4.7	Filtering	61
+1.4.4.8	Pagination	61
+1.4.4.9	Aggregate queries over the hierarchy	62
+1.4.4.10	Authorization	62
+1.4.5	Add and Deduct workflows	62
+1.4.6	Transfer workflow	63
+1.4.6.1	Transaction settlement	65
+1.4.6.2	Wallet balance updates	65
+1.4.6.3	Error handling	66
+1.4.7	Programmable wallets	66
+1.4.7.1	Writing contracts against wallets	66
+1.4.7.2	Managing contracts	67
+1.4.7.3	Contract execution	69
+1.4.7.4	Example: Transaction and balance limits	71
+1.4.8	Shared wallets	71
+1.4.8.1	Data model	71
+1.4.8.2	Shared Wallet Transfer workflow	73
+1.4.8.3	Viewing shared wallets	74
+1.5	Non-functional considerations	74
+1.5.1	Resiliency	74
+1.5.2	Data consistency	75
+1.5.3	Disaster recovery	76
+1.5.4	Performance and scalability	76
+1.5.5	Monitoring and alarms	77
+1.6	Deployment infrastructure	78
+2	WALLET BACK-OFFICE PORTAL	79
+2.1	Overview	79
+2.1.1	Summary	79
+2.1.2	Thesis	79
+2.2	Terminology	79
+2.3	Solution design	80
+2.3.1	Architecture/context	80
+2.3.2	Container diagram	82
+2.3.3	Component diagram	83
+2.3.3.1	Wallet Back Office UI	83
+2.3.3.2	Wallet Back Office CSB	84
+2.4	Implementation	84
+2.4.1	Create Wallet	84
+2.4.2	Activate/Suspend Wallet	86
+2.4.3	Add/Remove Properties	87
+2.4.4	View	88
+2.4.4.1	View All Wallets	88
+2.4.4.2	View Wallet and Associated Transactions	88
+2.4.4.3	View Transactions	88
+2.4.4.4	View Workflow	89
+2.4.5	Transfer	90
+2.5	Deployment infrastructure	91
+2.6	Other considerations	92
+2.6.1	Resiliency	92
+2.6.2	Data consistency	92
+2.6.3	Disaster recovery	92
+2.6.4	Performance and scalability	93
+2.6.5	Monitoring and alarms	93
+2.6.6	Security	93
+3	ACQUIRER GATEWAY	94
+3.1	Overview	94
+3.1.1	Summary	94
+3.1.2	Thesis	94
+3.1.2.1	Aani Instant Payment platform	94
+3.1.2.2	Network International Acquirer Service	95
+3.1.3	In scope	95
+3.1.4	Out of scope	95
+3.2	Solution design	96
+3.2.1	Architecture/context	96
+3.2.2	Containers	98
+3.2.3	Components	99
+3.2.4	Implementation	101
+3.2.4.1	Retail user lookup using Aani lookup service	101
+3.2.4.2	Peer to Merchant Payment (P2M)	104
+3.2.4.3	Data model and data storage	110
+3.2.5	API description	112
+3.2.5.1	Retail User Lookup	113
+3.2.5.2	Get Merchant Wallet ID	114
+3.2.5.3	Get Transaction Status	114
+3.3	Other considerations	115
+3.3.1	Monitoring and instrumentation	115
+3.3.1.1	Logging	115
+3.3.1.2	Metrics	116
+3.3.1.3	Tracing	116
+3.3.2	Resilience and reliability	117
+3.3.3	Disaster recovery	117
+3.3.4	Performance and scalability	118
+3.3.5	Recovery and reconciliation	119
+3.3.5.1	General error handling mechanism	119
+3.3.6	Infrastructure	120
+3.3.6.1	Topology	120
+4	UNIVERSAL MOBILE APPLICATION	122
+4.1	Overview	122
+4.1.1	Summary	122
+4.1.2	Terminology	122
+4.1.3	Thesis	123
+4.2	Requirements	123
+4.2.1	Mobile application features	123
+4.2.2	Dependencies	123
+4.3	Mobile application solution design	124
+4.3.1	Architecture/context	124
+4.3.2	Mobile application components	125
+4.3.3	Mobile application implementation	127
+4.3.3.1	Security	127
+4.3.3.2	Wallet management	128
+4.3.4	Mobile application deployment	131
+4.3.4.1	Deployment workflow overview	131
+4.3.4.2	Initial upload vs. app updates	132
+4.3.4.3	Internal testing and QA distribution	132
+4.3.4.4	Enforcing force and soft updates	132
+4.3.4.5	Post-deployment monitoring and next steps	132
+4.3.4.6	Technical details	133
+4.3.5	Mobile CSB components	136
+4.3.6	Mobile CSB implementation	137
+4.3.6.1	Mobile CSB API	137
+4.3.7	Firebase Cloud Messaging	137
+4.3.7.1	Firebase Cloud Messaging specific configurations and implementations	138
+4.3.8	Notification Relay Service components	139
+4.3.9	Notification Relay Service implementation	140
+4.3.9.1	Notification Relay Service API	140
+4.3.9.2	Notification Relay Service data model	140
+4.3.10	Sequence and interactions	145
+4.3.10.1	View Wallet sequence	145
+4.3.10.2	View wallet transactions sequence	146
+4.3.10.3	Transfer sequence	147
+4.3.10.4	Register device for push notification	148
+4.3.10.5	Update device token sequence	149
+4.4	Topology	149
+4.5	Considerations	151
+4.5.1	Data usage optimization	151
+4.5.2	Battery efficiency	151
+4.5.3	Mobile security	152
+4.5.3.1	Alignment with OWASP TOP 10 threats for mobile applications	153
+4.5.4	Internationalization of messages	155
+4.5.5	Availability guarantees	155
+4.5.6	Data consistency	155
+4.5.7	Disaster recovery guarantees	155
+4.5.8	Monitoring and alarms	156
+5	CORDA NETWORKS	157
+5.1	Networking	157
+5.1.1	Terminology	157
+5.1.2	Background reading	157
+5.1.3	Requirements	157
+5.1.3.1	In scope	157
+5.1.3.2	Out of scope	157
+5.1.4	Solution design	158
+5.1.4.1	Proposed solution	158
+5.1.4.2	Monitoring	163
+5.2	API gateway	164
+5.2.1	Expectations	164
+5.2.2	Prerequisites	164
+5.2.2.1	Terminology	164
+5.2.2.2	Dependencies	164
+5.2.3	Requirements	165
+5.2.3.1	Out of scope	165
+5.2.4	Solution design	165
+5.2.4.1	Proposed solution - edge deployment using decoupled mode	165
+5.2.4.2	Implementation components	166
+5.2.4.3	Alternative solution - edge deployment using standalone mode	171
+5.2.5	Solution analysis	174
+5.2.5.1	Centralized configuration vs service owned configuration	174
+5.3	Service mesh	175
+5.3.1	Expectations	175
+5.3.2	Prerequisites	175
+5.3.2.1	Terminology	175
+5.3.2.2	Background reading	176
+5.3.3	Requirements	176
+5.3.3.1	In scope	176
+5.3.3.2	Out of scope	176
+5.3.4	Solution design	176
+5.3.4.1	Proposed solution	176
+5.3.5	Solution analysis	183
+5.3.5.1	Concerns and observations	183
+5.4	High availability, failover, and backup/restore	184
+5.4.1	In scope	184
+5.4.2	Terminology	184
+5.4.3	High availability	184
+5.4.3.1	What high availability means	184
+5.4.3.2	High availability within a Kubernetes cluster	184
+5.4.3.3	Component-specific details	185
+5.4.4	Cross-site failover	186
+5.4.4.1	What cross-site failover means	186
+5.4.4.2	How cross-site failover between Kubernetes clusters is achieved	186
+5.4.4.3	Component-specific details	187
+5.4.5	Backup and restore	189
+5.4.5.1	What backup and restore means	189
+5.4.5.2	How backup and restore is achieved	189
+5.4.5.3	Component-specific details	189
+5.4.6	Open questions	190
+5.5	Observability	190
+5.5.1	In scope	190
+5.5.2	Out of scope	191
+5.5.3	Proposed solution	191
+5.5.3.1	Accessing observability data	191
+5.5.3.2	R3 environments	191
+5.5.3.3	Client environments	192
+5.5.3.4	Testing in client environments	193
+6	CORDA CONTRACTS	195
+6.1	Overview	195
+6.1.1	Summary	195
+6.2	Prerequisites	195
+6.2.1	Terminology	195
+6.3	Solution design	195
+6.3.1	Summary	195
+6.3.1.1	Context	196
+6.3.1.2	Containers	196
+6.3.1.3	Components	198
+6.3.2	Detail design	198
+6.3.2.1	Contract Service API	198
+6.3.2.2	Access controls and security	213
+6.3.2.3	Evaluation Engine	214
+6.3.3	Monitoring and instrumentation	218
+6.3.4	Resilience and disaster recovery	218
+6.3.5	Performance and scalability	218
+6.3.6	Infrastructure requirements	219
+6.3.6.1	Hosting	219
+6.3.6.2	Storage	220
+6.3.6.3	Downstream service dependencies	220
+6.3.6.4	Networking	220
+7	CORDA DISTRIBUTED LEDGER TECHNOLOGY	221
+7.1	Overview	221
+7.1.1	Summary	221
+7.2	Prerequisites	221
+7.2.1	Terminology	221
+7.3	Solution design	223
+7.3.1	Overview	223
+7.3.2	API	224
+7.3.2.1	Mint API	224
+7.3.2.2	Transfer API	224
+7.3.2.3	Burn API	226
+7.3.2.4	Query API	227
+7.3.3	Transaction data modeling	227
+7.3.3.1	Block structure	228
+7.3.3.2	Block command	231
+7.3.4	Privacy and cryptography	233
+7.3.4.1	Privacy in transit	233
+7.3.4.2	Privacy at rest	234
+7.3.4.3	Cryptography	234
+7.3.5	Finality & consensus	235
+7.3.5.1	Consensus model	235
+7.3.5.2	Notary implementation	235
+7.3.5.3	Finality	236
+7.3.6	Contract validation	240
+7.3.6.1	Agreeing a block	240
+7.3.6.2	Use of Corda contracts	241
+7.3.7	Token selection	242
+7.3.8	Data storage & management	244
+7.3.8.1	Data storage (ledger and notary databases)	244
+7.3.8.2	Data storage (token selection)	244
+7.3.8.3	Retention policy	244
+7.3.9	Monitoring and instrumentation	245
+7.3.9.1	Logging	245
+7.3.9.2	Metrics	245
+7.3.10	Resilience and disaster recovery	246
+7.3.10.1	DLT instances	246
+7.3.10.2	Token selection instances	246
+7.3.11	Performance and scalability	247
+7.3.12	Infrastructure requirements	247
+7.3.12.1	Topology	247
+7.3.12.2	Database	248
+7.3.12.3	Messaging	248
+7.3.12.4	Corda Contract Service	248
+7.3.12.5	Coda Signing Service	248
+7.3.12.6	Networking	248
+8	CORDA WORKFLOW SDK OVERVIEW	249
+8.1	Summary	249
+8.2	Prerequisites	249
+8.2.1	Terminology	249
+8.3	Solution design	250
+8.3.1	Overview	250
+8.3.2	Workflow API	251
+8.3.3	Identity management	256
+8.3.4	Workflow execution	258
+8.3.4.1	Overview of workflow structure	258
+8.3.4.2	Workflow checkpoints	260
+8.3.4.3	Workflow lifecycle and execution	261
+8.3.4.4	Workflow messaging	266
+8.3.4.5	Reliable execution model	268
+8.3.4.6	Error handling	269
+8.3.5	Networking	270
+8.3.5.1	Addressing	270
+8.3.5.2	Host resolution	270
+8.3.5.3	HTTP endpoints (sync/async)	271
+8.3.5.4	Get workflow status endpoint	271
+8.3.5.5	Structure of HTTP messages	271
+8.3.5.6	Asynchronous HA and reliable messaging model	275
+8.3.5.7	Synchronous HA messaging model	275
+8.3.5.8	NATS messaging, headers, payloads, topics	276
+8.3.5.9	NATS topic naming for isolation and sharding	277
+8.3.6	State management	277
+8.3.7	Monitoring and instrumentation	278
+8.3.7.1	Logging	278
+8.3.7.2	Tracing	279
+8.3.7.3	Metrics	279
+8.3.7.4	Data format and collection	280
+8.3.8	Resilience and disaster recovery	280
+8.3.9	Performance and scalability	282
+8.3.10	Data management	284
+8.3.11	Infrastructure requirements	284
+9	SOLUTION DELIVERY	286
+9.1	Source and binary scanning	287
+9.1.1	Overview	287
+9.1.1.1	Background reading	287
+9.1.1.2	In scope	287
+9.1.1.3	Acceptance criteria	287
+9.1.2	Solution design	287
+9.1.2.1	Current solution	287
+9.1.2.2	Proposed solution	289
+9.2	Solution promotion	290
+9.2.1	Overview	290
+9.2.1.1	In scope	290
+9.2.2	Solution design	290
+9.2.2.1	Environments and activities	290
+9.2.2.2	Artifact tracking	290
+9.2.2.3	Environment promotion policy	291
+9.2.2.4	Artifact storage	291
+9.2.2.5	GitOps	292
+9.2.2.6	Artifact promotion into the client registry	297
+9.2.2.7	Artifact promotion into client environments	297
+9.2.3	Solution analysis	297
+9.2.3.1	Open questions	297
+9.3	Artifact syncing	297
+9.3.1	Overview	297
+9.3.2	Prerequisites	297
+9.3.2.1	Terminology	297
+9.3.2.2	In scope	298
+9.3.2.3	Out of scope	298
+9.3.3	Proposed solution	298
+9.3.3.1	Artifact syncing	298
+9.3.4	Solution analysis	304
+9.3.4.1	Open questions	304
+9.4	Solution deployment	304
+9.4.1	Prerequisites	304
+9.4.1.1	In scope	304
+9.4.1.2	Out of scope	304
+9.4.2	Solution design	304
+9.4.2.1	Solution deployment diagram	304
+9.4.2.2	Infrastructure components	305
+9.4.2.3	Assumptions	305
+9.4.2.4	Solution deployment process	306
+9.5	Configuration	309
+9.5.1	Overview	309
+9.5.1.1	Problem statement	309
+9.5.1.2	Expectations	309
+9.5.1.3	Terminology	309
+9.5.1.4	In scope	310
+9.5.1.5	Out of scope	310
+9.5.2	Solution design	311
+9.5.2.1	Proposed solution	311
+9.5.2.2	Alternative solutions	313
+10	CRYPTOGRAPHY AND PUBLIC KEY INFRASTRUCTURE	316
+10.1	Overview	316
+10.2	Architecture/context	317
+10.3	Deployment infrastructure	317
+10.4	Compliance	318
+10.5	Prerequisites	319
+10.5.1	Terminology	319
+10.5.2	Background reading	320
+10.6	Cryptographic key management	320
+10.6.1	Overview	320
+10.6.1.1	In scope	321
+10.6.2	Dependencies	322
+10.6.2.1	Out of scope	322
+10.6.3	Solution design	322
+10.6.3.1	Key versioning	323
+10.6.3.2	Architecture/context	323
+10.6.4	Implementation components	325
+10.6.4.1	Component 1 - HashiCorp Vault Transit secrets engine	325
+10.6.4.2	Component 2 - Key Pair Generation Agent	327
+10.6.4.3	Component 3 - Terraform modules and deployment	327
+10.7	Public key infrastructure	328
+10.7.1	Overview	328
+10.7.1.1	In scope	329
+10.7.2	Dependencies	329
+10.7.3	Solution design	329
+10.7.3.1	Architecture/context	330
+10.8	Certificate authority, certificate trust chain, and validation	332
+10.8.1	Overview	332
+10.8.2	Chain validation	334
+10.8.3	Timestamping	337
+10.8.3.1	In scope	338
+10.8.4	Dependencies	338
+10.8.5	Solution design	338
+10.8.5.1	Architecture/context	339
+10.8.6	Component 1 - Root and intermediate certificate authority	340
+10.8.6.1	Overview design	340
+10.8.6.2	Fault tolerance and disaster recovery guarantees	341
+10.8.6.3	Security guarantees	341
+10.8.7	Component 2 - Terraform modules and deployment	342
+10.8.7.1	Overview design	342
+10.8.7.2	Features	344
+10.8.7.3	Limitations	344
+10.8.7.4	Security guarantees	344
+10.9	Certificate propagation: platform operator and local certificate store	344
+10.9.1	Overview	344
+10.9.1.1	In scope	345
+10.9.1.2	Out of scope	346
+10.9.2	Dependencies	346
+10.9.3	Solution design	346
+10.9.3.1	Architecture/context	346
+10.9.3.2	Sequence and interactions	348
+10.9.4	Component 1: Back-end Vault KV store	349
+10.9.4.1	Overview design	349
+10.9.4.2	Features	350
+10.9.4.3	Fault tolerance and disaster recovery guarantees	351
+10.9.4.4	Security guarantees	351
+10.9.5	Component 2: Front-End Rest Service	352
+10.9.5.1	Overview design	352
+10.9.5.2	Features	352
+10.9.5.3	Fault tolerance and disaster recovery guarantees	352
+10.9.5.4	Security guarantees	353
+10.10	Certificate and asymmetric key lifecycle	353
+10.10.1	Overview	353
+10.10.1.1	In scope	353
+10.10.2	Dependencies	354
+10.10.3	Solution design	354
+10.10.3.1	Architecture/context	354
+10.10.3.2	Certificate expiry	355
+10.10.3.3	Component 1 - Certificate issuance and registration authority agent	356
+10.10.4	Component 2 - Terraform modules	360
+10.10.4.1	Overview design	360
+10.10.4.2	Features	361
+10.10.4.3	Fault tolerance and disaster recovery guarantees	361
+10.10.4.4	Security guarantees	361
+10.11	Cryptography SDK	361
+10.11.1	Overview	361
+10.11.1.1	In scope	362
+10.11.2	Dependencies	362
+10.11.3	Solution design	362
+10.11.3.1	Architecture/context	362
+10.11.3.2	Deployment	363
+10.11.3.3	Key versioning	363
+10.11.3.4	Validation	364
+10.11.4	Component - Key management library	364
+10.11.4.1	Overview design	364
+10.11.4.2	Features	366
+10.11.4.3	Availability guarantees	366
+10.11.4.4	Data consistency guarantees	366
+10.11.4.5	Security guarantees	366
+10.11.4.6	Fault tolerance and disaster recovery guarantees	367
+10.12	Authentication with Vault	367
+10.12.1	Overview	367
+10.12.1.1	In scope	369
+10.12.2	Solution design	369
+10.12.2.1	Architecture/context	370
+10.12.2.2	Sequence and interactions	370
+10.12.2.3	Component 1 - Kubernetes authentication for secrets retrieval	371
+10.12.2.4	Component 2 - Username/password authentication for signing operations	372
+10.13	Resiliency and recovery	373
+10.13.1	Overview	373
+10.13.2	Service instances and availability	373
+10.13.2.1	Read and write operations	374
+10.13.3	HashiCorp Vault storage	375
+10.13.3.1	Cross-site replication	375
+10.13.3.2	Raft References	376
+10.13.3.3	Backups	376
+10.13.4	Two-tier certificate store architecture	376
+10.14	Security information and event management (SIEM), monitoring and alerting	377
+10.14.1	Overview	377
+10.14.2	Dependencies	377
+10.14.3	Vault monitoring	378
+10.14.4	Kubernetes health checks	378
+10.14.5	Log analytics	378
+10.14.5.1	Vault Service	379
+10.14.5.2	Central certificate store	379
+10.14.5.3	Participant certificate store	379
+10.14.5.4	Key generation	380
+10.14.5.5	Cryptography SDK	380
+11	SECRETS MANAGEMENT	381
+11.1	Overview	381
+11.2	Architecture/context	382
+11.3	Sequence and interactions	383
+11.4	Deployment infrastructure	383
+11.4.1	Compliance	384
+11.5	Prerequisites	384
+11.5.1	Terminology	384
+11.5.2	Background reading	385
+11.6	Secrets management service	385
+11.6.1	Overview	385
+11.6.1.1	In scope	386
+11.6.1.2	Solution design	386
+11.6.1.3	Implementation components	387
+11.7	Secrets management client	391
+11.7.1	Overview	391
+11.7.1.1	In scope	392
+11.7.2	Dependencies	392
+11.7.3	Solution design	392
+11.7.3.1	Architecture/context	392
+11.7.4	Implementation components	393
+11.7.4.1	Component 1 - Vault Agent Injector	393
+11.7.4.2	Component 2 - Terraform modules	394
+11.8	Resiliency and recovery	394
+11.8.1	Overview	394
+11.8.2	Service instances and availability	395
+11.8.3	Cross-site replication	395
+11.8.4	Raft references	395
+11.8.5	Backups	396
+11.9	Security information and event management (SIEM), monitoring and alerting	396
+11.9.1	Overview	396
+11.9.2	Dependencies	396
+11.9.3	Vault monitoring	396
+11.9.4	Kubernetes health checks	397
+11.9.5	Log analytics	397
+11.9.5.1	Vault service	397
+12	IDENTITY AND ACCESS MANAGEMENT (IAM)	399
+12.1	Overview	399
+12.2	Additional tech choices	399
+12.3	Architecture/context	400
+12.3.1	Authentication	400
+12.3.1.1	Federation	401
+12.3.2	Authorization	403
+12.3.2.1	Mapping customer-specific attributes to claims	404
+12.4	Deployment infrastructure	404
+12.5	Compliance	405
+12.6	Prerequisites	406
+12.6.1	Terminology	406
+12.6.2	Background reading	407
+12.7	Identity management system fundamentals	408
+12.7.1	Overview	408
+12.7.1.1	In scope	408
+12.7.2	Personally identifiable information (PII)	408
+12.7.3	Dependencies	409
+12.7.4	Solution design	409
+12.7.4.1	Realms	409
+12.7.4.2	Architecture/context	409
+12.7.4.3	Authentication protocol and configuration	411
+12.7.4.4	Configuring a client application	412
+12.7.4.5	Scopes and tokens	413
+12.7.4.6	Configuring sessions and timeouts	415
+12.7.4.7	Login and logout	416
+12.7.5	Implementation components	416
+12.7.5.1	Component 1 - Master realm	416
+12.7.5.2	Component 2 - Identity provider realm	417
+12.7.5.3	Component 3 - Terraform modules and deployment	418
+12.8	Identity and user federation	418
+12.8.1	Overview	418
+12.8.1.1	External users	420
+12.8.1.2	Internal users	421
+12.8.1.3	In scope	421
+12.8.2	Dependencies	421
+12.8.2.1	Out of scope	422
+12.8.3	Solution design	422
+12.8.3.1	Architecture/context	422
+12.8.3.2	Sequence and interactions	424
+12.8.4	Implementation components	426
+12.8.4.1	Realm architecture/context	427
+12.8.4.2	Component 1 - Identity brokering	427
+12.8.4.3	Component 2 - Attribute mapper	428
+12.8.4.4	Component 3 - Authentication flow configuration	429
+12.8.4.5	Component 4 - User directory synchronization service	429
+12.9	Securing the identity provider	432
+12.9.1	Overview	432
+12.9.1.1	In scope	434
+12.9.2	Dependencies	435
+12.9.2.1	Out of scope	435
+12.9.3	Keycloak data	435
+12.9.3.1	Data in transit	435
+12.9.3.2	Data at rest	436
+12.9.4	Certificate and key management	436
+12.9.4.1	Sequence of generation of keys and certificates for JWT signing	436
+12.9.4.2	Certificate trust chain augmented token checks	437
+12.9.4.3	Key rotation	437
+12.9.5	Secrets management	437
+12.9.5.1	Secret rotation	439
+12.9.6	Network security	439
+12.9.7	Application security	440
+12.9.7.1	Keycloak application security	440
+12.9.7.2	Client-side security	443
+12.9.7.3	Vulnerability scanning	443
+12.9.8	Hardening	443
+12.9.8.1	Admin console access	443
+12.9.8.2	Disabling dynamic client registration	444
+12.9.8.3	Security patching and upgrades to Keycloak and its dependencies	444
+12.9.9	Platform security remit	445
+12.9.9.1	Compliance and governance	445
+12.9.9.2	User education and awareness	446
+12.9.10	Security testing	446
+12.10	Identity management performance, scalability & resiliency	447
+12.10.1	Overview	447
+12.10.1.1	In scope	448
+12.10.2	Dependencies	448
+12.10.2.1	Out of scope	449
+12.10.3	Solution design	449
+12.10.4	Scaling identity management and federation	451
+12.10.5	Resiliency strategies	451
+12.10.6	High availability strategies	451
+12.10.7	Upgrades	452
+12.10.8	Resource sizing for identity management and federation	452
+12.11	Authorization services	453
+12.11.1	Overview	453
+12.11.1.1	In scope	453
+12.11.1.2	Out of scope	454
+12.11.2	Dependencies	454
+12.11.3	Solution design	454
+12.11.3.1	Architecture/context	455
+12.11.3.2	Sequence and interactions	456
+12.11.4	Component 1 - Policy Decision Service	458
+12.11.4.1	Overview design	458
+12.11.4.2	Architecture/context	459
+12.11.4.3	Policy structure	459
+12.11.4.4	Features	461
+12.11.4.5	Availability guarantees	461
+12.11.4.6	Data consistency guarantees	461
+12.11.4.7	Security guarantees	462
+12.11.5	Component 2 - Resource Service (using Hasura GraphQL Engine)	462
+12.11.5.1	Overview design	462
+12.11.5.2	Features	462
+12.11.5.3	Availability guarantees	462
+12.11.5.4	Data consistency guarantees	462
+12.11.5.5	Security guarantees	462
+12.11.6	Component 3 - Resource Database	463
+12.11.6.1	Overview design	463
+12.11.6.2	Database schema	463
+12.11.6.3	Features	463
+12.11.6.4	Availability guarantees	463
+12.11.6.5	Data consistency guarantees	463
+12.11.6.6	Fault tolerance and disaster recovery guarantees	464
+12.11.6.7	Security guarantees	464
+12.11.7	Component 4 - Resource Synchronization Service	464
+12.11.7.1	Overview design	464
+12.11.8	Architecture/context	465
+12.11.8.1	Features	465
+12.11.8.2	Availability guarantees	466
+12.11.8.3	Data consistency guarantees	466
+12.11.8.4	Security guarantees	466
+12.12	Security information and event management (SIEM), monitoring and alerting	466
+12.12.1	Overview	466
+12.12.2	Dependencies	466
+12.12.3	Kubernetes health checks	467
+12.12.4	Log analytics	467
+12.12.5	Keycloak monitoring and logging	467
+12.12.6	Hasura monitoring	468
+12.12.7	User Sync Service monitoring	468
+12.12.8	Compromised JWTs	469
+13	NETWORK IDENTITY DETAILED DESIGN	470
+13.1	Overview	470
+13.1.1	In scope	470
+13.2	Prerequisites	470
+13.2.1	Terminology	470
+13.2.2	Background reading	472
+13.2.3	Dependencies	472
+13.3	SPIFFE identity format	472
+13.3.1	Introductory concepts	472
+13.3.2	Identity attestation	474
+13.3.3	Hierarchy and trust chain	475
+13.3.4	Private key naming	475
+13.4	Exchanging application identity via tokens	476
+13.4.1	Secure transmission of application identity	477
+13.4.1.1	JOSE header	477
+13.4.2	Architecture/context	478
+13.4.3	Security guarantees	480
+13.4.4	Sequence and interactions	481
+13.4.5	Token validation responsibilities	481
+13.4.6	Crypto Client Library integration	481
+13.4.6.1	Overview design	481
+13.4.6.2	Features	482
+13.4.6.3	Security guarantees	482
+13.4.7	Corda Workflow SDK integration	482
+13.4.7.1	Overview design	482
+13.4.7.2	Security guarantees	482
+13.4.8	Example flow utilizing components of network identity	483
+14	APPENDICES	485
+14.1	Appendix A: Contract execution examples	485
+14.2	Appendix B: G42 to on-prem: developer access	486

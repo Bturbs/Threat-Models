@@ -1,0 +1,100 @@
+@startuml Multisig-Key-Rotation-Playbook
+!theme plain
+skinparam ActivityBorderColor #333333
+skinparam ActivityBackgroundColor #f9f9f9
+skinparam ActivityDiamondBackgroundColor #fff3cd
+skinparam ActivityDiamondBorderColor #b8860b
+skinparam ArrowColor #333333
+skinparam swimlaneBorderColor #aaaaaa
+skinparam defaultFontSize 13
+title Multisig Signer-Succession and Key-Rotation Playbook
+
+|#dbeafe|Initiator|
+start
+:Initiate key rotation request;
+
+if (Policy for this process acknowledged?) then (No)
+  :Acknowledge required policy\nin internal system;
+  note right
+    Policy name TBC --
+    to be linked explicitly
+  end note
+else (Yes)
+endif
+
+' SECTION 1
+:Raise change request ticket;
+:Define scope and target\nkey or signer;
+
+|#fef9e7|Security|
+:Review change request;
+
+|#dcfce7|Engineering|
+:Review change request;
+
+|#fef9e7|Security|
+if (Approved by Engineering\nand Security?) then (No)
+  |#dbeafe|Initiator|
+  :Update and resubmit\nchange request;
+else (Yes)
+endif
+
+' SECTION 2
+|#f3e8ff|Key Custodian|
+:Prepare secure environment;
+note right
+  Need to evaluate
+  what secure
+  looks like 
+end note
+:Generate new keypair;
+:Document key custody;
+:Obtain rotated public key;
+
+' SECTION 3
+|#dcfce7|Engineering|
+:Identify target key or\nsigner to rotate;
+:Create on-chain\nrotation proposal;
+:Verify threshold unchanged;
+:Submit proposal;
+
+' SECTION 4
+:Fetch multisig state from chain;
+:Build and assemble transaction;
+
+|#f3e8ff|Key Custodian|
+:Sign transaction\n(hardware wallet);
+
+|#dcfce7|Engineering|
+:Submit to RPC;
+
+|#fdecea|On-Chain|
+:Confirm finalized;
+:Verify updated multisig state;
+:Close proposal account;
+
+' SECTION 5
+|#dcfce7|Engineering|
+:Test signing with rotated key;
+:Test notary operations;
+:Validate logs;
+
+if (Tests pass?) then (No)
+  #fdecea:Capture error logs\nand escalate to\nemergency rotation;
+  stop
+else (Yes)
+endif
+
+' SECTION 6
+|#fef9e7|Security|
+:Update key registry\nand access controls;
+:Archive or destroy\nold key material;
+
+|#dbeafe|Initiator|
+:Log rotation event\nagainst change request;
+:Notify stakeholders and\nclose change request;
+
+#d4edda:Rotation complete;
+stop
+
+@enduml

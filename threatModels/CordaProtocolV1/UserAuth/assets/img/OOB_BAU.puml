@@ -1,0 +1,67 @@
+@startuml
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+title WYSIWYS for Corda Protocol V1 — Tier 2 BAU Operations (Out-of-Band Verification)
+skinparam maxMessageSize 250
+skinparam sequenceMessageAlign center
+autonumber
+
+box "Environment A (Dirty / Untrusted)" #LightPink
+actor "Vault Manager\n(Initiator)" as Manager
+participant "Protocol UI / dApp\n(Untrusted)" as UI
+end box
+
+box "Communication" #White
+participant "Slack/PagerDuty\n(OOB Channel)" as OOB
+end box
+
+box "Environment B (Secure / Zero-Trust)" #LightGreen
+actor "Tier 2 Signer\n(Approver)" as Approver
+participant "Security App\n(Untrusted Transport)" as App
+participant "Advanced HW Wallet\n(Clear Signing)" as HW
+end box
+
+box "Infrastructure (Tech Specific)" #LightBlue
+participant "Private RPC\n(e.g., Helius)" as RPC
+participant "Simulation API\n(Blowfish/Blocksec)" as Sim
+database "Solana Mainnet\n(Squads V4)" as Squads
+end box
+
+== Phase 1: On-Chain Proposal Creation ==
+Manager -> UI: Drafts BAU Action\n(e.g., Transfer 50k USDC / Update Config)
+UI -> Squads: Send `CreateProposal` & `AddInstruction`
+Squads --> UI: Proposal PDA Created (e.g., Index 88)
+
+== Phase 2: Out-of-Band Hand-off ==
+Manager -> OOB: "Tier 2 Action: Please review Proposal #88.\nIntent: Transfer 50k USDC to Yield Vault."
+OOB -> Approver: Receives secure notification
+
+== Phase 3: Cryptographic Fetch (Zero-Trust) ==
+Approver -> App: Inputs Proposal Index "88"
+App -> RPC: Fetch account data for Proposal PDA (Index 88)
+note right of App: Bypasses the Web UI entirely.\nFetches cryptographic truth directly.
+RPC --> App: Returns raw, serialized instruction bytes
+
+== Phase 4: Intent Simulation (WYSIWYS Translation) ==
+App -> Sim: Send raw payload for transaction simulation
+Sim --> App: Returns Decoded State Changes\n(e.g., "-50,000 USDC", "+50,000 yUSDC")
+App -> HW: Pass raw instruction payload to Hardware Wallet
+
+== Phase 5: Hardware-Level Clear Signing & Verification ==
+note over HW: **FIRMWARE DECODING**\nHW natively parses the payload or \nverifies the simulation data on its own chip.
+HW -> Approver: Screen displays:\n**"Action: Transfer 50,000 USDC"**\n**"To: Yield Vault Address"**
+note over Approver: **THE MANUAL CHECK**\nApprover manually verifies the Hardware screen\nexactly matches the Intent stated in Slack.\n(Ensures UI didn't inject a drain payload).
+
+== Phase 6: Air-Gapped Signature ==
+Approver -> HW: Confirms text matches intent (Presses Sign)
+HW --> App: Returns Cryptographic Signature
+
+== Phase 7: Broadcast & Squads V4 Timelock ==
+App -> RPC: Broadcast Signed `Approve` TX
+RPC -> Squads: Execute `ApproveTransaction`
+Squads --> App: State: Proposal Approved (Signer added)
+
+note over Squads: **Tier 2 Protocol Logic:**\nIf Approvals reach Threshold (e.g., 2 of 5):\nStatus = 'Approved'\n`approved_at` timestamp recorded.\n**Tier 2 Timelock (e.g., 24h) begins.**
+
+App -> Approver: "Success. 2/5 Reached. 24h Timelock Active."
+
+@enduml

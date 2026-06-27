@@ -1,0 +1,89 @@
+@startuml R3_Protocol_V0_Sequence
+' Participants
+box "Retail User" #lightgrey
+actor "Retail User\n(browser/wallet)" as User
+end box
+
+box "R3 Vault WebPortal" #lavender
+participant "R3 Vault\n(WebPortal)" as R3VaultWeb
+end box
+
+box "Solana / Blockchain" #lightblue
+participant "Solana Wallet\n(Generated / Persistent)" as Wallet
+participant "Anchor Vault Program\n(On-chain Vault)" as Vault
+participant "Token-2022 Program\n(R3 Shares mint/burn)" as Token2022
+end box
+
+participant "KYC\n(Web SDK + Webhook)" as KYC
+
+
+participant "Jupiter\n(Swap Aggregator)" as Jupiter
+participant "Fuul Points API\n(/api/fuul/points)" as Fuul
+' == Setup ==
+' User -> Wallet: Deposit of USDC
+
+' == User Registration & KYC (optional)==
+' note across: TODO 
+
+' == R3 Vault Portal Login ==
+' User -> R3VaultWeb : Login (TODO)
+' R3VaultWeb -> User : Authenticated session
+
+== Deposit of USDC ==
+User -> R3VaultWeb: Clicks Deposit of USDC (10 USDC)
+R3VaultWeb -> R3VaultWeb: create TX data
+R3VaultWeb -> User: sends unsigned TX data
+note over User #pink
+Tampering attack, including non 
+serializable data passed to oracle
+end note 
+User -> User: signs TX data
+User -> Vault: submits signed TX data
+activate Vault
+note over Vault #LightGreen
+ declares TX accessed accounts (READ/WRITE ones)
+  to avoid concurrency issues:
+  - Vault USDC Balance (WRITE)
+  ... (TODO complete list)
+end note
+Vault -> Vault: Start ATOMIC TX
+Vault -> Jupiter: Call Oracles, swaps etc (TODO)
+Jupiter -> Vault: Return swap/oracle data (TODO)
+Vault -> Vault: Calculate new User shares comparing to \ninitial state and final state of the Vault balance\n(8.3 R3 Shares)
+alt calculation verification success
+Vault -> Token2022: Mint 8.3 R3 Shares to User Wallet
+else verification failure
+Vault -> Vault: Abort TX \n(Revert state to initial)
+end
+deactivate Vault
+
+
+note over R3VaultWeb,User: Who notifies success (polling or webhook)
+R3VaultWeb -> User: update Balance \n(Credit User Account 8.3 R3 Shares)
+
+== Withdrawal of R3 Shares ==
+
+User -> R3VaultWeb: Clicks Withdraw of R3 Shares (8.3 R3 Shares)
+User -> User: Sign withdrawal TX data
+User -> Vault: submits signed withdrawal TX data
+activate Vault
+note over Vault #LightGreen
+ declares TX accessed accounts (READ/WRITE ones)
+  to avoid concurrency issues:
+  - Vault USDC Balance (WRITE)
+  ... (TODO complete list)
+end note
+Vault -> Vault: Start ATOMIC TX
+Vault -> Token2022: Burn 8.3 R3 Shares from User Wallet
+Vault -> Jupiter: Call Oracles, swaps etc (TODO)
+Vault -> Vault: Calculate new Vault USDC balance comparing to \ninitial state and final state of the Vault USDC balance\n(+10 USDC)
+note over Vault #LightGreen
+ Verify Vault USDC balance updated correctly\n to avoid tampering exploitations
+end note
+alt verification success
+Vault -> Vault: Transfer USDC to User Wallet
+else verification failure
+Vault -> Vault: Abort TX \n(Revert state to initial)
+end
+deactivate Vault
+@enduml

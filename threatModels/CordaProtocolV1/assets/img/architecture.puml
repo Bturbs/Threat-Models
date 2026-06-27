@@ -1,0 +1,181 @@
+@startuml architectureOverview
+' REVIEWED_MAIN_2026_05_18: aligned to RBAC fast-forward 63739244; authority via RBAC program.
+' LEGACY_NOTE_2026_05_13: this diagram may include historical ACL/receipt/tokenizer details pending upstream simplification merge; validate against current code before implementation decisions.
+
+title Corda Protocol V1 — Architecture Overview
+
+!define COMPONENT rectangle
+
+skinparam rectangle {
+    BackgroundColor<<Program>> LightSalmon
+    BackgroundColor<<State>> LightCoral
+    BackgroundColor<<External>> LightGray
+    BorderColor Black
+}
+
+skinparam component {
+    BackgroundColor LightBlue
+    BorderColor Black
+}
+
+skinparam cloud {
+    BackgroundColor LightYellow
+    BorderColor Black
+}
+
+COMPONENT "Authority\n(via RBAC)" as AdminActors <<External>>
+COMPONENT "Settlement\nPermission Holder" as CuratorActors <<External>>
+COMPONENT "Investor\nWallets" as InvestorActors <<External>>
+COMPONENT "RBAC Admin\nWallet" as ManagerActors <<External>>
+
+package "Vault System" {
+    COMPONENT "Vault Program\nEMDZftqH...Qwfh" as VaultProgram <<Program>> [[https://github.com/corda/corda-protocol-mvp/tree/main/programs/vault]]
+    
+    package "Vault State (PDAs)" {
+        COMPONENT "Vault" as VaultState <<State>>
+        COMPONENT "VaultWhitelistEntry" as WhitelistEntry <<State>>
+        COMPONENT "InvestmentProposal" as Proposal <<State>>
+        COMPONENT "RedemptionProposal" as RedemptionProposal <<State>>
+    }
+}
+
+package "RBAC System" {
+    COMPONENT "RBAC Program\nAbAt69j4...QwAV" as RbacProgram <<Program>> [[https://github.com/corda/corda-protocol-mvp/tree/main/programs/rbac]]
+    COMPONENT "VaultAuthority PDA" as VaultAuthority <<State>>
+}
+
+package "Access Control" {
+    COMPONENT "ACL Gate Program\nCPACLKiG...tb8v" as AclGate <<Program>> [[https://github.com/corda/corda-protocol-mvp/tree/main/programs/vault-acl-gate]]
+    COMPONENT "MINT_CONFIG" as MintConfig <<State>>
+    COMPONENT "FLAG_ACCOUNT" as FlagAccount <<State>>
+    COMPONENT "THAW_EXTRA_METAS" as ThawMetas <<State>>
+    COMPONENT "FREEZE_EXTRA_METAS" as FreezeMetas <<State>>
+}
+
+package "Pricing" {
+  COMPONENT "Oracle Wrapper Program\nHExrWEj2...Jcob" as OracleWrapper <<Program>> [[https://github.com/corda/corda-protocol-mvp/tree/main/programs/oracle_wrapper]]
+}
+
+package "Token System (Token-2022)" {
+  COMPONENT "vToken Mint" as VTokenMint <<External>>
+    COMPONENT "USDC Mint" as USDCMint <<External>>
+    COMPONENT "Investor vToken Accounts" as InvestorVTokens <<External>>
+}
+
+package "Solana SPL" {
+    COMPONENT "Token-2022 Program" as TokenProgram <<External>>
+    COMPONENT "System Program" as SystemProgram <<External>>
+}
+
+' ========================================
+' Relationships
+' ========================================
+
+AdminActors -down-> RbacProgram : permission-gated\noperations (whitelist,\nconfig, pause/resume)
+CuratorActors -down-> RbacProgram : settlement operations\n(settle, reject,\ntransfer)
+InvestorActors -down-> VaultProgram : investment operations\n(proposals,\nredemptions)
+ManagerActors -down-> RbacProgram : RBAC admin\n(set permissions,\nrotate admin)
+
+RbacProgram --> VaultAuthority : manages
+RbacProgram -down-> VaultProgram : CPI (PDA authority)
+VaultAuthority --> VaultState : authority = PDA
+
+VaultProgram --> VaultState : manages
+VaultProgram --> WhitelistEntry : creates/updates/closes
+VaultProgram --> Proposal : creates/settles/rejects
+VaultProgram --> RedemptionProposal : creates/settles
+VaultProgram --> OracleWrapper : CPI\n(fetch_price)
+
+VaultProgram --> AclGate : invokes\n(freeze/thaw)
+VaultProgram --> TokenProgram : CPI\n(mint/burn/transfer/freeze/thaw)
+
+AclGate --> WhitelistEntry : validates during\ntransfer hooks
+AclGate --> MintConfig : manages ACL config
+AclGate --> FlagAccount : manages freeze state
+AclGate --> ThawMetas : reads extra accounts
+AclGate --> FreezeMetas : reads extra accounts
+
+TokenProgram --> VTokenMint : mint/burn/freeze
+TokenProgram --> AclGate : invokes transfer hook\n(on vToken transfers)
+
+VTokenMint --> InvestorVTokens : instances
+
+VaultState --> VTokenMint : mint_authority
+
+WhitelistEntry ..> InvestorVTokens : controls access:\nwhitelisted = settlement OK\nnot whitelisted = frozen
+
+note right of WhitelistEntry
+  **Critical Security Component**
+  
+  Seeds: [
+    "vault_whitelist_entry",
+    vtoken_mint,
+    investor
+  ]
+  
+  Fields:
+  - mint: Pubkey
+  - owner: Pubkey  
+  - whitelisted: bool
+  - bump: u8
+  
+  **Enforced at:**
+  1. Settlement (vToken minting)
+  2. Transfer (via ACL Gate hook)
+  3. Redemption proposal creation
+  4. Removal closes account via exit()
+end note
+
+note right of AclGate
+  **Transfer Hook Handler**
+  
+  Validates whitelist during:
+  - can_thaw_permissionless
+  - can_freeze_permissionless
+  
+  Checks:
+  - FLAG_ACCOUNT ownership & flag
+  - Vault program ID match
+  - Extra account metas PDA
+  - Whitelist entry PDA derivation
+  - Whitelist status
+end note
+
+note bottom of VaultProgram
+  **Key Instructions:**
+  
+  **Config (authority-gated):**
+  - initialize_vault
+  - set_authority
+  - update_vault_config
+  - engage_emergency_stop
+  - lift_emergency_stop
+  - pause / resume
+  
+  **ACL (authority-gated):**
+  - add_to_vtoken_whitelist ⚠️
+  - remove_from_vtoken_whitelist ⚠️
+  - thaw_vtoken_account ⚠️
+  - freeze_vtoken_account
+  
+  **Investor (permissionless):**
+  - create_investment_proposal
+  - create_redemption_proposal ⚠️
+  
+  **Settlement (authority-gated):**
+  - settle_investment ⚠️
+  - reject_investment
+  - settle_redemption
+  - transfer_to_tokenizer
+  - match_deposit_redemption
+  - batch snapshot instructions
+  
+  **Pricing:**
+  - fetch_price (via Oracle Wrapper)
+  
+  ⚠️ = Whitelist enforcement point
+  All authority-gated = vault.authority
+  (expected: RBAC VaultAuthority PDA)
+end note
+
+@enduml

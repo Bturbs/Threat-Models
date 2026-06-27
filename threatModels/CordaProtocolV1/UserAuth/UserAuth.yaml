@@ -1,0 +1,1605 @@
+ID: UserAuth
+schemaVersion: 2
+title: RBAC and User Authorization
+status: Draft
+authors: |
+  Security Research team at R3
+parent: CordaProtocolV1
+scope:
+  description: |
+    Threat model for the authorization and signing authority design of the
+    Corda Protocol V1.
+
+    This model focuses on the roles, their signature schemes, and the
+    security trade-offs between availability and security in the multisig /
+    timelock design.
+
+    **On-Chain Enforcement — RBAC Program:**
+
+    The vault program uses a single `authority` field (a PDA) rather than
+    multiple embedded role fields. An external RBAC program
+    (`4nuAcGWtRWa6gTN1kc9jEX5u3HmbbnnZZ9u8wW8FKJPs`) holds a
+    VaultAuthority PDA with a `permissions[64]` table mapping each vault
+    instruction discriminator to a specific allowed signer pubkey. The RBAC
+    admin can grant/revoke per-instruction permissions, enabling fine-grained
+    role separation at the program level.
+
+    **Scope Boundary:**
+    This model covers threats to the signing authorities themselves — key
+    management, operational security, collusion, supply chain, and availability.
+    Program-level vulnerabilities and on-chain logic bugs are covered in sibling
+    models (SolanaProgramsLifecycle, AsyncInvestmentFlows, AsyncRedemptionFlows).
+
+    **Approach:**
+    Roles are modeled as credential assets with signature scheme properties.
+    Cross-cutting threats are defined once by category and reference applicable
+    roles. Role-specific threats are defined separately where the attack surface
+    is materially unique.
+  assets:
+    - ID: VAULT_UPGRADE_AUTHORITY_KEYS
+      type: credential
+      title: Vault Upgrade Authority Signing Keys
+      description: |
+        Authority for program upgrades. Highest security tier.
+
+        **Actions:** Program upgrade
+
+        **Signature:** 4 out of 7; keys in cold storage; timelock not applicable
+      inScope: true
+      properties:
+        threshold: 4 of 7
+        storage: cold
+        timelock: N/A
+        actions: Program upgrade
+    - ID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      type: credential
+      title: Protocol Config Authority Signing Keys
+      description: |
+        Authority for protocol-level vault configuration.
+
+        **Actions:** Transfer vault ownership, appoint/change curator,
+        add/remove guardians, set vault name and symbol, set timelocks
+
+        **Signature:** 3 out of 5; 24h timelock
+      inScope: true
+      properties:
+        threshold: 3 of 5
+        storage: cold
+        timelock: 24h
+        actions: Transfer vault ownership, appoint/change curator, add/remove guardians, set vault name/symbol, set timelocks
+    - ID: CURATOR_CONFIG_AUTHORITY_KEYS
+      type: credential
+      title: Curator Config Authority Signing Keys
+      description: |
+        Authority for curator configuration.
+
+        **Actions:** Configure off-ramp destination
+
+        **Signature:** 3 out of 5; 24h timelock
+      inScope: true
+      properties:
+        threshold: 3 of 5
+        storage: cold
+        timelock: 24h
+        actions: Configure off-ramp destination
+    - ID: PROTOCOL_MANAGER_KEYS
+      type: credential
+      title: Protocol Manager Signing Keys
+      description: |
+        Authority for protocol operations. Mixed signature requirements per action.
+
+        **Actions and Signatures:**
+
+        - Set protocol fees: 2 out of 5; 1h timelock
+        - Trigger protocol fee collection: single signature; no timelock
+        - Pause vault: single signature; no timelock (break-glass)
+        - Resume vault: 2 out of ?; timelock ?
+        - Revoke pending time-locked actions: single signature; no timelock (break-glass)
+        - Blacklist user: not specified
+      inScope: true
+      properties:
+        thresholdRange: 1 to 2 of 5 (varies per action)
+        storage: hot/warm
+        timelockRange: 0 to 1h (varies per action)
+        breakGlassActions: Pause vault, Revoke pending time-locked actions
+    - ID: VAULT_MANAGER_KEYS
+      type: credential
+      title: Vault Manager Signing Keys
+      description: |
+        Manages vault operations and co-signs with Curator.
+
+        **Actions and Signatures:**
+
+        - Trigger offramp: single signature; no timelock
+        - Blacklist user: not specified
+        - Pause vault: single signature; no timelock (break-glass)
+        - Resume vault: 2 out of ?; timelock ?
+        - Settle subscription: 2 signatures (Curator + Vault Manager); 1h timelock; automated plausibility check
+        - Settle redemption: 2 signatures; 1h timelock; automated plausibility check
+        - Override settlement blocked by plausibility check: 2 out of 3; 4h timelock
+      inScope: true
+      properties:
+        thresholdRange: 1 to 2 (varies per action; dual-sign with Curator for settlements)
+        storage: hot/warm
+        timelockRange: 0 to 4h (varies per action)
+        breakGlassActions: Pause vault
+        separationOfDuties: Dual-sign with Curator for settlements and overrides
+    - ID: CURATOR_KEYS
+      type: credential
+      title: Curator Signing Keys
+      description: |
+        Manages curator operations and co-signs with Vault Manager.
+
+        **Actions and Signatures:**
+
+        - Set curator fees: 2 out of 5; 1h timelock
+        - Trigger offramp: single signature; no timelock
+        - Trigger curator fee collection: single signature; no timelock
+        - Pause vault: single signature; no timelock (break-glass)
+        - Settle subscription/redemption: 2 signatures (Curator + Vault Manager); 1h timelock; plausibility check
+        - Override settlement blocked by plausibility check: 2 out of 3; 4h timelock
+      inScope: true
+      properties:
+        thresholdRange: 1 to 2 of 5 (varies per action; dual-sign with Vault Manager for settlements)
+        storage: hot/warm
+        timelockRange: 0 to 4h (varies per action)
+        breakGlassActions: Pause vault
+        separationOfDuties: Dual-sign with Vault Manager for settlements, AUM updates, overrides
+    - ID: VAULT_GUARD_KEYS
+      type: credential
+      title: Vault Guard Signing Keys
+      description: |
+        Monitors the vault and responds to suspicious activity.
+        Primarily a reactive/emergency role.
+
+        **Actions and Signatures:**
+
+        - Pause vault: single signature; no timelock (break-glass)
+        - Resume vault: 2 out of ?; timelock ?
+        - Revoke pending time-locked actions: single signature; no timelock (break-glass)
+      inScope: true
+      properties:
+        thresholdRange: 1 to 2 (varies per action)
+        storage: hot/warm
+        breakGlassActions: Pause vault, Revoke pending time-locked actions
+        sla: reactive
+    - ID: FREEZE_AUTHORITY_KEYS
+      type: credential
+      title: Freeze Authority Signing Keys
+      description: |
+        Can freeze token accounts in response to incidents.
+        Action not specified in actions table.
+
+        **Signature:** 1 of N; 4h SLA
+      inScope: true
+      properties:
+        threshold: 1 of N
+        storage: hot
+        timelock: N/A
+        sla: 4h
+    - ID: UNFREEZE_AUTHORITY_KEYS
+      type: credential
+      title: Unfreeze Authority Signing Keys
+      description: |
+        Can unfreeze previously frozen token accounts.
+        Action not specified in actions table.
+
+        **Signature:** 2 of N (N >= 3); 72h SLA
+      inScope: true
+      properties:
+        threshold: 2 of N (N >= 3)
+        storage: cold
+        timelock: N/A
+        sla: 72h
+    - ID: ACL_AUTHORITY_KEYS
+      type: credential
+      title: ACL Authority Signing Key
+      description: |
+        Controls wallet whitelist for vToken transfers.
+        Online accessible key with manual vault unsealing fallback.
+
+        **Actions:** Whitelist users
+
+        **Signature:** 1 of 1; online accessible; manual vault unsealing
+        with 1d SLA (multisign) or automated (role-limited)
+      inScope: true
+      properties:
+        threshold: 1 of 1
+        storage: online
+        timelock: Azure Secret Manager, automatically unsealed
+        sla: 1d (manual unsealing)
+    - ID: RBAC_ADMIN_KEYS
+      type: credential
+      title: RBAC Admin Signing Keys
+      description: |
+        Authority controlling the VaultAuthority PDA's permission table.
+        Can grant or revoke per-instruction permissions for any vault operation.
+
+        **Actions:** set_vault_ix_permission, set_vault_authority_admin,
+        set_rent_destination
+
+        **Signature:** Single signer (expected to be rotated to a multisig
+        or governance PDA)
+      inScope: true
+      properties:
+        threshold: 1 of 1 (default; rotatable via set_vault_authority_admin)
+        storage: hot/warm
+        timelock: N/A
+        actions: Grant/revoke per-instruction permissions, rotate RBAC admin
+    - ID: VAULT_AUTHORITY_PDA_ASSET
+      type: credential
+      title: VaultAuthority PDA (RBAC Permission Table)
+      description: |
+        Zero-copy PDA owned by the RBAC program. Stores per-instruction
+        permission grants (permissions[64] array), the RBAC admin pubkey,
+        and rent-destination address. Acts as the vault's sole `authority`.
+
+        Seeds: [b"vault_authority", vault.key()]
+      inScope: true
+      properties:
+        location: On-chain PDA (RBAC program-owned)
+        format: Zero-copy account (~2KB)
+        permissionSlots: 64 (indexed by vault instruction discriminator)
+  assumptions:
+    - ID: SQUADS_V4_MULTISIG
+      description: |
+        All multisig roles in this model are assumed to be implemented using
+        Squads Protocol v4 (Solana-native multisig).
+
+        **Dual-Threshold System:**
+        Squads v4 distinguishes two threshold types per multisig:
+
+        - **Vault Threshold (Operational):** Governs asset movement, DeFi
+          interactions, and general operational instructions.
+        - **Config Threshold (Governance):** Governs changes to the multisig
+          itself — adding/removing members, changing thresholds, upgrading
+          the program. Typically set higher than the vault threshold.
+
+        **Permissions and Roles:**
+        Squads v4 supports granular per-member permissions:
+
+        - **Proposer:** Can only create proposals.
+        - **Voter:** Can vote on proposals.
+        - **Executor:** Can execute a proposal once the threshold is met.
+        - **Owner:** Holds all of the above permissions.
+
+        This allows configurations where a broad group can propose and vote on
+        operational spending, but only a subset with sufficient Config Threshold
+        consensus can change the membership or governance rules.
+
+        Squads v4 is assumed to execute correctly; bugs in the Squads program
+        itself are out of scope for this model. However, the **configuration and
+        operational use** of Squads (membership management, threshold choices,
+        permission assignments, and access control over governance changes) are
+        in scope.
+analysis: |
+  **Signing Authority Design Overview**
+
+  The Corda Protocol V1 uses a role-based authorization model where different
+  roles have different signature schemes (threshold, timelock, storage) based
+  on the security-versus-availability trade-off for each action.
+
+  **On-Chain RBAC Enforcement Layer:**
+
+  The vault program itself holds a single `authority` field (expected to be
+  the RBAC program's VaultAuthority PDA). The RBAC program
+  (`4nuAcGWtRWa6gTN1kc9jEX5u3HmbbnnZZ9u8wW8FKJPs`) enforces per-instruction
+  access control: each vault instruction discriminator (0–31) maps to a
+  specific allowed signer in the `permissions[64]` table. When a privileged
+  vault operation is requested, the RBAC program verifies
+  `permissions[discriminator] == signer.key()` and then CPIs into the vault
+  using PDA authority seeds. This fail-closed design (all permissions default
+  to zero/uncallable) replaces the former embedded `admin`/`curator` role
+  fields in the vault account.
+
+  The RBAC admin (single key by default, rotatable via
+  `set_vault_authority_admin`) is the governance authority that can assign
+  different signers to different instruction slots. This enables mapping the
+  logical role model (Protocol Manager, Curator, Vault Guard, etc.) to on-chain
+  permissions without modifying the vault program.
+
+  **Security Tiers:**
+
+  - **Tier 1 — High Security / Low Availability:** Vault Upgrade Authority
+    (4/7, cold), Protocol Config Authority (3/5, 24h timelock), Curator Config
+    Authority (3/5, 24h timelock), Unfreeze Authority (2/N, 72h SLA)
+  - **Tier 2 — Mixed:** Protocol Manager, Vault Manager, Curator — per-action
+    signature requirements ranging from single-sig break-glass to 2-of-5 with
+    timelocks
+  - **Tier 3 — High Availability / Lower Security:** Vault Guard (reactive,
+    break-glass), Freeze Authority (1/N, 4h SLA), ACL Authority (1/1, online)
+
+  **Threat Modeling Approach:**
+
+  Cross-cutting threats (key theft, wrong action, collusion, supply chain,
+  etc.) are modeled once by category and reference all applicable role assets.
+  Role-specific threats are added where the attack surface is materially unique
+  (e.g., upgrade disclosure, settlement front-running, break-glass abuse).
+
+  **Separation of Duties:**
+
+  Settlement operations (subscribe, redeem) require dual
+  signatures from both Curator and Vault Manager, providing separation of
+  duties. Override of plausibility-check blocks requires 2-of-3 with 4h
+  timelock.
+
+  **Timelock + Monitoring Pattern:**
+
+  High-impact configuration changes use timelocked signatures combined with
+  external monitoring/alerting and manual circuit breakers (watchtowers). This
+  pattern introduces its own attack surface (watchtower DoS/compromise)
+  addressed in SIGNER_AVAILABILITY_DOS.
+
+  **Multisig Platform — Squads Protocol v4:**
+
+  All multisig roles use Squads v4, which provides a dual-threshold system:
+
+  - **Vault Threshold (Operational):** Controls day-to-day actions (asset
+    transfers, settlements, fee collection). Set per role based on the
+    security tier.
+  - **Config Threshold (Governance):** Controls membership changes, threshold
+    modifications, and program upgrades. Should be set strictly higher than the
+    vault threshold for every multisig to prevent operational-level compromise
+    from escalating to governance takeover.
+
+  Squads v4 also supports per-member permissions (Proposer, Voter, Executor,
+  Owner), enabling fine-grained separation: e.g., operational staff can propose
+  and execute but only Owners can vote on config changes. The correct
+  configuration of these thresholds and permissions is critical — see
+  MULTISIG_MEMBERSHIP_HIJACK.
+threats:
+  - ID: SIGNING_KEY_THEFT
+    title: Signing Key Theft or Compromise
+    attack: |
+      Attacker obtains signing keys for one or more role holders through:
+
+      - Physical theft of hardware wallet devices
+      - PIN compromise via shoulder-surfing, social engineering, or hardware hacking
+      - Seed phrase (24-word backup) exfiltration via phishing or physical theft
+      - Compromise of key storage infrastructure (HSM, vault, encrypted storage)
+      - Malware on signing devices capturing key material
+
+      Risk varies by role storage model:
+
+      - **Highest risk:** ACL Authority (online key, single signer) — single point of failure
+      - **High risk:** Freeze Authority, Vault Guard (hot keys, low threshold)
+      - **Medium risk:** Protocol Manager, Vault Manager, Curator (mixed hot/warm)
+      - **Lower risk:** Vault Upgrade Authority, Protocol Config Authority, Curator Config Authority, Unfreeze Authority (cold storage, high thresholds)
+
+      For multisig roles, stealing a single key is insufficient — attacker must
+      compromise enough keys to meet threshold. For single-sig roles (ACL
+      Authority, Freeze Authority for break-glass), one key theft is sufficient.
+    threatType: Spoofing, Information Disclosure
+    impactDesc: |
+      Attacker can impersonate the role holder and execute any action permitted
+      by that role. Impact severity depends on the role's blast radius:
+
+      - **Vault Upgrade Authority:** Deploy malicious program upgrade (requires 4 keys)
+      - **Protocol Config Authority:** Transfer vault ownership, change curator (requires 3 keys)
+      - **Protocol Manager:** Pause vault (single key), set fees (2 keys)
+      - **Vault Manager / Curator:** Trigger offramp (single key), manipulate settlements (2 keys)
+      - **ACL Authority:** Whitelist unauthorized wallets for vToken transfers (single key)
+      - **Freeze Authority:** Freeze legitimate user accounts (single key)
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+      - REFID: ACL_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-854
+    countermeasures:
+      - ID: COLD_STORAGE
+        title: Cold Storage for High-Value Keys
+        description: |
+          Store signing keys for high-security roles (Vault Upgrade Authority,
+          Protocol Config Authority, Curator Config Authority, Unfreeze
+          Authority) in offline/air-gapped hardware wallets.
+
+          - Keys never touch internet-connected devices
+          - QR code or SD card transfer for transaction signing
+          - Eliminates remote key extraction attack vectors
+        inPlace: true
+        public: true
+        operational: false
+      - ID: HARDWARE_WALLETS
+        title: Hardware Wallet Enforcement
+        description: |
+          All role signing keys must be stored on dedicated hardware wallets
+          (e.g., Ledger, Trezor, Keystone). No software wallets or browser
+          extensions.
+
+          - PIN protection with limited retry attempts
+          - Secure element for key storage
+          - Tamper-evident physical design
+        inPlace: true
+        public: true
+        operational: false
+      - ID: MULTISIG_THRESHOLD
+        title: Multisig Threshold Requirements
+        description: |
+          High-value roles require multiple signers to meet threshold, making
+          single-key theft insufficient:
+
+          - Vault Upgrade Authority: 4 of 7
+          - Protocol Config / Curator Config Authority: 3 of 5
+          - Unfreeze Authority: 2 of N (N >= 3)
+          - Settlement operations: 2 signatures (Curator + Vault Manager)
+
+          Single-key theft only compromises: ACL Authority, Freeze Authority,
+          and break-glass actions (pause, revoke).
+        inPlace: true
+        public: true
+        operational: false
+      - ID: TSS_MPC_OPTIONAL
+        title: Optional TSS/MPC for Online Keys
+        description: |
+          For roles with online keys (ACL Authority), consider Threshold
+          Signature Schemes (TSS) or Multi-Party Computation (MPC) to eliminate
+          single-key existence:
+
+          - Key is sharded across parties; no single complete key ever exists
+          - Hides signer identity and threshold on-chain
+          - Reduces key theft surface for always-online signing
+          - Trade-off: loses on-chain non-repudiation; requires off-chain audit trail
+        inPlace: false
+        public: true
+        operational: false
+  - ID: WRONG_ACTION_SIGNING
+    title: Legitimate Signer Approves Incorrect or Malicious Action
+    attack: |
+      A legitimate signer signs an action that is wrong, malicious, or
+      unintended due to:
+
+      - **Phishing / compromised UI:** Attacker presents a fake transaction or
+        modified UI that misrepresents the action being signed
+      - **Mistake / approval overload:** Signer approves without adequate review
+        due to fatigue, time pressure, or high volume of signing requests
+      - **Opaque signatures:** Signer cannot understand what the transaction
+        actually does (e.g., signing a hash without human-readable context)
+      - **Long-lived multisig flows:** In multi-step multisig signing, the
+        context or intent may drift between the first and last signer (see also
+        STALE_SIGNATURE_CONTEXT)
+
+      Affects all roles. Higher risk for roles with high action frequency
+      (Vault Manager, Curator, Protocol Manager) and for single-signature
+      actions where there is no second signer to catch errors.
+    threatType: Tampering
+    impactDesc: |
+      Incorrect state change executed on-chain with legitimate authorization:
+
+      - Wrong fee parameters set (Protocol Manager, Curator)
+      - Incorrect AUM update affecting NAV calculations (Vault Manager + Curator)
+      - Wrong off-ramp destination configured (Curator Config Authority)
+      - Unauthorized wallet whitelisted (ACL Authority)
+      - Vault paused unnecessarily, disrupting operations (any role with pause)
+      - Wrong guardian appointed or removed (Protocol Config Authority)
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: UPGRADE_AUTHORITY
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+      - REFID: PROTOCOL_MANAGER
+      - REFID: VAULT_GUARD
+      - REFID: VAULT_MANAGER
+      - REFID: CURATOR_CONFIG_AUTHORITY
+      - REFID: CURATOR
+      - REFID: ACL_AUTHORITY
+      - REFID: FREEZE_AUTHORITY
+      - REFID: UNFREEZE_AUTHORITY
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+      - REFID: ACL_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-879
+    countermeasures:
+      - ID: TX_SIMULATION_PREVIEW
+        title: Transaction Simulation and Human-Readable Preview
+        description: |
+          Before signing, display a decoded summary of the action including:
+
+          - Human-readable description of state changes
+          - Simulation of transaction effects (balance changes, account modifications)
+          - Comparison with expected/intended outcome
+          - Clear warning for high-impact actions
+
+          Counters opaque signature attacks and reduces approval mistakes.
+        inPlace: false
+        public: true
+        operational: false
+      - ID: OFFCHAIN_AUDIT_TRAIL
+        title: Off-Chain Audit Trail
+        description: |
+          Log and preserve for all signing operations:
+
+          - Proposal justification and business context
+          - Signer communication and approval rationale
+          - Timestamps and sequence of approvals
+          - Transaction simulation results at time of signing
+
+          Complements on-chain transaction record for forensics,
+          non-repudiation, and post-incident review. Required for TSS/MPC
+          schemes which lack on-chain signer attribution.
+        inPlace: false
+        public: true
+        operational: true
+      - ID: TIMELOCKED_ACTIONS
+        title: Timelocked Actions with Monitoring and Circuit Breaker
+        description: |
+          High-impact actions use timelocked signatures, providing a window for
+          detection and intervention:
+
+          - Protocol Config / Curator Config Authority: 24h timelock
+          - Set fees (Protocol Manager, Curator): 1h timelock
+          - Settlements / AUM updates: 1h timelock with automated plausibility check
+          - Override blocked settlements: 4h timelock
+
+          Combined with:
+
+          - External monitoring/alerting for pending timelocked actions
+          - Watchtower service to detect and alert on suspicious proposals
+          - Manual circuit breaker (revoke pending actions via break-glass)
+          - Redundant/anonymous watchtowers to avoid single point of failure
+          - Dead-man's switch: if watchtower stops heartbeating, system freezes (fail-closed)
+        inPlace: true
+        public: true
+        operational: true
+      - ID: PLAUSIBILITY_CHECKS
+        title: Automated Plausibility Checks for Settlements
+        description: |
+          Automated on-chain validation for settlement operations:
+
+          - Settle subscription, settle redemption require passing
+            plausibility checks before execution
+          - Override of blocked settlements requires escalated threshold
+            (2 of 3) and longer timelock (4h)
+        inPlace: true
+        public: true
+        operational: false
+      - ID: OUT_OF_BAND_TX_VERIFICATION
+        title: Out-of-Band Transaction Verification on Separate Device
+        description: |
+          Before signing, each signer independently verifies the transaction
+          on a separate device (e.g., mobile phone) that is not part of the
+          signing workflow:
+
+          - **Independent TX lookup:** Signer retrieves the transaction ID on a
+            separate device and fetches the decoded transaction from an
+            independent RPC endpoint
+          - **Independent simulation:** Signer runs a transaction simulation on
+            the separate device to verify expected state changes (balance deltas,
+            account modifications, program interactions)
+          - **Cross-check with signing UI:** Compare the decoded transaction and
+            simulation results from the separate device against what the signing
+            UI displays; any discrepancy indicates UI tampering
+          - **Device diversity:** The verification device should be a different
+            type (e.g., mobile vs. desktop) and different OS to reduce the
+            chance that the same supply chain compromise affects both
+
+          This counters compromised signing UIs, phishing overlays, and supply
+          chain attacks on the primary signing tool. Even if the signing device
+          or software is compromised, the separate verification device provides
+          an independent view of the actual transaction content.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer
+  - ID: SIGNER_COLLUSION
+    title: Signer Collusion to Bypass Trust Distribution
+    attack: |
+      Multiple signers within a multisig scheme collude to execute unauthorized
+      actions while legitimately meeting the signature threshold. Collusion
+      scenarios:
+
+      - **Bribery:** External party bribes enough signers to meet threshold
+      - **Shared interests:** Signers have undisclosed common financial interests
+        or corporate control overlap
+      - **Corporate control:** Multiple signer slots controlled by the same
+        legal entity through subsidiaries or nominees
+      - **Gradual corruption:** Signers corrupted one at a time over an
+        extended period
+
+      Applicable to all multisig roles:
+
+      - Vault Upgrade Authority (4 of 7 — high threshold, harder to collude)
+      - Protocol Config / Curator Config Authority (3 of 5)
+      - Protocol Manager (2 of 5 for fee changes — lower threshold, easier)
+      - Curator (2 of 5 for fee changes)
+      - Unfreeze Authority (2 of N)
+      - Vault Manager + Curator dual-sign (collusion between two parties)
+
+      Not applicable to single-signer roles (ACL Authority, Freeze Authority,
+      break-glass).
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      Colluding signers can execute any action within the role's permissions
+      while appearing to follow proper governance procedures:
+
+      - Unauthorized program upgrades (Vault Upgrade Authority)
+      - Unauthorized vault ownership transfer (Protocol Config Authority)
+      - Unauthorized fee manipulation (Protocol Manager, Curator)
+      - Unauthorized settlement manipulation (Vault Manager + Curator)
+      - Unauthorized offramp destination change (Curator Config Authority)
+
+      Collusion is harder to detect than key theft because all signatures
+      are legitimate.
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: UPGRADE_AUTHORITY
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+      - REFID: PROTOCOL_MANAGER
+      - REFID: VAULT_MANAGER
+      - REFID: CURATOR_CONFIG_AUTHORITY
+      - REFID: CURATOR
+      - REFID: UNFREEZE_AUTHORITY
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:N/I:H/A:N
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-878
+    fullyMitigated: false
+    countermeasures:
+      - ID: ANTI_COLLUSION_POLICIES
+        title: Anti-Collusion Policies and Signer Independence
+        description: |
+          Organizational and structural controls to prevent collusion:
+
+          - **Independence requirements:** Signers must be independent parties
+            with no shared ownership, employment, or financial ties
+          - **Conflict-of-interest rules:** Documented CoI policies and attestations
+          - **Geographic/jurisdictional distribution:** Signers across different
+            jurisdictions to prevent local coordination and legal coercion
+          - **Higher thresholds for high-value actions:** Scale threshold with impact
+          - **Randomized signer selection:** Select subset from larger pool per
+            transaction to prevent pre-arranged collusion groups
+          - **Transparency and audit trail:** All signing activity logged and
+            auditable to increase detection risk
+        inPlace: false
+        public: true
+        operational: true
+      - ID: SEPARATION_OF_DUTIES
+        title: Separation of Duties (Dual-Sign Pattern)
+        description: |
+          Settlement operations require signatures from both Curator AND Vault
+          Manager, ensuring no single party can manipulate settlements alone.
+          These are distinct organizational roles with separate key holders.
+
+          - Settle subscription: Curator + Vault Manager
+          - Settle redemption: Curator + Vault Manager
+          - Override blocked: 2 out of 3 (escalated)
+        inPlace: true
+        public: true
+        operational: false
+  - ID: SINGLE_ADMIN_KEY_ALL_ROLES
+    title: Most privileged operations collapse into one admin keypair
+    attack: |
+      **Historical (pre-RBAC):** The on-chain Vault Program previously used a
+      single `admin` keypair stored in the Vault PDA for most administrative
+      operations: pause/resume, whitelist management, vault configuration, fee
+      and offboard destination updates, freeze/thaw, and lifting the emergency
+      stop. All defined privileged roles mapped to this single `admin` signer.
+
+      **Current (post-RBAC):** The vault now uses a single `authority` field
+      which is set to the RBAC program's VaultAuthority PDA. The RBAC program
+      provides per-instruction permission separation via `permissions[64]`.
+      Different vault instruction discriminators can be assigned to different
+      signers, enabling the logical role model to be enforced on-chain.
+
+      The residual risk is that the RBAC admin (a single key by default) can
+      reassign all permissions — see RBAC_ADMIN_PERMISSION_ABUSE.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      **Mitigated by RBAC program.** The per-instruction permission table now
+      enables separation of duties at the on-chain level. Each vault operation
+      can be assigned to a distinct signer, preventing a single key compromise
+      from granting access to all privileged operations simultaneously.
+
+      Residual risk: the RBAC admin key itself becomes the governance
+      bottleneck — addressed separately in RBAC_ADMIN_PERMISSION_ABUSE.
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: AUDITABILITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+      - REFID: CURATOR
+    assets:
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+      - REFID: ACL_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H
+    fullyMitigated: true
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-920
+    countermeasures:
+      - ID: ROLE_BASED_ACCESS_CONTROL
+        title: On-Chain Role-Based Access Control with Separate Keys
+        description: |
+          Implemented via the RBAC program (`4nuAcGWtRWa6gTN1kc9jEX5u3HmbbnnZZ9u8wW8FKJPs`).
+          The vault's single `authority` field points to the RBAC VaultAuthority
+          PDA, which holds a `permissions[64]` table mapping each vault
+          instruction discriminator to a specific allowed signer pubkey.
+
+          The RBAC admin grants permissions via `set_vault_ix_permission`,
+          enabling the logical role model:
+
+          - Protocol Manager → pause/resume/fee discriminators
+          - Vault Manager → settlement/snapshot discriminators
+          - ACL Authority → whitelist/freeze/thaw discriminators
+          - Vault Guard → emergency stop discriminators
+
+          Each instruction's permission is verified independently before the
+          RBAC program CPIs into the vault with its PDA authority. This enables
+          fine-grained key rotation and role revocation without affecting other
+          operations.
+        inPlace: true
+        public: true
+        operational: false
+      - ID: MULTISIG_ADMIN_AUTHORITY
+        title: Implement multisig for RBAC admin operations
+        description: |
+          The RBAC admin key (which can grant/revoke all permissions) should
+          itself be a multisig authority (e.g., Squads) to prevent single-key
+          compromise from reassigning the entire permission table.
+
+          - Require M-of-N signatures for permission changes
+          - Use time-delayed execution for admin rotation
+          - Apply monitoring/alerting on permission table changes
+
+          This limits the impact of any single signer compromise at the
+          governance layer.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+  - ID: RBAC_ADMIN_PERMISSION_ABUSE
+    title: RBAC admin reassigns permissions to gain all vault capabilities
+    attack: |
+      The RBAC program's VaultAuthority PDA has a single `admin` field that
+      controls the entire permission table. If the RBAC admin key is
+      compromised (or if the admin acts maliciously), the attacker can:
+
+      - Call `set_vault_ix_permission` to assign their own pubkey to every
+        vault instruction discriminator (0–31)
+      - Once all permissions point to the attacker, invoke every privileged
+        vault operation via the RBAC proxy instructions
+      - Reassign `rent_destination` to drain excess lamports from the
+        VaultAuthority account
+
+      The RBAC admin key is a single signer by default (rotatable via
+      `set_vault_authority_admin` which requires co-signature from both
+      current and new admin). If it is not itself protected by a multisig,
+      it becomes the single point of governance failure.
+
+      The attack is silent — permission table changes emit no events in the
+      current implementation — and takes effect immediately (no timelock on
+      `set_vault_ix_permission`).
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Complete takeover of all vault privileged operations:
+
+      - Attacker becomes the sole operator for every vault instruction
+      - Can pause/resume, settle investments/redemptions, manipulate
+        whitelist, engage/lift emergency stop, transfer to tokenizer
+      - Can reassign the RBAC admin to lock out legitimate governance
+      - Equivalent to pre-RBAC single-admin-key scenario but at the RBAC
+        governance layer rather than inside the vault program
+
+      Unlike direct vault key theft, this attack persists across all future
+      transactions until the vault's `authority` is rotated away from the
+      compromised VaultAuthority PDA (requires the vault's current authority
+      — i.e., the PDA itself — to co-sign `set_authority`).
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+    assets:
+      - REFID: RBAC_ADMIN_KEYS
+      - REFID: VAULT_AUTHORITY_PDA_ASSET
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H
+    fullyMitigated: false
+    countermeasures:
+      - ID: RBAC_ADMIN_MULTISIG
+        title: Protect RBAC admin with multisig governance
+        description: |
+          The RBAC admin key should be a Squads multisig (or equivalent)
+          with high threshold (e.g., 3 of 5) and governance timelock:
+
+          - Prevents single-key compromise from reassigning permissions
+          - Timelock on `set_vault_ix_permission` calls provides detection
+            window
+          - Config Threshold > Vault Threshold for admin rotation
+
+          Additionally, rotate the RBAC admin to a multisig PDA immediately
+          after initial bootstrap deployment.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Signer Committee
+      - ID: PERMISSION_CHANGE_MONITORING
+        title: On-chain monitoring for permission table changes
+        description: |
+          Deploy real-time monitoring of VaultAuthority account state:
+
+          - Alert on any `set_vault_ix_permission` transaction
+          - Diff current vs. expected permission table after each change
+          - Alert on `set_vault_authority_admin` (admin rotation)
+          - Alert on `set_rent_destination` changes
+          - Integrate with watchtower/circuit-breaker to auto-pause vault
+            on unexpected permission changes
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Team
+      - ID: PERMISSION_CHANGE_TIMELOCK
+        title: Timelock on permission table modifications
+        description: |
+          Wrap `set_vault_ix_permission` and `set_vault_authority_admin`
+          calls behind a timelocked execution mechanism (e.g., Squads
+          time-delay or a custom timelock program):
+
+          - 24h delay before permission changes take effect
+          - Provides window for monitoring to detect and watchtower to
+            revoke malicious proposals
+          - Break-glass revocation path for emergency rollback
+        inPlace: false
+        public: true
+        operational: false
+  - ID: SUPPLY_CHAIN_SIGNING_TOOLS
+    title: Supply Chain Compromise of Signing Infrastructure
+    attack: |
+      Attacker compromises the signing tool supply chain to exfiltrate keys or
+      manipulate signatures:
+
+      - **Hardware wallet tampering:** Modified firmware installed before
+        delivery (intercepted shipment) or via malicious firmware update
+      - **Malicious signing software:** Compromised SDKs, libraries, or CLI
+        tools used in the signing workflow
+      - **Dependency attacks:** Malicious packages injected into the dependency
+        tree of custom signing tools (npm, cargo supply chain attacks)
+
+      Affects all roles using hardware wallets or custom signing software. ACL
+      Authority additionally exposed through SDK/integration dependencies.
+    threatType: Tampering, Information Disclosure
+    impactDesc: |
+      Compromised signing tools can:
+
+      - Exfiltrate private keys to attacker-controlled infrastructure
+      - Display one transaction to signer while signing a different one
+      - Modify transaction content after signer approval
+      - Leak transaction details (timing, amounts, addresses) before broadcast
+
+      These attacks are particularly dangerous because they bypass all
+      threshold and timelock controls — the compromised tool produces what
+      appears to be a legitimate signature.
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+      - REFID: ACL_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-855
+    fullyMitigated: false
+    countermeasures:
+      - ID: SUPPLY_CHAIN_CONTROLS
+        title: Hardware and Software Supply Chain Controls
+        description: |
+          Comprehensive supply chain hardening:
+
+          - **Hardware procurement:** Buy directly from manufacturer; verify
+            tamper-evident packaging; document process (photos, attestation)
+          - **Firmware verification:** Verify firmware signatures on boot and
+            after updates
+          - **Multi-vendor diversity:** Use multiple hardware wallet vendors
+            across the multisig (e.g., Ledger + Trezor + Keystone) so a single
+            vendor compromise does not reach threshold
+          - **Device type diversity:** Require signers within the same multisig
+            to use different device types (e.g., hardware wallet, mobile, air-
+            gapped laptop) in addition to different vendors. A single supply
+            chain compromise of one device type (e.g., a compromised mobile OS
+            update) cannot reach threshold if other signers use different device
+            types
+          - **Dependency auditing:** Pin and audit dependencies in custom
+            signing tools (cargo audit, npm audit)
+          - **Open-source preference:** Prefer open-source firmware wallets for
+            auditability
+          - **Air-gapped signing:** Use QR code or SD card transfer to
+            eliminate remote firmware attack vectors
+        inPlace: false
+        public: true
+        operational: true
+  - ID: KEY_ROTATION_REVOCATION_FAILURE
+    title: Key Rotation and Revocation Failures
+    attack: |
+      Stale or compromised keys remain valid in the multisig set due to
+      operational failures:
+
+      - **Departed signers retain keys:** Personnel changes not reflected in
+        on-chain multisig membership
+      - **No emergency revocation process:** Suspected key compromise cannot be
+        addressed quickly
+      - **Stale keys weaken trust model:** Over time, the effective trust
+        distribution degrades as signers change roles or leave the organization
+      - **Rotation ceremony failures:** Key rotation procedures not documented,
+        not rehearsed, or botched during execution
+
+      Affects all multisig roles. Single-signer roles (ACL Authority, Freeze
+      Authority) require full key replacement rather than member rotation.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      Former signers or holders of compromised keys can:
+
+      - Participate in threshold signing without authorization
+      - Reduce effective threshold (departed signers' keys + fewer corrupted active signers)
+      - Block emergency response if key replacement procedures fail
+      - Accumulate stale keys over time, creating growing attack surface
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+      - REFID: ACL_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-881
+    countermeasures:
+      - ID: KEY_ROTATION_PLAYBOOKS
+        title: Key Rotation and Emergency Revocation Playbooks
+        description: |
+          Documented and rehearsed operational procedures:
+
+          - **Signer succession playbook:** Onboarding/offboarding procedures
+            including key generation ceremony, multisig membership update, and
+            old key destruction
+          - **Periodic rotation:** Key rotation policy (e.g., annually) even
+            without a triggering event
+          - **Emergency revocation:** Pre-agreed fast-track process to remove a
+            signer upon suspected compromise (within hours, not days)
+          - **Membership audits:** Regular review of active signers vs.
+            authorized personnel (quarterly minimum)
+          - **Automated monitoring:** Alerts on on-chain multisig membership
+            changes
+        inPlace: false
+        public: true
+        operational: true
+  - ID: MULTISIG_MEMBERSHIP_HIJACK
+    title: Unauthorized Multisig Membership Change
+    attack: |
+      Squads v4 provides a dual-threshold system: a **Vault Threshold** for
+      operational actions and a **Config Threshold** for governance changes
+      (membership, threshold modification). An attacker who controls enough
+      members to meet the Config Threshold (via key theft, collusion, or
+      coercion) can:
+
+      - **Add attacker-controlled keys** to the multisig, diluting legitimate
+        members and eventually reaching a majority
+      - **Remove legitimate members** to reduce the pool, making future
+        threshold easier to meet
+      - **Lower either threshold** to make the multisig easier to compromise
+        in subsequent actions
+      - **Chain membership changes:** Incrementally modify the multisig over
+        multiple proposals — each change individually appears minor but
+        collectively transfers control
+      - **Abuse permissions:** If Proposer/Voter/Executor/Owner permissions
+        are not configured correctly, an attacker with Owner permissions on
+        fewer accounts than expected could still push through config changes
+
+      This is distinct from KEY_ROTATION_REVOCATION_FAILURE (operational
+      failures) — this threat targets the **governance authority over the
+      multisig itself** as an escalation path.
+
+      The attack is especially dangerous when:
+
+      - Config Threshold is set equal to or close to Vault Threshold,
+        negating the dual-threshold protection
+      - All members have Owner permissions (no permission separation), so
+        meeting the operational threshold also meets the governance threshold
+      - Timelocks are not applied to config-threshold actions, allowing rapid
+        sequential membership changes
+    threatType: Elevation of Privilege, Tampering
+    impactDesc: |
+      Attacker gains permanent control of a multisig authority by reshaping its
+      membership:
+
+      - Replace legitimate signers with attacker-controlled keys
+      - Lower threshold to single-signer, eliminating all multisig protections
+      - Once membership is captured, attacker can execute any action the role
+        permits — including further membership changes across other multisigs
+        if roles overlap
+      - Recovery requires out-of-band intervention (e.g., program upgrade to
+        replace the authority) since the legitimate members have been removed
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: UPGRADE_AUTHORITY
+      - REFID: PROTOCOL_CONFIG_AUTHORITY
+      - REFID: PROTOCOL_MANAGER
+      - REFID: VAULT_MANAGER
+      - REFID: CURATOR_CONFIG_AUTHORITY
+      - REFID: CURATOR
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:N/I:H/A:H
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-862
+    countermeasures:
+      - ID: ELEVATED_THRESHOLD_MEMBERSHIP
+        title: Elevated Config Threshold for Membership Changes
+        description: |
+          Squads v4 natively supports a **Config Threshold** separate from the
+          Vault Threshold. For every multisig role, the Config Threshold must
+          be set strictly higher than the Vault Threshold. For example:
+
+          - Vault Threshold (operational): 2 of 5
+          - Config Threshold (governance): 4 of 5 or unanimous
+
+          Additionally, use Squads v4 permissions to restrict which members
+          hold Owner-level access (required for config changes). Operational
+          members should be assigned Proposer/Voter/Executor only, ensuring
+          they cannot participate in governance votes even if colluding.
+
+          **Verification checklist:**
+
+          - Config Threshold > Vault Threshold for every multisig
+          - Owner permission granted only to governance-designated members
+          - Operational-only members have Proposer + Voter + Executor (not Owner)
+          - Periodic audit of permission assignments
+        inPlace: false
+        public: true
+        operational: false
+        operator: Signer Committee
+      - ID: TIMELOCK_MEMBERSHIP_CHANGES
+        title: Timelock on Membership Change Proposals
+        description: |
+          Apply a mandatory timelock (e.g., 48–72h) to all membership change
+          proposals across all multisigs, regardless of the multisig's
+          operational timelock settings. This provides:
+
+          - Detection window for watchtowers and monitoring
+          - Time for legitimate members to revoke malicious proposals
+          - Prevention of rapid sequential membership changes
+        inPlace: false
+        public: true
+        operational: false
+      - ID: MEMBERSHIP_CHANGE_MONITORING
+        title: On-Chain Monitoring for Membership Changes
+        description: |
+          Dedicated monitoring and alerting for all multisig membership
+          modification events:
+
+          - Alert on any add-member, remove-member, or threshold-change
+            proposal across all role multisigs
+          - Immediate notification to all current members and security team
+          - Comparison against approved membership roster
+          - Automated flag if membership change was not preceded by an
+            approved governance process
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security Team
+  - ID: STALE_SIGNATURE_CONTEXT
+    title: Stale Signature Context in Multi-Step Signing
+    attack: |
+      In multisig signing flows, on-chain state changes between the first and
+      last signature, causing the earlier signers to have authorized a different
+      effective outcome than what ultimately executes:
+
+      - Vault balance changes during signature collection
+      - NAV/AUM updates between signing rounds
+      - Fee parameter changes during concurrent proposals
+      - Guardian or curator changes during long-lived signing flows
+      - 24h timelock windows (Protocol Config, Curator Config) create large
+        drift windows
+
+      Durable nonces used for offline signing extend the window further. Higher
+      risk for roles with long timelocks (24h) and high thresholds (4/7, 3/5).
+    threatType: Tampering
+    impactDesc: |
+      The transaction that executes is materially different from what earlier
+      signers intended to authorize:
+
+      - Settlements computed against stale NAV values
+      - Fee changes applied in a different market context
+      - Configuration changes applied to a vault that has since changed state
+      - Earlier signers bear responsibility for an outcome they did not review
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-876
+    countermeasures:
+      - ID: STALE_CONTEXT_GUARDS
+        title: Stale-Context Guards
+        description: |
+          On-chain and procedural protections against context drift:
+
+          - **Atomic proposal snapshots:** Include a hash of relevant state at
+            proposal time in the signed payload; contract verifies at execution
+          - **State guards:** Range checks in the smart contract (e.g., vault
+            balance >= X, price within range Y); execution fails if state
+            drifted beyond bounds
+          - **Two-phase signing:** Collect approvals against a state snapshot,
+            then validate state has not materially changed before execution
+          - **Signature expiry:** Time-bound signatures to limit drift window
+          - **Monitoring during collection:** Alert on relevant state changes
+            during active signature collection
+        inPlace: false
+        public: true
+        operational: false
+  - ID: SIGNER_AVAILABILITY_DOS
+    title: Denial of Service Against Signers or Monitoring Infrastructure
+    attack: |
+      Attacker targets the availability of signing authorities or their
+      supporting infrastructure to:
+
+      - **Block threshold:** DoS enough signers to prevent multisig threshold
+        from being reached, blocking time-sensitive actions
+      - **Force fallback:** Push system to weaker fallback signing paths
+      - **Disable monitoring:** DoS watchtower/circuit breaker services to
+        prevent detection of malicious timelocked actions
+      - **Block emergency response:** Target Vault Guard or Freeze Authority
+        signers to prevent break-glass actions during an active attack
+
+      Attack methods:
+
+      - Network-level DoS against signer infrastructure
+      - Social engineering to make signers unavailable
+      - Physical disruption if signer locations are known
+      - DoS against watchtower services (single point of failure if not
+        redundant)
+
+      Highest impact on reactive roles (Vault Guard, Freeze Authority) where
+      unavailability directly translates to inability to respond to incidents.
+    threatType: Denial of Service
+    impactDesc: |
+      Signers or monitoring infrastructure become unavailable:
+
+      - Time-sensitive actions cannot be executed (freeze, pause, revoke)
+      - Timelocked malicious actions execute without detection or intervention
+      - Emergency response is blocked during active attacks
+      - Vault remains in degraded state (frozen, paused) longer than necessary
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+      - REFID: UNFREEZE_AUTHORITY_KEYS
+      - REFID: ACL_AUTHORITY_KEYS
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-863
+    countermeasures:
+      - ID: ANTI_DOS_SIGNER_MEASURES
+        title: Anti-DoS Measures for Signers and Infrastructure
+        description: |
+          Availability hardening for signing operations:
+
+          - **Large signer pool with redundancy:** N significantly larger than
+            threshold M, so losing some signers does not block operations
+          - **Private signer identities:** No public disclosure of who holds
+            signing keys to prevent targeted attacks
+          - **Geographic and infrastructure diversity:** Signers distributed
+            across regions, ISPs, and hosting providers
+          - **Redundant watchtowers:** Multiple independent monitoring services
+            to eliminate single point of failure
+          - **Anonymous watchtowers:** Watchtower operators not publicly
+            identified
+          - **Dead-man's switch:** If watchtower stops heartbeating, system
+            freezes automatically (fail-closed design)
+        inPlace: false
+        public: true
+        operational: true
+  - ID: SIGNER_DURESS
+    title: Signer Under Duress (Coercion or Blackmail)
+    attack: |
+      Attacker coerces a legitimate signer into performing an unauthorized
+      action through:
+
+      - **Physical threats / violence:** Signer or family threatened
+      - **Blackmail:** Leveraging compromising information
+      - **Legal/regulatory pressure:** Jurisdictional coercion
+
+      Attack is facilitated by disclosure of signer identity through:
+
+      - Hardware wallet delivery records (shipping address links to signer)
+      - Company data (employment records, org charts)
+      - Self-disclosure (social media, conferences)
+      - On-chain analysis (address patterns linking to known entities)
+
+      Higher risk for roles where signer identity is more visible:
+
+      - Curator, Vault Manager (business-facing roles)
+      - Protocol Config Authority (governance-visible)
+      - Lower risk for anonymous signers (Vault Guard, Freeze Authority)
+    threatType: Tampering
+    impactDesc: |
+      Signer performs unauthorized action under duress, providing legitimate
+      signature for malicious intent. Unlike key theft, the duress scenario may
+      not be detectable from on-chain data alone since the signature is
+      technically valid and from the expected signer.
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: PROTOCOL_CONFIG_AUTHORITY_KEYS
+      - REFID: CURATOR_CONFIG_AUTHORITY_KEYS
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: FREEZE_AUTHORITY_KEYS
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-895
+    CVSS:
+      vector: CVSS:3.1/AV:P/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N
+    fullyMitigated: false
+    countermeasures:
+      - ID: DECOYS
+        title: Decoy Wallets and Duress Codes
+        description: |
+          Limit the damage from duress-induced signatures:
+
+          - Decoy wallets with limited funds that can be surrendered under
+            duress
+          - Duress codes/signals that alert monitoring without attacker's
+            knowledge
+          - Designed to limit loss while appearing to comply
+        inPlace: false
+        public: false
+        operational: true
+
+      - ID: SIGNER_ANONYMITY
+        title: Signer Identity Protection
+        description: |
+          Reduce duress risk by minimizing signer identity exposure:
+
+          - No public disclosure of signer identities
+          - Secure hardware procurement channels (avoid linking delivery to
+            signers)
+          - Separation between business-facing roles and signing roles where
+            possible
+          - TSS/MPC hides on-chain signer participation
+        inPlace: false
+        public: false
+        operational: true
+
+      - ID: LOWER_ATTACK_INCENTIVES
+        title: Reduce Incentives for Coercion
+        description: |
+          Make coercion less attractive to attackers:
+
+          - Do not allow simple wallet transfers. E.g: the smart contract only allows for redemptions against VTokens to the same USDC ATA.
+          - Use anonymous signers for sensitive roles (Vault Guard, Freeze
+            Authority)
+        inPlace: true
+        public: true
+      - REFID: MULTISIG_ADMIN_AUTHORITY
+      - ID: PUBLICIZE_LOW_INCENTIVES
+        title: Publicize secure model
+        description: |
+          Communicate publicly that the protocol's design minimises the benefit
+          of coercing a signer, reducing attacker motivation before an attack
+          is attempted:
+
+          - Publish documentation explaining that redemptions are only possible
+            to the investor's own registered USDC ATA — a coerced signer cannot
+            redirect funds to an attacker-controlled account
+          - Disclose that multi-sig thresholds and cold-storage requirements
+            mean no single compromised signer can authorise a transaction
+          - Include these guarantees in auditor reports and public-facing
+            security documentation so the constraints are credibly verifiable
+        inPlace: false
+        public: true
+        operational: true
+        operator: Security & Communications Team
+
+  - ID: UPGRADE_VULNERABILITY_DISCLOSURE
+    title: Vulnerability Disclosure via Program Upgrade Process
+    attack: |
+      When upgrading a Solana program to fix a security vulnerability, the
+      upgrade process itself can disclose the vulnerability before the fix is
+      live:
+
+      - **PDA buffer visibility:** The new program binary is written to a PDA
+        buffer account before the upgrade instruction executes. Anyone can read
+        this buffer and diff it against the current program to identify the
+        vulnerability.
+      - **4-of-7 cold storage signing delay:** Collecting signatures from 7
+        cold storage signers takes time, extending the disclosure window.
+      - **On-chain visibility:** All Solana transactions are publicly visible,
+        making it impossible to hide the upgrade preparation.
+
+      This creates a race condition: the vulnerability is effectively disclosed
+      to sophisticated observers before the fix is deployed.
+    threatType: Information Disclosure
+    impactDesc: |
+      Attacker identifies and exploits the vulnerability in the window between
+      upgrade preparation (buffer write) and upgrade execution:
+
+      - Vulnerability details derivable from program binary diff
+      - Exploitation possible before fix is deployed
+      - Especially dangerous for critical vulnerabilities affecting user funds
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: PROGRAM_INTEGRITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: VAULT_UPGRADE_AUTHORITY_KEYS
+      - REFID: VAULT_PROGRAM
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H
+    fullyMitigated: true
+    countermeasures:
+      - ID: COMMIT_HASH_REVEAL_UPGRADE
+        title: Commit-Hash and Atomic Reveal Upgrade Strategy (Security Fix)
+        description: |
+          For security-critical upgrades, use a two-phase commit-reveal
+          pattern:
+
+          - **Phase 1 (Commit):** Publish only a hash of the new program binary
+            to the buffer; collect all threshold signatures against this hash
+          - **Phase 2 (Reveal + Execute):** Once threshold is met, write the
+            actual binary and execute the upgrade atomically
+
+          This eliminates the disclosure window since the binary is not readable
+          until the upgrade is ready to execute.
+        inPlace: false
+        public: true
+        operational: false
+      - ID: PDA_BUFFER_BUG_BOUNTY
+        title: PDA Buffer as Bug Bounty Incentive (Non-Security Fix)
+        description: |
+          For non-security upgrades, the PDA buffer visibility can serve as a
+          natural "bug bounty" mechanism:
+
+          - Researchers can review the new binary before it goes live
+          - Incentivizes responsible disclosure over exploitation
+          - Only appropriate for non-security upgrades where disclosure is
+            acceptable
+        inPlace: false
+        public: true
+        operational: true
+      - ID: HALT_VAULT_UNTIL_SECURITY_UPGRADE
+        title: Halt Vault Operations Until Security Upgrade Completes
+        description: |
+          For critical security upgrades, consider halting all vault operations
+          until the upgrade is fully executed:
+
+          - Use break-glass authority to pause vault before starting upgrade
+          - Only resume operations after upgrade completes successfully
+          - This prevents exploitation of the vulnerability during the upgrade window
+        inPlace: true
+        public: true
+        operational: true
+        operator: Vault Guard
+  - ID: SETTLEMENT_FRONT_RUNNING
+    title: Front-Running via Signature or Timelock Information Disclosure
+    attack: |
+      Timelocked signatures and pending transactions disclose
+      market-sensitive information that can be front-run:
+
+      - **Fee changes:** Pending protocol or curator fee adjustments visible
+        on-chain during timelock period, allowing users to time investments or
+        redemptions
+      - **AUM updates:** Pending NAV/AUM updates reveal asset performance
+        before settlement, enabling informed trading of vTokens
+      - **Settlement timing:** Timelock expiry times reveal when settlements
+        will execute, enabling market positioning
+
+      Front-running vectors:
+
+      - Reading pending timelocked transactions on-chain
+      - Monitoring transaction mempool for signing activity
+      - Using RPC broadcasted transactions (visible to RPC providers)
+    threatType: Information Disclosure
+    impactDesc: |
+      Market participants gain unfair informational advantage:
+
+      - Front-run fee increases by investing before new fees take effect
+      - Trade vTokens based on unreleased NAV information
+      - Position ahead of known settlement amounts
+      - Systematically extract value from information asymmetry
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: MALICIOUS_USER
+    assets:
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-864
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N
+    fullyMitigated: false
+    countermeasures:
+      - ID: FRONT_RUNNING_MITIGATIONS
+        title: Front-Running Mitigations
+        description: |
+          Reduce information leakage and front-running opportunities:
+
+          - **TPU/Jito bundles:** Submit transactions directly to validators
+            via TPU or use Jito bundles (not public RPC) to prevent mempool
+            observation
+          - **Commit-hash and reveal:** For fee changes and AUM updates, commit
+            only a hash during timelock period; reveal actual values atomically
+            at execution
+          - **Batch processing:** Batch settlements to reduce individual
+            transaction observability
+        inPlace: false
+        public: true
+        operational: false
+  - ID: BREAK_GLASS_ABUSE
+    title: Abuse of Single-Signature Break-Glass Emergency Actions
+    attack: |
+      Several roles have single-signature, no-timelock "break-glass" actions
+      designed for emergency response:
+
+      - **Protocol Manager:** Pause vault (single sig), Revoke pending actions (single sig)
+      - **Vault Guard:** Pause vault (single sig), Revoke pending actions (single sig)
+      - **Vault Manager:** Pause vault (single sig)
+      - **Curator:** Pause vault (single sig)
+
+      These actions intentionally bypass multisig and timelock protections for
+      speed. However, this creates a lower-security path that can be abused:
+
+      - Compromised single key can pause the entire vault (DoS)
+      - Malicious insider can revoke legitimate pending actions
+      - Break-glass actions used to create confusion during a coordinated attack
+      - Rogue signer pauses vault to extort or disrupt operations
+
+      The resume vault action requires higher threshold (2 of ?) with timelock,
+      making recovery from malicious pause slower than the attack.
+    threatType: Denial of Service, Elevation of Privilege
+    impactDesc: |
+      Unauthorized use of break-glass actions:
+
+      - Vault paused, blocking all investment and redemption operations
+      - Legitimate timelocked actions revoked, forcing re-initiation
+      - Asymmetric impact: pause is instant (single sig) but resume requires
+        multisig + timelock, creating extended downtime
+      - Repeated pause attacks can degrade user confidence
+    impactedSecObj:
+      - REFID: AVAILABILITY
+      - REFID: USER_FUNDS_SAFETY
+    attackers:
+      - REFID: PROTOCOL_MANAGER
+      - REFID: VAULT_GUARD
+      - REFID: VAULT_MANAGER
+      - REFID: CURATOR
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: PROTOCOL_MANAGER_KEYS
+      - REFID: VAULT_GUARD_KEYS
+      - REFID: VAULT_MANAGER_KEYS
+      - REFID: CURATOR_KEYS
+    ticketLink: https://r3-cev.atlassian.net/browse/PROT-856
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:N/I:H/A:H
+    fullyMitigated: false
+    countermeasures:
+      - ID: REDUCE_BLAST_RADIUS
+        title: Reduce Break-Glass Blast Radius
+        description: |
+          Limit the impact of break-glass actions:
+
+          - **Circuit breaker design:** Pause affects limited scope rather than
+            entire vault operations
+          - **Rate limiting:** Prevent repeated pause/unpause cycling
+          - **Cooldown periods:** After break-glass use, require elevated
+            threshold for subsequent break-glass actions
+          - **Automatic escalation:** Break-glass use triggers immediate
+            multi-party review
+        inPlace: false
+        public: true
+        operational: false
+      - ID: BREAK_GLASS_MONITORING
+        title: Break-Glass Event Monitoring and Audit
+        description: |
+          Enhanced monitoring for break-glass actions:
+
+          - Immediate alerting to all stakeholders on any break-glass use
+          - Mandatory post-incident review and documentation
+          - Off-chain audit trail capturing justification and context
+          - Pattern detection for suspicious break-glass usage
+        inPlace: false
+        public: true
+        operational: true

@@ -1,0 +1,39 @@
+digraph "Clustered Web Services" {
+	graph [bb="0,0,176.5,340.55",
+		fontcolor="#2D3436",
+		fontname="Sans-Serif",
+		fontsize=15,
+		label="Clustered Web Services",
+		lheight=0.22,
+		lp="88.25,11.875",
+		lwidth=2.23,
+		nodesep=0.60,
+		pad=2.0,
+		rankdir=LR,
+		ranksep=0.75,
+		splines=ortho
+	];
+	node [fixedsize=true,
+		fontcolor="#2D3436",
+		fontname="Sans-Serif",
+		fontsize=13,
+		height=1.4,
+		imagescale=true,
+		label="\N",
+		labelloc=b,
+		shape=box,
+		style=rounded,
+		width=1.4
+	];
+	edge [color="#7B8894"];
+	be3a7dd1c8f74bbc94232e9dc357665b	[height=1.9,
+		image="/Users/david.cervigni/workspace/Corda5ThreatModels/.venv/lib/python3.9/site-packages/resources/aws/network/route-53.png",
+		label=dns,
+		pos="88.25,92.15",
+		shape=none];
+	b5f1a1fd3052424f87f408035dd71b25	[height=1.9,
+		image="/Users/david.cervigni/workspace/Corda5ThreatModels/.venv/lib/python3.9/site-packages/resources/aws/network/elastic-load-balancing.png",
+		label=lb,
+		pos="88.25,272.15",
+		shape=none];
+}

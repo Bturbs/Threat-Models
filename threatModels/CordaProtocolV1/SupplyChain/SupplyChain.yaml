@@ -1,0 +1,1350 @@
+ID: SupplyChain
+schemaVersion: 2
+title: Supply Chain
+parent: CordaProtocolV1
+
+authors: |
+  Security Research team at R3
+
+scope:
+  description: |
+    Threat model for the software supply chain of the Corda Protocol V1 system,
+    covering the delivery pipeline, dependency management, and developer environment.
+
+    **In Scope — "What we are building":**
+
+    - **Delivery pipeline configuration**: Jenkinsfiles, GitHub Actions workflows,
+      build scripts, Dockerfiles — all authored and maintained by the team
+    - **Dependency selection and management**: npm, Cargo, and Gradle dependency
+      declarations, lockfiles, registry configuration
+    - **Build artifact production**: Docker images (vault UI, Kotlin indexer,
+      monitoring services), Gradle libraries (corda-solana-toolkit, solana-notary)
+    - **Developer environment security**: workstation hardening, code signing,
+      branch protection configuration
+    - **CI/CD credential management**: how secrets are stored, rotated, and scoped
+      within Jenkins pipelines
+
+    **Out of Scope:**
+
+    - Solana program deployment lifecycle (covered in SolanaProgramsLifecycle child model)
+    - GitHub, Jenkins, npm, crates.io, Maven Central platform internals (we use, not build)
+    - R3 Artifactory and Azure Container Registry platform security (managed infrastructure)
+
+    **Pipeline Topology:**
+
+    - **corda-protocol-mvp**: Anchor/npm → Jenkins (K8s: AMD64_LINUX_RUST_SOLANA) → Solana programs
+    - **solana-token-vault-program**: Node.js/Docker → Jenkins (K8s: AMD64_LINUX_NODEJS) → Azure Container Registry → Azure Container Apps
+    - **corda-solana-toolkit**: Kotlin/Gradle → Jenkins (K8s: AMD64_LINUX_JAVA17_CORDA4) → R3 Artifactory (with Snyk nightly)
+    - **solana-notary**: Kotlin/Gradle/Rust → Jenkins (K8s: AMD64_LINUX_JAVA17_CORDA4) → R3 Artifactory
+    - **threat-model-tool**: TypeScript/npm → GitHub Actions → GitHub Releases/Pages
+
+    **Package Registries:**
+
+    - R3 Artifactory (software.r3.com/artifactory) — Gradle artifacts
+    - Azure Container Registry (precommitregistry.azurecr.io) — Docker images
+    - npm public registry — consumed, not published (TBC)
+    - crates.io — consumed
+
+  assets:
+    - ID: GITHUB_REPOS
+      type: system
+      title: GitHub Source Repositories
+      description: |
+        Source code repositories hosting all system components (5 repos).
+        Branch protection enforces PR reviews but does not require signed commits
+        or CODEOWNERS review.
+      inScope: true
+
+    - ID: JENKINS_PIPELINE
+      type: system
+      title: Jenkins CI/CD Pipeline
+      description: |
+        R3 internal Jenkins instance using corda-shared-build-pipeline-steps@5.3.
+        Kubernetes-based ephemeral build agents. Manually triggered builds.
+        Jenkinsfiles live in source repositories alongside application code.
+      inScope: true
+
+    - ID: ARTIFACTORY_REGISTRY
+      type: system
+      title: R3 Artifactory Package Registry
+      description: |
+        Internal artifact repository at software.r3.com/artifactory hosting
+        Gradle artifacts (corda-lib, corda-dependencies, corda-releases, corda-dev).
+      inScope: false
+
+    - ID: AZURE_CONTAINER_REGISTRY
+      type: system
+      title: Azure Container Registry
+      description: |
+        Container image registry at precommitregistry.azurecr.io used by
+        solana-token-vault-program for Docker images deployed to Azure Container Apps.
+      inScope: false
+
+    - ID: NPM_DEPENDENCIES
+      type: data
+      title: npm Dependencies (Consumed)
+      description: |
+        Node.js/TypeScript packages consumed from the public npm registry.
+        Lock files (package-lock.json) present in most projects.
+        Currently not published to npm (TBC).
+      inScope: true
+
+    - ID: CARGO_DEPENDENCIES
+      type: data
+      title: Cargo/Rust Dependencies (Consumed)
+      description: |
+        Rust crates consumed from crates.io for Anchor/Solana programs.
+        Cargo.lock files committed in all Rust projects.
+      inScope: true
+
+    - ID: GRADLE_DEPENDENCIES
+      type: data
+      title: Gradle Dependencies
+      description: |
+        Kotlin/Java dependencies consumed from R3 Artifactory and Maven Central.
+        No Gradle dependency verification (verification-metadata.xml) in place.
+        No lockfile enforcement.
+      inScope: true
+
+    - ID: DOCKER_BASE_IMAGES
+      type: data
+      title: Docker Base Images
+      description: |
+        Base images used in Dockerfiles (e.g., node:20).
+        Currently referenced by tag only, not pinned by SHA256 digest.
+        6 Dockerfiles across solana-token-vault-program.
+      inScope: true
+
+    - ID: BUILD_ARTIFACTS
+      type: data
+      title: Build Artifacts
+      description: |
+        Output of CI/CD builds: Docker images, Gradle JARs, compiled Solana programs.
+        No artifact signing, provenance attestation, or SBOM generation in place.
+      inScope: true
+
+    - ID: JENKINS_CREDENTIALS
+      type: credential
+      title: Jenkins Credentials
+      description: |
+        Credentials used by Jenkins pipelines: Artifactory tokens, Azure service
+        principal, GitHub tokens. Some credentials hard-coded in Jenkinsfile.deploy
+        (Web3Auth client ID, Azure SP client ID and tenant ID).
+      inScope: true
+
+    - ID: DEVELOPER_WORKSTATION
+      type: system
+      title: Developer Workstation
+      description: |
+        Developer machines used for code authoring, PR review, build triggering,
+        and transaction signing. Target for social engineering and malware.
+      inScope: true
+
+    - ID: DF_DEV_TO_GITHUB
+      type: dataflow
+      title: Developer to GitHub (Code Push)
+      description: |
+        Git operations from developer workstations to GitHub repositories.
+        SSH/HTTPS authenticated. No signed commit requirement enforced.
+      inScope: true
+
+    - ID: DF_GITHUB_TO_JENKINS
+      type: dataflow
+      title: GitHub to Jenkins (Build Trigger)
+      description: |
+        Webhook-triggered or manually-triggered builds from GitHub to Jenkins.
+        Jenkinsfile in the source repository defines build steps.
+      inScope: true
+
+    - ID: DF_JENKINS_TO_REGISTRIES
+      type: dataflow
+      title: Jenkins to Artifact Registries (Publish)
+      description: |
+        Build artifacts pushed from Jenkins to R3 Artifactory (Gradle),
+        Azure Container Registry (Docker images), or GitHub Releases.
+      inScope: true
+
+  assumptions:
+    - ID: JENKINS_PLATFORM_SECURE
+      description: |
+        The Jenkins platform itself (master node, K8s cluster, plugin updates)
+        is managed and secured by the R3 infrastructure team.
+        We are responsible for pipeline configuration, not Jenkins platform security.
+
+    - ID: GITHUB_PLATFORM_SECURE
+      description: |
+        GitHub.com platform security (authentication infrastructure, API security,
+        repository storage) is managed by GitHub and considered trustworthy.
+        We are responsible for our configuration of branch protection, access controls,
+        and repository settings.
+
+    - ID: REGISTRY_PLATFORMS_SECURE
+      description: |
+        R3 Artifactory and Azure Container Registry platform security is managed
+        by respective infrastructure teams. We are responsible for credentials,
+        access policies, and artifact integrity verification.
+
+  attackers:
+    - ID: DEVELOPER
+      description: |
+        Compromised developer — either a malicious insider with legitimate repository
+        access or an external attacker who has compromised a developer's credentials
+        (GitHub account, SSH keys, workstation access). Can push code, review/approve
+        PRs, trigger Jenkins builds, and potentially access CI/CD credentials.
+      inScope: true
+
+analysis: |
+  The software supply chain represents a critical attack surface that spans the entire
+  path from developer workstation to deployed artifact. This threat model covers the
+  pipeline from GitHub source repositories through Jenkins CI/CD to artifact registries
+  (R3 Artifactory, Azure Container Registry).
+
+  **Key findings from pipeline analysis:**
+
+  - Snyk dependency scanning is deployed on only 1 of 5 repositories (corda-solana-toolkit)
+  - No SBOM generation, artifact signing, or build provenance attestation anywhere
+  - npm audit is explicitly disabled in corda-protocol-mvp (`--no-audit`)
+  - Dockerfiles use `npm install` (non-deterministic) instead of `npm ci`
+  - Dockerfile base images are referenced by tag, not pinned by digest
+  - Secrets are hard-coded in Jenkinsfile.deploy (Web3Auth client ID, Azure SP credentials)
+  - No Gradle dependency verification (verification-metadata.xml) for Kotlin projects
+  - Branch protection requires reviews but not signed commits
+  - No separated production CI/CD pipeline (all builds are dev/staging)
+  - Deterministic/reproducible builds are a critical requirement but not yet achieved
+  - Solana program deploy keys are on hardware wallet/multisig (positive)
+
+  **State-of-the-art threat landscape:**
+
+  Recent high-profile supply chain attacks demonstrate the sophistication
+  and impact of this attack surface:
+
+  - **xz-utils (CVE-2024-3094, March 2024):** Long-term social engineering of an open-source
+    maintainer over 2+ years, inserting a backdoor via the build system (not in reviewed source)
+  - **event-stream (2018):** Maintainer takeover of a 2M-download npm package to steal
+    Bitcoin wallet credentials
+  - **SolarWinds (2020):** Build system compromise injecting backdoor into signed updates
+  - **Codecov (2021):** CI/CD tool compromise exfiltrating environment variables from
+    customer builds
+  - **ua-parser-js (2021):** Compromised npm package installing cryptominer and credential stealer
+  - **colors.js / faker.js (2022):** Maintainer self-sabotage of widely-used packages
+
+  **ISO 27001 compliance context:**
+
+  This threat model addresses controls from ISO 27001:2022 Annex A:
+
+  - A.5.19, A.5.21 — Supplier relationships and ICT supply chain security
+  - A.8.25, A.8.28, A.8.29 — Secure development lifecycle, secure coding, security testing
+  - A.8.8 — Management of technical vulnerabilities
+  - A.8.31 — Separation of development, test, and production environments
+  - A.8.9 — Configuration management
+
+threats:
+  # ============================================================
+  # DEPENDENCY THREATS
+  # ============================================================
+
+  - ID: MALICIOUS_DEPENDENCY_INJECTION
+    title: Malicious Dependency Injection (Backdoor via Trusted Package)
+    attack: |
+      An attacker compromises or socially engineers control over a widely-used
+      open-source package (npm, crates.io, Maven Central) and publishes a version
+      containing a backdoor, credential stealer, or logic bomb. The malicious code
+      executes during installation (npm install scripts), build time, or runtime.
+
+      **Attack variants:**
+
+      - **Maintainer takeover:** Social engineering a maintainer to transfer
+        ownership (event-stream, 2018 — 2M weekly downloads, Bitcoin wallet stealer)
+      - **Long-term infiltration:** Gaining commit access over months/years to insert
+        subtle backdoor (xz-utils, CVE-2024-3094 — SSH auth bypass via build system)
+      - **Account compromise:** Hijacking a maintainer's registry account to publish
+        a malicious version (ua-parser-js, 2021 — cryptominer injection)
+      - **Typosquatting:** Publishing packages with names similar to popular ones
+        (e.g., `crossenv` vs `cross-env`, `lodahs` vs `lodash`)
+
+      The system consumes npm packages, Cargo crates, and Gradle dependencies from
+      public registries without behavioral analysis or quarantine controls.
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      A compromised dependency can execute arbitrary code within the build pipeline
+      or production environment, leading to:
+
+      - Exfiltration of secrets, credentials, and signing keys from CI/CD
+      - Backdoor injection into production Docker images and deployed services
+      - Compromise of Solana program build artifacts (if Rust crate is malicious)
+      - Supply chain propagation to downstream consumers of published Gradle artifacts
+      - Complete system compromise if build-time code accesses deployment credentials
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: NPM_DEPENDENCIES
+      - REFID: CARGO_DEPENDENCIES
+      - REFID: GRADLE_DEPENDENCIES
+      - REFID: BUILD_ARTIFACTS
+    compliance:
+      - ISO27001:
+          - ref: A.5.19 (Information security in supplier relationships)
+          - ref: A.5.21 (Managing information security in the ICT supply chain)
+          - ref: A.8.8 (Management of technical vulnerabilities)
+          - ref: A.8.28 (Secure coding)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-865'
+    countermeasures:
+      - ID: DEPENDENCY_SCANNING
+        title: Universal Dependency Scanning (All Repositories)
+        description: |
+          Deploy automated dependency scanning across ALL repositories, not just
+          corda-solana-toolkit. Configure scanning for npm, Cargo, and Gradle ecosystems.
+
+          Examples: Snyk, Socket.dev, Dependabot, cargo-audit, cargo-deny,
+          OWASP dependency-check (Gradle).
+
+          Scanning should cover:
+
+          - Known CVEs in direct and transitive dependencies
+          - Behavioral analysis — detect install scripts, obfuscation, network calls
+          - License compliance
+          - Alerting on new vulnerabilities in already-deployed versions
+
+          **Current gap:** Snyk runs only on corda-solana-toolkit (nightly + PR delta).
+          Four other repositories have zero dependency scanning.
+
+          **Example implementation (npm):**
+
+          - Use npq for ad-hoc package evaluation before adoption:
+            `npq install <package-name> --dry-run`
+
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: DevOps
+
+      - ID: DEPENDENCY_QUARANTINE
+        title: Dependency Update Quarantine
+        description: |
+          Enforce a quarantine period before adopting new dependency versions:
+
+          - Minimum release age before adoption (e.g., 72 hours) to allow
+            community detection of malicious releases
+          - No auto-merge of dependency update PRs — require manual review
+          - Review changelogs and code diffs for dependency updates
+          - Configuration example: Renovate `stabilityDays: 3`
+
+          This mitigates fast-acting supply chain attacks where a malicious version
+          is published and reverted within hours (event-stream pattern).
+
+          **Example implementation (npm):**
+
+          - Add cooldown policy in `.npmrc`:
+            `min-release-age=3`
+          - Add cooldown policy in `.github/dependabot.yml`:
+            `cooldown.default-days: 7`
+
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: engineering team
+
+      - ID: NPM_AUDIT_ENFORCEMENT
+        title: Enable npm Audit in All Pipelines
+        description: |
+          Remove `--no-audit` flag from npm ci commands and enforce `npm audit`
+          as a build gate in all repositories.
+
+          **Current gap:** corda-protocol-mvp uses `npm ci --no-audit`, explicitly
+          disabling vulnerability checks.
+
+          Enforce `npm ci` (not `npm install`) everywhere to ensure deterministic
+          installs from lockfiles.
+
+          **Example implementation (npm):**
+
+          - Deterministic install with audit enabled:
+            `npm ci`
+          - Explicit vulnerability gate:
+            `npm audit --audit-level=high`
+
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: engineering team
+
+      - ID: LOCKFILE_ENFORCEMENT
+        title: Lockfile Enforcement and Deterministic Installs
+        description: |
+          Enforce deterministic dependency installation across all projects:
+
+          - Use `npm ci` (not `npm install`) in all CI pipelines and Dockerfiles
+          - Commit and verify `Cargo.lock` for all Rust projects
+          - Enable Gradle dependency locking for Kotlin/Java projects
+          - CI should fail if lockfile is out of sync with manifest
+
+          **Current gaps:**
+
+          - Dockerfiles in solana-token-vault-program use `npm install` (non-deterministic)
+          - No Gradle dependency verification (verification-metadata.xml)
+
+          **Example implementation (npm):**
+
+          - Add lockfile policy gate in CI:
+            `npx lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https`
+          - Block git-based dependency resolution:
+            `npm config set allow-git none`
+
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+        operational: true
+        operator: engineering team
+
+      - ID: GRADLE_DEPENDENCY_VERIFICATION
+        title: Gradle Dependency Verification
+        description: |
+          Enable Gradle dependency verification (verification-metadata.xml) for
+          corda-solana-toolkit and solana-notary. Verify checksums and optionally
+          PGP signatures for all Gradle dependencies.
+
+          This prevents MITM substitution of artifacts from R3 Artifactory or
+          Maven Central.
+
+          Reference: https://docs.gradle.org/current/userguide/dependency_verification.html
+
+        inPlace: false
+        public: true
+
+
+      - ID: DEPENDENCY_MINIMIZATION
+        title: Dependency Minimization and Lightweight Frameworks
+        description: |
+          Reduce supply chain attack surface by minimizing the number of third-party
+          dependencies:
+
+          - Prefer lightweight frameworks over heavy, dependency-rich ones
+          - Evaluate the transitive dependency tree before adopting a new package
+            (e.g., `npm ls --all`, `cargo tree`)
+          - Remove unused dependencies regularly (`depcheck` for npm,
+            `cargo-udeps` for Rust)
+          - Prefer standard library or platform-native solutions over third-party
+            packages for common functionality
+          - When choosing between packages, prefer those with fewer transitive
+            dependencies, active maintenance, and strong security posture
+            (OpenSSF Scorecard rating)
+
+          Every dependency not imported is a dependency that cannot be compromised.
+          This is the most fundamental supply chain risk reduction strategy.
+
+          **Example implementation (npm):**
+
+          - Prefer platform-native features when feasible (for example, native
+            `fetch` for simple HTTP calls instead of adding another dependency).
+          - Review transitive dependency footprint before adoption:
+            `npm ls --all`
+
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+
+  - ID: DEPENDENCY_CONFUSION
+    title: Dependency Confusion Attack
+    attack: |
+      An attacker publishes a public package on npm or crates.io with the same name
+      as an internal/private package used by the organization but with a higher version
+      number. Package managers resolve to the higher public version, pulling in
+      malicious code.
+
+      **Attack process:**
+
+      - Identify internal package names from source code, error messages, or public GitHub repos
+      - Publish malicious package to public npm/crates.io with matching name and higher version
+      - Package manager resolves public package due to version precedence
+
+      **Relevant to this system:** While currently not publishing npm packages (TBC), any
+      future internal packages or packages scoped to @r3 without proper registry
+      scoping configuration are vulnerable.
+    threatType: Tampering
+    impactDesc: |
+      Malicious code from the attacker's package executes in the build pipeline,
+      potentially:
+
+      - Exfiltrating CI/CD credentials (Artifactory, Azure, GitHub tokens)
+      - Injecting backdoors into build artifacts
+      - Establishing persistence in the build environment
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: NPM_DEPENDENCIES
+      - REFID: JENKINS_PIPELINE
+    compliance:
+      - ISO27001:
+          - ref: A.5.21 (Managing information security in the ICT supply chain)
+          - ref: A.8.28 (Secure coding)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-851'
+    countermeasures:
+      - ID: REGISTRY_SCOPING
+        title: Package Registry Scoping
+        description: |
+          Configure explicit registry scoping to prevent dependency confusion:
+
+          - `.npmrc` with scope-to-registry mapping for all scoped packages
+            (e.g., `@r3:registry=https://npm.r3.com/`)
+          - Gradle `repositories {}` with exclusive content filtering to ensure
+            R3 artifacts only resolve from R3 Artifactory
+          - Publish placeholder packages to public registries for internal package names
+            to prevent squatting
+
+          **Example implementation (npm):**
+
+          - Use scoped internal package names:
+            `"name": "@r3/<internal-package>"`
+          - Commit project `.npmrc` scope routing:
+            `@r3:registry=https://npm.r3.com/`
+          - Keep authentication tokens out of Git and inject `NPM_TOKEN` in CI.
+
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # CI/CD PIPELINE THREATS
+  # ============================================================
+
+  - ID: CICD_PIPELINE_INJECTION
+    title: CI/CD Pipeline Injection via Malicious Jenkinsfile
+    attack: |
+      An attacker with repository write access (compromised developer or via merged
+      malicious PR) modifies the Jenkinsfile to inject malicious build steps.
+      Since Jenkinsfiles live in the source repository, they follow the same
+      PR review process as application code.
+
+      **Attack variants:**
+
+      - Modify Jenkinsfile to exfiltrate secrets (environment variables, credentials store)
+      - Add build steps that inject backdoors into artifacts before publish
+      - Modify build commands to include malicious compiler flags or targets
+      - Change artifact destinations to redirect published artifacts to attacker-controlled registry
+      - Modify shared pipeline library references to pull from attacker-controlled source
+
+      **Current exposure:** Jenkinsfiles are committed to source repositories and
+      changes are approved via standard PR review. No additional Jenkinsfile
+      protection (CODEOWNERS, separate repo, or approval gates) beyond branch protection rules.
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      A compromised CI/CD pipeline can:
+
+      - Exfiltrate all secrets accessible to the Jenkins agent (Artifactory tokens,
+        Azure SP credentials, GitHub tokens)
+      - Inject backdoors into Docker images, Gradle artifacts, or compiled programs
+      - Publish tampered artifacts to R3 Artifactory or Azure Container Registry
+      - Modify deployment configurations to point to attacker-controlled infrastructure
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: DEVELOPER
+    assets:
+      - REFID: JENKINS_PIPELINE
+      - REFID: BUILD_ARTIFACTS
+      - REFID: JENKINS_CREDENTIALS
+      - REFID: DF_GITHUB_TO_JENKINS
+    compliance:
+      - ISO27001:
+          - ref: A.8.25 (Secure development life cycle)
+          - ref: A.8.28 (Secure coding)
+          - ref: A.8.31 (Separation of development, test and production environments)
+          - ref: A.8.9 (Configuration management)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N'
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-849'
+    fullyMitigated: false
+    countermeasures:
+      - ID: JENKINSFILE_PROTECTION
+        title: Jenkinsfile Change Protection
+        description: |
+          Enforce additional review requirements for Jenkinsfile changes:
+
+          - Require security team or DevOps review for any Jenkinsfile modification
+            (via CODEOWNERS file)
+          - Consider moving Jenkinsfiles to a separate protected repository
+            (Jenkins Shared Library pattern)
+          - Use Jenkins Pipeline Approval plugin to gate untrusted pipeline changes
+          - Alert on Jenkinsfile modifications in PRs
+
+        inPlace: false
+        public: true
+
+      - ID: PIPELINE_SECRETS_MANAGEMENT
+        title: Pipeline Secrets Management
+        description: |
+          Remove hard-coded secrets from Jenkinsfiles and Dockerfiles. Migrate to:
+
+          - Jenkins Credentials Store with proper credential scoping (folder-level)
+          - HashiCorp Vault or Azure Key Vault for sensitive credentials
+          - Short-lived, scoped credentials where possible (OIDC federation)
+
+          **Current gaps:**
+
+          - Hard-coded Web3Auth client ID in Jenkinsfile.deploy
+          - Hard-coded Azure SP client ID and tenant ID in Jenkinsfile.deploy
+          - Azure SP credentials passed as Docker build args (visible in image layer history)
+
+        inPlace: false
+        public: true
+
+      - ID: SEPARATED_PROD_PIPELINE
+        title: Separated Production CI/CD Pipeline
+        description: |
+          Deploy a dedicated CI/CD pipeline for production builds:
+
+          - Separate Jenkins instance or namespace with restricted access
+          - Different credential sets (prod secrets never accessible in dev pipeline)
+          - Immutable pipeline configuration (not sourced from application repo)
+          - Mandatory reproducible/deterministic build steps
+          - Two-person approval for production deployments
+
+          Target: SLSA Build L3 — hardened build platform with non-falsifiable provenance.
+
+          Reference: https://slsa.dev/spec/v1.2/build-track-basics#build-l3
+
+        inPlace: false
+        public: true
+
+  - ID: JENKINS_AGENT_COMPROMISE
+    title: Jenkins Build Agent Compromise
+    attack: |
+      An attacker compromises a Jenkins K8s build agent (container) to persist
+      across builds or escalate from the build container to the Kubernetes cluster.
+
+      **Attack vectors:**
+
+      - Malicious dependency executing code during build gains shell access to agent
+      - Container escape from Jenkins agent pod to K8s node
+      - Abuse of shared volumes or cached dependencies for persistence
+      - Lateral movement to other pods in the Jenkins namespace
+
+      Jenkins agents run as Kubernetes pods (AMD64_LINUX_RUST_SOLANA,
+      AMD64_LINUX_JAVA17_CORDA4, AMD64_LINUX_NODEJS) using the
+      corda-shared-build-pipeline-steps@5.3 library.
+    threatType: Elevation of Privilege
+    impactDesc: |
+      A compromised Jenkins agent can:
+
+      - Access all credentials available to the agent (Artifactory, Azure, GitHub tokens)
+      - Tamper with build artifacts across multiple builds if persistence is achieved
+      - Potentially access other workloads in the Kubernetes cluster via container escape
+      - Manipulate cached dependencies to affect subsequent builds
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: JENKINS_PIPELINE
+      - REFID: JENKINS_CREDENTIALS
+    compliance:
+      - ISO27001:
+          - ref: A.8.31 (Separation of development, test and production environments)
+          - ref: A.8.9 (Configuration management)
+          - ref: A.8.24 (Use of cryptography)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:L'
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-858'
+    fullyMitigated: false
+    countermeasures:
+      - ID: EPHEMERAL_BUILD_AGENTS
+        title: Ephemeral Build Agents
+        description: |
+          Ensure Jenkins K8s agents are fully ephemeral:
+
+          - No persistent volumes across builds
+          - Fresh container image for every build
+          - No shared caches between builds (or read-only caches populated from
+            a trusted, verified source)
+          - Pod security policies restricting privileged operations and host access
+          - Network policies limiting agent pod communication to Jenkins master
+            and required registries only
+
+        inPlace: false
+        public: true
+
+  - ID: HARDCODED_SECRETS_IN_PIPELINE
+    title: Hard-coded Secrets Exposure in Pipeline Configuration
+    attack: |
+      Secrets hard-coded in Jenkinsfiles or Dockerfiles are accessible to anyone
+      with repository read access. These credentials can be extracted and used to
+      access production infrastructure.
+
+      **Currently exposed in solana-token-vault-program:**
+
+      - Web3Auth client ID in Jenkinsfile.deploy
+      - Azure Service Principal client ID and tenant ID in Jenkinsfile.deploy
+      - Credentials passed as Docker build args (visible in image layer history)
+    threatType: Information Disclosure
+    impactDesc: |
+      Exposed credentials enable:
+
+      - Unauthorized access to Azure Container Registry and Container Apps
+      - Impersonation of the build pipeline to push malicious artifacts
+      - Access to Web3Auth configuration, potentially enabling wallet impersonation
+      - Docker image layer inspection reveals build args to any image consumer
+
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: DEVELOPER
+    assets:
+      - REFID: JENKINS_CREDENTIALS
+      - REFID: JENKINS_PIPELINE
+    compliance:
+      - ISO27001:
+          - ref: A.8.24 (Use of cryptography)
+          - ref: A.5.33 (Protection of records)
+          - ref: A.8.9 (Configuration management)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N'
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-877'
+    fullyMitigated: false
+    countermeasures:
+      - ID: SECRETS_REMEDIATION
+        title: Remove Hard-coded Secrets and Implement Secret Management
+        description: |
+          Immediately remove all hard-coded secrets from Jenkinsfiles and Dockerfiles:
+
+          - Move Web3Auth client ID to Jenkins credentials store
+          - Move Azure SP credentials to Jenkins credentials store or Azure Key Vault
+          - Use Docker BuildKit secrets (`--secret`) instead of build args for
+            sensitive values
+          - Rotate all currently exposed credentials
+          - Add pre-commit hooks to detect secret patterns
+            (e.g., gitleaks, detect-secrets)
+
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # CONTAINER IMAGE THREATS
+  # ============================================================
+
+  - ID: DOCKER_BASE_IMAGE_COMPROMISE
+    title: Docker Base Image Compromise
+    attack: |
+      An attacker compromises a base Docker image (e.g., node:20 on Docker Hub)
+      or exploits tag mutability to substitute a malicious image. Since all
+      Dockerfiles in the project reference base images by tag (not digest),
+      a compromised tag affects all subsequent builds silently.
+
+      **Attack vectors:**
+
+      - Docker Hub account compromise — malicious image published under existing tag
+      - Tag repointing: `node:20` is mutable, can be replaced without warning
+      - Vulnerable base images with known CVEs in OS packages
+      - Supply chain attack on upstream image build pipeline
+    threatType: Tampering
+    impactDesc: |
+      A compromised base image can contain:
+
+      - Backdoors, miners, or credential stealers embedded in OS packages
+      - Modified binaries (e.g., compromised npm, node, or cargo executables)
+      - Known vulnerabilities in unpatched OS libraries
+
+      All services built from the compromised base inherit the compromise.
+      6 Dockerfiles across solana-token-vault-program are affected.
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DOCKER_BASE_IMAGES
+      - REFID: BUILD_ARTIFACTS
+    compliance:
+      - ISO27001:
+          - ref: A.5.21 (Managing information security in the ICT supply chain)
+          - ref: A.8.8 (Management of technical vulnerabilities)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N'
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-853'
+    fullyMitigated: false
+    countermeasures:
+      - ID: PIN_BASE_IMAGES_BY_DIGEST
+        title: Pin Docker Base Images by Digest
+        description: |
+          Pin all Dockerfile base images by SHA256 digest instead of mutable tags:
+
+          `FROM node:20@sha256:abc123...`
+
+          This ensures builds use the exact image version that was reviewed and tested,
+          regardless of tag mutations on Docker Hub.
+
+          Combine with automated digest update tooling (e.g., Renovate with
+          Docker digest pinning mode).
+
+        inPlace: false
+        public: true
+
+      - ID: CONTAINER_IMAGE_SCANNING
+        title: Container Image Scanning in CI
+        description: |
+          Scan all built Docker images for vulnerabilities before pushing to
+          Azure Container Registry. Examples: Trivy, Grype, Snyk Container.
+
+          Integrate as a Jenkins build gate: fail the build if critical/high
+          CVEs are detected in the final image.
+
+        inPlace: true
+        public: true
+
+      - ID: CONTAINER_IMAGE_SIGNING
+        title: Container Image Signing (Sigstore/cosign)
+        description: |
+          Sign all Docker images after build using Sigstore cosign. Verify
+          signatures before deployment to Azure Container Apps.
+
+          Keyless signing via OIDC (Jenkins identity) eliminates key management
+          overhead while providing non-repudiation via Rekor transparency log.
+
+          Reference: https://docs.sigstore.dev/cosign/signing/signing_with_containers/
+
+        inPlace: false
+        public: true
+
+      - ID: MINIMAL_BASE_IMAGES
+        title: Use Minimal/Distroless Base Images
+        description: |
+          Replace full OS base images with minimal alternatives to reduce
+          attack surface:
+
+          - Use distroless or Alpine variants for production images
+          - Multi-stage builds: build in full image, run in minimal image
+          - Remove unnecessary tools (curl, wget, bash) from production images
+
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # DEVELOPER ENVIRONMENT THREATS
+  # ============================================================
+
+  - ID: COMPROMISED_DEVELOPER_WORKSTATION
+    title: Compromised Developer Workstation
+    attack: |
+      An attacker compromises a developer's workstation via malware, phishing,
+      or physical access. The compromised machine is used to:
+
+      - Push malicious code to GitHub (using cached SSH keys/tokens)
+      - Approve malicious PRs (using cached GitHub session)
+      - Trigger Jenkins builds with tampered inputs
+      - Show fake UI and trick signers into signing malicious transactions
+      - Exfiltrate credentials stored locally (SSH keys, cloud provider tokens,
+        wallet keys)
+
+      This is explicitly identified in the supply chain taxonomy as a primary
+      attack vector: "Compromised PC shows fake UI and let users sign malicious TXs."
+    threatType: Spoofing, Tampering
+    impactDesc: |
+      A compromised developer workstation enables:
+
+      - Code injection via legitimate-looking commits
+      - PR approval bypassing review controls (reviewer's machine compromised)
+      - Credential theft (SSH keys, GitHub tokens, cloud provider credentials)
+      - Transaction manipulation — fake UI showing different transaction data
+        than what is actually being signed
+      - Persistence across multiple repositories and systems accessible from the machine
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: DEVELOPER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: DEVELOPER_WORKSTATION
+      - REFID: DF_DEV_TO_GITHUB
+      - REFID: GITHUB_REPOS
+    compliance:
+      - ISO27001:
+          - ref: A.8.1 (User endpoint devices)
+          - ref: A.6.7 (Remote working)
+          - ref: A.8.7 (Protection against malware)
+    CVSS:
+      vector: 'CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N'
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-869'
+    fullyMitigated: false
+    countermeasures:
+      - ID: SIGNED_COMMITS
+        title: Require GPG/SSH Signed Commits
+        description: |
+          Enforce commit signing via GPG or SSH keys on all repositories.
+          Configure GitHub branch protection to require verified signatures.
+
+          This proves commit authorship and prevents impersonation via
+          compromised credentials (attacker would also need the signing key,
+          ideally stored on a hardware token).
+
+        inPlace: false
+        public: true
+
+      - ID: BRANCH_PROTECTION_HARDENING
+        title: Harden GitHub Branch Protection Rules
+        description: |
+          Strengthen branch protection on all repositories:
+
+          - Require minimum 2 reviewers for PRs
+          - Dismiss stale reviews on new pushes
+          - Require signed commits (see SIGNED_COMMITS)
+          - Require all status checks to pass
+          - Restrict force-push and deletion
+          - Require CODEOWNERS review for sensitive files
+            (Jenkinsfile, Dockerfile, package.json, Cargo.toml, build.gradle.kts)
+
+          **Current state:** Reviews required but no signed commits,
+          no CODEOWNERS enforcement.
+
+        inPlace: false
+        public: true
+
+      - ID: HARDWARE_AUTH_KEYS
+        title: Hardware Security Keys for GitHub Authentication
+        description: |
+          Require FIDO2/WebAuthn hardware security keys for GitHub authentication
+          to prevent credential phishing attacks. Even if a developer's password
+          or session is compromised, the attacker cannot authenticate to GitHub
+          without the physical key.
+
+        inPlace: false
+        public: true
+
+      - ID: PRECOMMIT_SECRET_SCANNING
+        title: Pre-commit Secret Scanning Hooks
+        description: |
+          Implement pre-commit hooks across all repositories to prevent
+          accidental secret commits:
+
+          - gitleaks or detect-secrets as pre-commit hooks
+          - GitHub secret scanning enabled at org level
+          - CI-level secret scanning as an additional gate
+
+        inPlace: false
+        public: true
+
+  - ID: BRANCH_PROTECTION_BYPASS
+    title: Branch Protection Bypass via Compromised Reviewer
+    attack: |
+      An attacker compromises a reviewer's GitHub account (via phishing,
+      session hijacking, or workstation compromise) and uses it to approve
+      malicious PRs targeting the main branch. Since signed commits are not
+      required, the attacker can push code from any machine using stolen
+      credentials.
+
+      **Alternative vectors:**
+
+      - Exploit the CODEOWNERS file (if not protected) to add themselves as
+        an approved reviewer
+      - Use GitHub API to approve PRs programmatically with stolen token
+      - Social engineering to get legitimate reviewer to approve without
+        thorough review
+    threatType: Spoofing, Tampering
+    impactDesc: |
+      Malicious code merged into protected branches reaches the CI/CD pipeline
+      and can:
+
+      - Inject backdoors into production builds
+      - Modify Jenkinsfiles to exfiltrate secrets
+      - Alter smart contract logic before compilation
+      - Compromise all downstream artifacts and deployments
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: DEVELOPER
+    assets:
+      - REFID: GITHUB_REPOS
+      - REFID: DF_DEV_TO_GITHUB
+    compliance:
+      - ISO27001:
+          - ref: A.5.15 (Access control)
+          - ref: A.8.25 (Secure development life cycle)
+          - ref: A.8.4 (Access to source code)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-857'
+    countermeasures:
+      - ID: SIGNED_COMMITS
+        title: Require GPG/SSH Signed Commits
+        description: |
+          See COMPROMISED_DEVELOPER_WORKSTATION countermeasure.
+        inPlace: false
+        public: true
+      - ID: BRANCH_PROTECTION_HARDENING
+        title: Harden GitHub Branch Protection Rules
+        description: |
+          See COMPROMISED_DEVELOPER_WORKSTATION countermeasure.
+        inPlace: false
+        public: true
+      - ID: HARDWARE_AUTH_KEYS
+        title: Hardware Security Keys for GitHub Authentication
+        description: |
+          See COMPROMISED_DEVELOPER_WORKSTATION countermeasure.
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # BUILD INTEGRITY THREATS
+  # ============================================================
+
+  - ID: NON_DETERMINISTIC_BUILDS
+    title: Non-deterministic Builds Preventing Verification
+    attack: |
+      Build outputs are not reproducible — the same source code produces different
+      binaries on different builds. This makes it impossible to verify that deployed
+      artifacts correspond to reviewed source code. An attacker who compromises one
+      build can insert malicious code that cannot be detected by rebuilding from source.
+
+      **Current gaps:**
+
+      - No reproducible build verification for Solana programs
+      - Dockerfiles use `npm install` (non-deterministic) instead of `npm ci`
+      - No provenance attestation linking artifacts to source code
+      - No SBOM tracking exact dependency versions in built artifacts
+    threatType: Tampering, Repudiation
+    impactDesc: |
+      Without deterministic builds:
+
+      - Cannot verify deployed code matches reviewed source
+      - Attacker can tamper with build output without detection
+      - No forensic capability to detect supply chain compromise after the fact
+      - Fails ISO 27001 A.8.25 (Secure development life cycle) evidence requirements
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: AUDITABILITY
+    attackers:
+      - REFID: DEVELOPER
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: BUILD_ARTIFACTS
+      - REFID: JENKINS_PIPELINE
+    compliance:
+      - ISO27001:
+          - ref: A.8.25 (Secure development life cycle)
+          - ref: A.8.28 (Secure coding)
+          - ref: A.8.29 (Security testing in development and acceptance)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-883'
+    countermeasures:
+      - ID: DETERMINISTIC_BUILDS
+        title: Implement Deterministic / Reproducible Builds
+        description: |
+          Achieve reproducible builds across all build targets:
+
+          - **Solana programs:** Use `anchor build --verifiable` to produce
+            deterministic BPF bytecode
+          - **Docker images:** Use `npm ci` everywhere, pin base images by digest,
+            set BUILD_DATE to epoch for layer reproducibility
+          - **Gradle:** Use `--configuration-cache`, dependency locking, and
+            reproducible archive settings
+
+          Reproducible builds enable third-party verification that deployed
+          artifacts match published source code.
+
+        inPlace: false
+        public: true
+
+      - ID: BUILD_PROVENANCE
+        title: Build Provenance Attestation (SLSA L3)
+        description: |
+          Generate signed provenance metadata for all build artifacts documenting:
+
+          - Source repository and commit hash
+          - Build system identity and configuration
+          - Builder image digest
+          - Input dependency hashes
+          - Build timestamp and duration
+
+          Target: SLSA Build L3 — hardened build platform with non-falsifiable provenance.
+
+          Reference: https://slsa.dev/spec/v1.2/build-track-basics#build-l3
+
+          Tools: in-toto attestations, SLSA GitHub generator, Jenkins SLSA plugin.
+
+        inPlace: false
+        public: true
+
+      - ID: SBOM_GENERATION
+        title: SBOM Generation for All Build Artifacts
+        description: |
+          Generate Software Bill of Materials (SBOM) for every build artifact:
+
+          - npm: `@cyclonedx/cli` or `cdxgen`
+          - Cargo: `cargo-cyclonedx`
+          - Gradle: CycloneDX Gradle plugin
+          - Docker: `syft` for container image SBOMs
+
+          SBOMs must be:
+
+          - Stored alongside build artifacts
+          - Version-controlled and signed
+          - Used for continuous vulnerability monitoring of deployed versions
+          - Available as ISO 27001 audit evidence (A.5.21, A.8.8)
+
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # ARTIFACT INTEGRITY THREATS
+  # ============================================================
+
+  - ID: ARTIFACT_TAMPERING_IN_REGISTRY
+    title: Artifact Tampering in Package Registries
+    attack: |
+      An attacker gains access to R3 Artifactory or Azure Container Registry
+      and replaces published artifacts with tampered versions. Alternatively,
+      exploits tag mutability in container registries to repoint tags to
+      malicious images.
+
+      **Attack vectors:**
+
+      - Compromised Artifactory credentials (from Jenkins or developer machines)
+      - Azure SP credential leak (currently hard-coded in Jenkinsfile.deploy)
+      - Registry misconfiguration allowing artifact overwrites
+      - MITM on registry connections (if not TLS-pinned)
+    threatType: Tampering
+    impactDesc: |
+      Tampered artifacts are consumed by downstream services and deployments:
+
+      - Modified Gradle libraries consumed by Corda-side applications
+      - Tampered Docker images deployed to Azure Container Apps
+      - Backdoored artifacts distributed to all environments consuming from the registry
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+      - REFID: DEVELOPER
+    assets:
+      - REFID: BUILD_ARTIFACTS
+      - REFID: DF_JENKINS_TO_REGISTRIES
+      - REFID: JENKINS_CREDENTIALS
+    compliance:
+      - ISO27001:
+          - ref: A.8.24 (Use of cryptography)
+          - ref: A.5.21 (Managing information security in the ICT supply chain)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:H/A:N'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-859'
+    countermeasures:
+      - ID: ARTIFACT_SIGNING
+        title: Build Artifact Signing
+        description: |
+          Sign all published artifacts cryptographically:
+
+          - Docker images: Sigstore cosign with keyless OIDC signing
+          - Gradle artifacts: PGP signing via Gradle signing plugin
+          - Verification at consumption time (cosign verify, Gradle dependency verification)
+
+          Keyless signing (Sigstore) eliminates key management burden while
+          providing non-repudiation via Rekor transparency log.
+
+        inPlace: false
+        public: true
+
+      - ID: IMMUTABLE_TAGS
+        title: Immutable Tags in Container Registry
+        description: |
+          Enable immutable tag policy in Azure Container Registry to prevent
+          tag repointing attacks. Once an image is pushed with a tag, the tag
+          cannot be overwritten.
+
+          Combine with content trust (Docker Content Trust / Notary v2).
+
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # SCANNING COVERAGE THREAT
+  # ============================================================
+
+  - ID: INSUFFICIENT_SECURITY_SCANNING
+    title: Insufficient Security Scanning Coverage
+    attack: |
+      Only one of five repositories (corda-solana-toolkit) has automated dependency
+      scanning (Snyk). The remaining repositories — including those producing
+      Solana programs, Docker images, and UI components — have no automated
+      vulnerability detection.
+
+      An attacker exploits a known CVE in an unscanned dependency that would have
+      been flagged by standard scanning tools.
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      Known vulnerabilities in dependencies remain undetected and reach production:
+
+      - Exploitable CVEs in npm packages (UI, services)
+      - Vulnerable Rust crates in Solana programs
+      - Unpatched OS packages in Docker images
+      - Known issues in Gradle dependencies
+
+      This is a systematic gap, not an individual vulnerability.
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: NPM_DEPENDENCIES
+      - REFID: CARGO_DEPENDENCIES
+      - REFID: GRADLE_DEPENDENCIES
+      - REFID: DOCKER_BASE_IMAGES
+    compliance:
+      - ISO27001:
+          - ref: A.8.8 (Management of technical vulnerabilities)
+          - ref: A.8.28 (Secure coding)
+          - ref: A.8.29 (Security testing in development and acceptance)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-868'
+    countermeasures:
+      - ID: UNIVERSAL_SCANNING
+        title: Deploy Scanning Across All Repositories
+        description: |
+          Extend automated security scanning to ALL repositories:
+
+          - **npm:** Snyk or npm audit as CI gate
+          - **Cargo:** cargo-audit + cargo-deny in CI
+          - **Gradle:** Snyk Gradle plugin or OWASP dependency-check
+          - **Docker:** Trivy or Grype for container image scanning
+          - **Secrets:** gitleaks or detect-secrets in pre-commit + CI
+
+          Configure as build gates: fail CI on critical/high findings.
+          Run nightly full scans for all repositories (not just corda-solana-toolkit).
+
+        inPlace: false
+        public: true
+
+  # ============================================================
+  # LONG-TERM INFILTRATION
+  # ============================================================
+
+  - ID: LONG_TERM_DEPENDENCY_INFILTRATION
+    title: Long-term Open Source Maintainer Infiltration
+    attack: |
+      A sophisticated attacker establishes trust in a critical open-source dependency
+      over months or years, eventually introducing a subtle backdoor. This follows
+      the xz-utils attack pattern (CVE-2024-3094, March 2024):
+
+      - Build trust as a helpful contributor over 2+ years
+      - Gain commit access and co-maintainer status
+      - Introduce backdoor via build system (not in reviewed source code)
+      - Backdoor activates only under specific conditions
+        (CI environments, specific architectures)
+
+      **Relevant dependencies:** The Anchor framework, Solana SDK crates,
+      SPL token-2022 libraries, and major npm packages in the dependency tree
+      are potential targets. These are high-value targets because they are used
+      across the entire Solana ecosystem.
+
+      This attack is extremely difficult to detect via standard code review or
+      automated CVE scanning because the malicious code is obfuscated or injected
+      during build, the attacker has legitimate commit access, and changes appear
+      as routine maintenance.
+    threatType: Tampering, Elevation of Privilege
+    impactDesc: |
+      A backdoored core dependency (e.g., Anchor framework, Solana SPL libraries,
+      or a critical npm package) can compromise:
+
+      - All Solana programs built with the backdoored framework
+      - All services built with the compromised npm package
+      - Complete infrastructure if the backdoor provides remote access
+
+      The blast radius is proportional to how fundamental the compromised
+      dependency is in the stack.
+
+    impactedSecObj:
+      - REFID: INTEGRITY
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: EXTERNAL_ATTACKER
+    assets:
+      - REFID: NPM_DEPENDENCIES
+      - REFID: CARGO_DEPENDENCIES
+      - REFID: BUILD_ARTIFACTS
+    compliance:
+      - ISO27001:
+          - ref: A.5.19 (Information security in supplier relationships)
+          - ref: A.5.21 (Managing information security in the ICT supply chain)
+          - ref: A.8.8 (Management of technical vulnerabilities)
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H'
+    fullyMitigated: false
+    ticketLink: 'https://r3-cev.atlassian.net/browse/PROT-852'
+    countermeasures:
+      - ID: BEHAVIORAL_DEPENDENCY_ANALYSIS
+        title: Behavioral Dependency Analysis
+        description: |
+          Deploy tools that analyze dependency behavior beyond known CVEs:
+
+          - OpenSSF Scorecard: rates open-source project health (CI/CD practices,
+            contributor diversity, vulnerability disclosure)
+
+          These tools detect xz-utils style attacks that traditional CVE
+          scanners miss.
+
+          **Example implementation (npm):**
+
+          - Use npq for interactive risk review of new packages:
+            `npq install <package-name>`
+
+          Reference: https://securityscorecards.dev/
+          Reference: https://github.com/lirantal/npm-security-best-practices
+
+        inPlace: false
+        public: true
+
+      - ID: DEPENDENCY_QUARANTINE
+        title: Dependency Update Quarantine
+        description: |
+          See MALICIOUS_DEPENDENCY_INJECTION countermeasure.
+        inPlace: false
+        public: true
+
+      - ID: DETERMINISTIC_BUILDS
+        title: Implement Deterministic / Reproducible Builds
+        description: |
+          See NON_DETERMINISTIC_BUILDS countermeasure.
+        inPlace: false
+        public: true
+
+      - ID: DEPENDENCY_MINIMIZATION
+        title: Dependency Minimization and Lightweight Frameworks
+        description: |
+          See MALICIOUS_DEPENDENCY_INJECTION countermeasure.
+        inPlace: false
+        public: true

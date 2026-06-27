@@ -1,0 +1,77 @@
+@startuml
+skinparam sequence {
+  ArrowColor black
+  ActorBorderColor black
+  LifeLineBorderColor black
+  LifeLineBackgroundColor #FDF6E3
+  NoteBackgroundColor #EEE8D5
+  NoteBorderColor black
+}
+
+title UAE PASS → Digital Dirham App → Digital Dirham Backend → LFI Keycloak
+
+actor User
+participant "Digital Dirham App" as App
+participant "Embedded WebView" as WebView
+participant "System URL Manager" as URLMgr
+participant "UAE PASS App" as UAEPASS
+participant "Digital Dirham Backend" as Backend
+participant "LFI Keycloak" as KC
+
+User -> App : Launches Digital Dirham App
+App -> WebView : Open UAE PASS login URL
+note right
+  🔗 <color:blue>https://stg-id.uaepass.ae/idshub/authorize?</color>  
+  <color:green>acr_values=urn:digitalid:authentication:flow:mobileondevice</color>  
+  <color:purple>&client_id=sandbox_stage</color>  
+  <color:orange>&redirect_uri=https://stg-selfcare.uaepass.ae</color>  
+  <color:gold>&response_type=code</color>  
+  <color:teal>&scope=urn:uae:digitalid:profile:general</color>  
+  <color:red>&state=xyz</color>
+end note
+
+WebView -> UAEPASS : Monitor for deep link
+note right
+  🧠 Rewrite deeplink:  
+  <color:blue>uaepassstg://?</color>  
+  <color:orange>successURL=yourapp:///resume_authn?url=https://stg-selfcare.uaepass.ae?code=abc123</color>
+end note
+
+WebView -> URLMgr : Invoke deeplink
+URLMgr -> UAEPASS : Open UAE PASS App
+
+User -> UAEPASS : Authenticate
+UAEPASS -> URLMgr : Redirect to successURL
+URLMgr -> App : Resume Digital Dirham App via deep link
+
+App -> WebView : Resume flow with code
+WebView -> Backend : Send code to `/token` endpoint
+
+Backend -> UAEPASS : Exchange code for access token
+note right
+  🔄 Token Request  
+  <color:blue>POST https://stg-id.uaepass.ae/idshub/token</color>  
+  <color:gold>grant_type=authorization_code</color>  
+  <color:purple>&client_id=sandbox_stage</color>  
+  <color:orange>&redirect_uri=https://stg-selfcare.uaepass.ae</color>  
+  <color:green>&code=abc123</color>
+end note
+
+UAEPASS -> Backend : Return access token
+
+Backend -> KC : Token Exchange Request
+note right
+  🔁 Token Exchange  
+  <color:blue>POST /realms/myrealm/protocol/openid-connect/token</color>  
+  <color:gold>grant_type=urn:ietf:params:oauth:grant-type:token-exchange</color>  
+  <color:green>subject_token=uaepass_access_token</color>  
+  <color:purple>subject_token_type=urn:ietf:params:oauth:token-type:access_token</color>  
+  <color:orange>client_id=digidirham-backend</color>  
+  <color:red>client_secret=xyz123</color>  
+  <color:teal>audience=internal-api</color>
+end note
+
+KC -> Backend : Return LFI Keycloak JWT
+Backend -> App : Return federated user info
+
+@enduml

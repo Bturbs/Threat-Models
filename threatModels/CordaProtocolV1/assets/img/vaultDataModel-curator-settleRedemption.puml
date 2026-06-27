@@ -1,0 +1,27 @@
+@startuml
+' REVIEWED_MAIN_2026_05_18: aligned to RBAC fast-forward 63739244; authority via RBAC program.
+
+title Curator: Settle Redemption
+
+scale max 3200 width
+skinparam wrapWidth 220
+allowmixing
+
+!include common-styles.puml
+!include onchain_data_module.puml
+
+INSTRUCTION SettleRedemption <<Instruction>> [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault/src/instructions/redemptions/settle_redemption.rs]] {
+    --
+    1. Accrue fees inline
+    2. Compute USDC = vTokens × NAV
+    3. Transfer USDC to investor
+    4. Record outbound volume
+    **Authorization:** Authority (via RBAC)
+}
+
+SettleRedemption --> RedemptionProposal : W (settle)
+SettleRedemption --> Vault : W
+SettleRedemption --> InvestorUSDCAccount : W (credit)
+SettleRedemption --> VaultUSDCAccount : W (debit)
+
+@enduml

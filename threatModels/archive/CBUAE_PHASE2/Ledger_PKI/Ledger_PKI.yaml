@@ -1,0 +1,373 @@
+ID: Ledger_PKI
+schemaVersion: 2
+parent: CBUAE_PHASE2
+
+
+scope:
+  description: |
+    This threat model covers the Public Key Infrastructure (PKI) used for ledger transaction 
+    verification in the CBUAE Phase 2 project.
+
+    **Refs:** [LLD - 10 Cryptography and Public Key Infrastructure](#LLD), [LLD - 10.7 Cryptography and Public Key Infrastructure/Public key infrastructure](#LLD), [LLD - 10.8 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation](#LLD)
+
+
+
+  assets:
+    - ID: LEDGER_ROOT_CERT
+      title: Ledger verification root certificate
+      type: certificate
+      description: |
+        A self-signed certificate that identifies the Root Certificate Authority.
+
+        **Refs:** [LLD - 10.8.6 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Component 1 - Root and intermediate certificate authority](#LLD)
+      inScope: true
+      properties:
+        location: configuration file
+        format: X.509
+        length: 256
+        type: CA certificate
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: INTERMEDIATE_CA_CERT
+      title: Ledger verification intermediate CA certificate
+      type: certificate
+      description: |
+        A certificate issued by the intermediate CA, signed by the root CA.
+
+        **Refs:** [LLD - 10.8.6 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Component 1 - Root and intermediate certificate authority](#LLD), [LLD - 10.8.2 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Chain validation](#LLD)
+      inScope: true
+      properties:
+        location: configuration file
+        format: X.509
+        length: 256
+        type: CA certificate
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: CRL
+      title: Certificate Revocation List
+      type: certificate
+      description: |
+        Certificate Revocation List (CRL) signed by the CA as in https://datatracker.ietf.org/doc/html/rfc5280
+
+        **Refs:** [LLD - 10.8.2 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Chain validation](#LLD)
+      inScope: true
+      properties:
+        location: accessed online
+        format: X.509 v3 CRL format
+        length: 256
+        type: CA certificate
+      applicationRelated: true
+      infrastructureRelated: false
+
+  assumptions:
+    - ID: LOCAL_TX_VALIDATION
+      description: |
+        Certificates are tight to identities. They can be sent from any entity on the network and be validated locally by the recipient.
+    - ID: SINGLE_PURPOSE_CERT
+      description: |
+        A ledger certificate should not be used as an mTLS certificate for this reason but also because it conflates responsibilities.
+
+    - ID: TODO_VALID_SIGNING_TIME
+      description: a certificate should not be revoked when signing and should 
+        not be expired. (TODO timestamping for stolen keys back-signing)
+
+    - ID: REVOKED_CERT_VERIFICATION
+      description: |
+        [...] we need to keep such revoked certificates available to validate older transactions 
+        as long as these certificates are referenced by the ledger.
+
+
+analysis: |2
+
+  <img src="img/seq1pki.svg" />
+
+  TODO
+  VALID_SIGNING_TIME implies STOLEN_LEDGER_KEY_RECOVERY
+  but simple signing could be done for a past transaction. Timestamping
+   (outer TX signing with the actual time from a network trusted party seems necessary to achieve STOLEN_LEDGER_KEY_RECOVERY)
+  TODO: certificate hash/id in transaction (full hash)
+
+  **Refs:** [LLD - 10.8.3 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Timestamping](#LLD)
+
+  <h4>Notary Key rotation</h4>
+  Given the backchain TXs validation is required in token transfer (an entity trying to validate backchain transaction signatures must have access to all ledger keysused), that backchain at some point will be signed with expired or rotated notary keys, plus it will be the first time an entity (for example, the PAYEE) sees this backchain signature. 
+  that backchain at some point will be signed with expired/rotated Notary keys AND it will be the first time an entity (e.g. PAYEE) sees this backchain signatures.
+  There's no way to distinguish and verify an old expired backchain Notary signature from a new signature with a compromised/rotated key.
+  The assumptions is that any timestamping trusted party will rotate their PKI identity keys. 
+  If the mitigation for this non-ability to verify backchain signatures is that any new TX 
+  will need anyway to go through Notary validation again, then the existence of the backchain (and related information disclosure threats) may not be necessary.
+
+  **Refs:** [LLD - 10.10.3.2 Cryptography and Public Key Infrastructure/Certificate and asymmetric key lifecycle/Solution design/Certificate expiry](#LLD), [LLD - 10.9.4 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store/Component 1: Back-end Vault KV store](#LLD)
+
+threats:
+
+
+# tx verification/finality depending on external services
+# timing of timestamps
+
+## TODO separate PKI root of trust for LEDGER and TLS -> to allow TLS compatibility and LEDGER key specific 
+## requirements (stronger cyphersuites) like post quantum crypto resistance that may not be compatible 
+## with standardized TLS. Without this the root Certificate neds to be in the weakers cyphersuite that is supported by 
+## standard.
+
+  - ID: LEDGER_CIPHERSUITE_CONSTRAINED_BY_TLS
+    title: Incompatibility of Ledger Ciphersuites with Root of Trust 
+      Certificates for TLS
+    # assets:
+    #   - REFID: DF_FIN_PAYEE_RCVBLCK
+    # attackers:
+    #   - REFID: PAYER
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H
+    threatType: Denial of Service
+    attack: |
+      The root Certificate ends to be in the weaker cipher suite that is supported by TLS.
+      Ciphersuites required by the Ledger may be incompatible and not upgradable if the same root of trust certificates are used for both Ledger and TLS.
+
+      **Refs:** [LLD - 10.7.3 Cryptography and Public Key Infrastructure/Public key infrastructure/Solution design](#LLD)
+    impactDesc: |
+      Upgrades of ledger supported and required cipher suites are bound to those supported TLS. For example, it may be impossible to migrate to quantum resilient cipher suites.
+
+      **Refs:** [LLD - 10.6.3 Cryptography and Public Key Infrastructure/Cryptographic key management/Solution design](#LLD)
+    impactedSecObj:
+      - REFID: AVOID_SINGLE_FAILURE_POINT
+      - REFID: CRYPTO_AGILITY
+      - REFID: POST_QUANTUM_CRYPTO
+    public: false
+    fullyMitigated: false
+    pentestTestable: false
+    # ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-1352
+    # ticketInfo: | 
+    #   ![Jira Ticket Status](https://r3-cev.atlassian.net/secure/api/v2/status/R3SOL-1352.svg)
+    countermeasures:
+      - ID: MULTIPLE_ROT_CA_SUPPORT
+        title: Allow for multiple root CAs
+        description: |
+          Allows to validate ledger transactions using multiple configurable root CAs.
+
+          **Refs:** [LLD - 10.8.6 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Component 1 - Root and intermediate certificate authority](#LLD)
+        inPlace: false
+        public: true
+      - ID: MULTIPLE_ROT_CA_CONFIG
+        title: Configure at least two root CAs
+        description: |
+          Configure at least two valid CAs root of trust via certificates for every kind of root of trust (e.g. ledger, tls)
+
+          **Refs:** [LLD - 10.7.3 Cryptography and Public Key Infrastructure/Public key infrastructure/Solution design](#LLD)
+        inPlace: false
+        public: true
+        operational: true
+        operator: CLUSTER_OPERATOR
+      - ID: SEPARATED_TLS_LEDGER_ROT_CA_REQUIRED
+        title: Separate Roots of Trust for Ledger and TLS
+        description: |
+          Configure different roots of trust certificates for the Ledger and for TLS communications.
+
+          **Refs:** [LLD - 10.7.3.1 Cryptography and Public Key Infrastructure/Public key infrastructure/Solution design/Architecture/context](#LLD)
+        inPlace: false
+        public: true
+        operational: false
+
+
+  - ID: SINGLE_ROT_FAILURE
+    title: Having a single root CA can lead to availability issues
+    # assets:
+    #   - REFID: DF_FIN_PAYEE_RCVBLCK
+    # attackers:
+    #   - REFID: PAYER
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:H
+    threatType: Denial of Service
+    attack: |
+      Having a single CAs will introduce a single point of failure TODO with James
+
+      **Refs:** [LLD - 10.13.2 Cryptography and Public Key Infrastructure/Resiliency and recovery/Service instances and availability](#LLD)
+    impactDesc: |
+      Single point of failure of CA , ledger and network will require severe reconfiguration on new logic to operate
+
+      **Refs:** [LLD - 10.13 Cryptography and Public Key Infrastructure/Resiliency and recovery](#LLD)
+    impactedSecObj:
+      - REFID: AVOID_SINGLE_FAILURE_POINT
+      - REFID: CRYPTO_AGILITY
+      - REFID: POST_QUANTUM_CRYPTO
+    public: false
+    fullyMitigated: false
+    pentestTestable: false
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-1352
+    ticketInfo: |
+      ![Jira Ticket Status](https://r3-cev.atlassian.net/secure/api/v2/status/R3SOL-1352.svg)
+    countermeasures:
+      - REFID: MULTIPLE_ROT_CA_SUPPORT
+      - REFID: MULTIPLE_ROT_CA_CONFIG
+
+
+
+
+  - ID: EXTERNAL_LEDGER_VERIFICATION
+    title: Transaction verification after finality depends on off-ledger 
+      services
+    # assets:
+    #   - REFID: DF_FIN_PAYEE_RCVBLCK
+    # attackers:
+    #   - REFID: PAYER
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H
+    threatType: Denial of Service
+    attack: |
+      Transaction verification after finality (e.g. backchain, proof of ownership, new transaction initiation)
+       in not deterministic and self referencing and depends on off-ledger services like mutable online PKI's CRL that may be unavailable/offline.
+
+      **Refs:** [LLD - 10.8.2 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Chain validation](#LLD), [LLD - 10.9 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store](#LLD)
+    impactDesc: |
+      The concept of token ownership and finality is weakened by unnecessarily depending on third parties continuous availability.
+      Finality and the ability by a network participant to verify old transactions is limited by accessing online services.
+      Potentially future layer 2 solutions and faster payment channels based on peer to peer TX signature exchanges will depend on third party online services as well.
+
+      **Refs:** [LLD - 7.3.5.3 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Finality](#LLD)
+    public: true
+    fullyMitigated: true
+    pentestTestable: false
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-1347
+    countermeasures:
+      - ID: LEDGER_SELF_REFERENCING_VERIFICATION
+        title: The Ledger of any participant contains all the data to verify 
+          already finalized transaction
+        description: |
+          The Ledger of any participant contains all the data to verify already finalized transaction, that include signatures, certificates and CRL used 
+          to verify the TX at finalization time. If instead a formal ledger storage of all the data necessary to validate the state of the transaction in the ledger 
+          we use cache this threat is not mitigated. 
+          Usually the concept of CACHE for CRL and certificate/public keys implies that is used only to optimize
+           an online access to a source of truth and can be evicted/deleted.
+
+          **Refs:** [LLD - 10.9.4 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store/Component 1: Back-end Vault KV store](#LLD), [LLD - 7.3.8 Corda Distributed Ledger Technology/Solution design/Data storage & management](#LLD)
+        inPlace: false
+        public: true
+
+      - ID: CERTIFICATE_STORAGE_DOCUMENTATION
+        title: Certificate Storage Documentation
+        description: |
+          Document the locations where certificates are stored and how they can be restored. 
+          Include recommendations for backing up Hashicorp Vault separately to ensure the integrity and availability of certificates.
+          - **Storage Locations:**
+            - Certificates are stored in the following locations:
+              - Certificate Authority (CA) that issued them.
+              - Definitive store at the Central Bank.
+              - Local stores for on-demand access by local banks.
+              - Hashicorp Vault for secure storage and access control.
+          - **Backup Recommendations:**
+            - Back up Hashicorp Vault separately to prevent data loss in case of corruption.
+            - Ensure that backup procedures are documented and followed to maintain the integrity of the key value store for past and present certificates.
+            - Regularly test the restoration process to verify that certificates can be successfully restored from backups.
+
+          **Refs:** [LLD - 10.13.3.3 Cryptography and Public Key Infrastructure/Resiliency and recovery/HashiCorp Vault storage/Backups](#LLD), [LLD - 10.9.4.3 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store/Component 1: Back-end Vault KV store/Fault tolerance and disaster recovery guarantees](#LLD)
+        inPlace: true
+        public: true
+        operational: true
+        operator: DEVOPS
+
+
+  - ID: EXPIRED_BACKCHAIN_NOTARIZATION
+    title: Backchain signatures expired at discovery time
+    # assets:
+    #   - REFID: DF_FIN_PAYEE_RCVBLCK
+    # attackers:
+    #   - REFID: PAYER
+
+
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:H
+    threatType: Denial of Service
+    attack: |
+      It is possible to use compromised/revoked keys to sign malicious and untrustworthy backchain. CRLs may contain the compromised key 
+      information but it has to be ignored to verify supposedly older tx. A rotated/compromised key of the notary (or any other trusted
+       timestamper party) will eventually be rotated.
+
+      **Refs:** [LLD - 10.10.3.2 Cryptography and Public Key Infrastructure/Certificate and asymmetric key lifecycle/Solution design/Certificate expiry](#LLD), [LLD - 10.8.3 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Timestamping](#LLD)
+    impactDesc: |
+      Notarization was required to prevent double spending only (REF: see non-validation notary in C5). A non validating notary wouldn't now even be secure for 
+      double spending in this case (potential use of compromised old keys). A full validation notary is always required. The PAYEE validation in a transfer is thereof 
+      useless, when not misleading, and implies information disclosure of past transaction history.
+
+      **Refs:** [LLD - 7.3.5.2 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Notary implementation](#LLD)
+    public: false
+    fullyMitigated: false
+    pentestTestable: true
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4240
+    countermeasures:
+      - ID: NOTARY_MANAGED_UTXO
+        title: Notary/CB only managed UTXOs
+        description: |
+          TODO: Basically identity based managed account... is it still a distributed ledger? does it makes sense to have tokens if validation can be done only by a central party 
+          (account based management from CB makes more sense as tokens ID at this are an unnecessary complication)?
+
+          **Refs:** [LLD - 7.3.5 Corda Distributed Ledger Technology/Solution design/Finality & consensus](#LLD)
+        inPlace: false
+        public: true
+      - ID: TOKEN_REISSUANCE
+        title: Notary/CB reissuance of tokens with valid signatures
+        description: |
+          TODO: expand on Notary/CB reissuance of tokens with valid signatures
+          check before send by PAYER (does this compromises finality?
+
+          **Refs:** [LLD - 7.3.2 Corda Distributed Ledger Technology/Solution design/API](#LLD)
+        inPlace: false
+        public: true
+      - ID: SIGN_TIME_VALIDATION_WITH_TIMESTAMP
+        title: Sign time validation with timestamp
+        description: |
+          > The expiry time of a certificate is relevant in our case not to the time of validation, but the time of signing
+          [REF](https://github.com/corda/r3-engineering/blob/f4e4274f04407ebdf9e0b6dc1f5afceed5b08180/architecture-and-design/cryptography-manager/HLD/v2/README.md#features)
+
+          **Note**: Residual risk of compromised timestamp key can only be accepted.
+
+          **Refs:** [LLD - 10.8.3 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Timestamping](#LLD), [LLD - 10.10.3.2 Cryptography and Public Key Infrastructure/Certificate and asymmetric key lifecycle/Solution design/Certificate expiry](#LLD)
+        inPlace: true
+        public: true
+
+
+  - ID: LFI_SPOOFING_BY_INTERMEDIATE_CA
+    title: An LFI Issuing Certificates for Other LFIs With Its Own Intermediate 
+      CA
+    attack: |
+      A Licensed Financial Institution (LFI) misuses its intermediate Certification Authority 
+      to generate valid-looking end-entity certificates for other LFIs (or the CB itself). This undermines the trust model 
+      by bypassing the root CA hierarchy and allowing malicious impersonation or unauthorized access.
+
+      **Refs:** [LLD - 10.8.6 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Component 1 - Root and intermediate certificate authority](#LLD), [LLD - 10.8.2 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Chain validation](#LLD)
+    impactDesc: |
+      Permits advanced spoofing attacks, unauthorized credential issuance, and 
+      disruption of trust throughout the ledger network, resulting in complete compromise of the network.
+
+      **Refs:** [LLD - 10.7.3 Cryptography and Public Key Infrastructure/Public key infrastructure/Solution design](#LLD)
+    fullyMitigated: true
+    threatType: Spoofing, Elevation of Privileges
+    pentestTestable: true
+    public: true
+    CVSS:
+      vector: CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+    countermeasures:
+      - ID: STRICT_NAME_BASED_CONSTRAINTS
+        title: Strict Name-Based Constraints
+        description: |
+          Enforce strict name-based constraints on the intermediate CA to 
+          prevent unauthorized issuance. See [RFC-5280](https://datatracker.ietf.org/doc/html/rfc5280)
+
+          **Refs:** [LLD - 10.8.6.3 Cryptography and Public Key Infrastructure/Certificate authority, certificate trust chain, and validation/Component 1 - Root and intermediate certificate authority/Security guarantees](#LLD)
+        inPlace: true
+        public: true
+      - ID: CERTIFICATE_TRANSPARENCY
+        title: Certificate Transparency
+        description: |
+          LFIs each maintain a Certificate Transparency service that allows other LFIs to independently monitor each other's behaviour. See [RFC-9162](https://datatracker.ietf.org/doc/html/rfc9162)
+
+          **Refs:** [LLD - 10.14 Cryptography and Public Key Infrastructure/Security information and event management (SIEM), monitoring and alerting](#LLD), [LLD - 10.9 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store](#LLD)
+        inPlace: false
+        public: true
+
+
+title: Ledger Pki

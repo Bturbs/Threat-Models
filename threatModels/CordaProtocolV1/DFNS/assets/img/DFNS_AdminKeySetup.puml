@@ -1,0 +1,154 @@
+@startuml
+title DFNS Admin Key Setup and Policy Configuration\n(Privileged Role Wallet Provisioning — Full Cloud Deployment)
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam wrapWidth 460
+autonumber
+
+box "R3 Security / Admin" #LightYellow
+actor "Security Admin\n(R3)" as Admin
+actor "Protocol Config\nAuthority" as PCA
+end box
+
+box "R3 Internal Systems" #LightBlue
+participant "Admin UI\n(Browser)" as UI
+participant "Admin BFF\n(Server)" as BFF
+participant "Secret Manager\n(Azure Key Vault)" as SecMgr
+end box
+
+box "External Identity Provider" #LightCyan
+participant "Microsoft Azure AD\n(Entra ID)" as AAD
+end box
+
+box "DFNS Cloud (External)" #LightPink
+participant "DFNS API\n(Org Management)" as DFNS
+participant "DFNS MPC Network\n(Key Gen Nodes)" as MPC
+end box
+
+box "Backup / Redundancy Layer" #LightGreen
+participant "Squads V4\n(External M-of-N Multisig)" as Squads
+actor "R3 Hardware Key\nHolders (M-of-N)" as HWHolders
+participant "High-Availability\nWallet (Emergency)" as HAWallet
+end box
+
+== Phase 1: DFNS Organisation Setup ==
+
+Admin -> DFNS: Create DFNS organisation\n(R3 tenant, full cloud deployment)
+Admin -> AAD: Configure Azure AD OIDC application\n(federate to DFNS as identity provider)
+DFNS --> Admin: Organisation created\n{orgId, rootServiceCredential}
+
+note over SecMgr #PaleGreen
+**CONTROL: Secret Manager Storage (DFNS_CRED_IN_SECRETS_MANAGER)**
+Root service credential stored immediately in Azure Key Vault.
+IAM policy: BFF service identity read-only; no human access.
+Audit logging enabled on all retrieval events.
+end note
+
+Admin -> SecMgr: Store DFNS service credential\n(API key + private key)\nIAM: BFF managed identity only
+
+== Phase 2: Privileged Wallet Provisioning ==
+
+note over Admin, MPC
+**For each privileged protocol role:**
+Curator, Vault Manager, Protocol Manager,
+Protocol Config Authority, Vault Guard, ACL Authority
+end note
+
+Admin -> DFNS: POST /wallets\n{name: "Curator Wallet", network: "Solana"}
+DFNS -> MPC: Generate MPC key shares\n(Ed25519, Solana-compatible)
+MPC --> DFNS: Public key returned\n(key shares distributed across nodes)
+DFNS --> Admin: Wallet created\n{walletId, publicKey: <Base58>}
+
+note over DFNS #MistyRose
+**RISK: DFNS Insider (DFNS_INSIDER_KEY_SHARE_ABUSE)**
+Key shares are distributed at this step.
+A DFNS insider could interfere with key generation.
+**Mitigation:** Verify generated public key matches expected format.
+**Mitigation:** Validate SOC2 attestation covers key generation procedures.
+end note
+
+== Phase 3: Signing Policy Configuration ==
+
+Admin -> DFNS: Configure signing policy for Curator wallet:\n- Require WebAuthn approval: YES (for config ops)\n- Allowed operations: settle_deposits,\n  settle_redemptions, pause_vault\n- Alert on policy change: YES
+Admin -> DFNS: Configure signing policy for Protocol Config Authority:\n- Require WebAuthn approval: YES (mandatory)\n- Allowed operations: admin instructions only\n- Spending limit: N/A (non-financial role)
+
+note over DFNS #MistyRose
+**RISK: Policy Misconfiguration (DFNS_POLICY_MISCONFIGURATION)**
+Permissive policy (no WebAuthn, no operation filter) removes
+the DFNS layer as a safeguard.
+**Mitigation:** Security Admin review of each policy before go-live.
+**Mitigation:** Alert webhook on any future policy change.
+end note
+
+Admin -> DFNS: Register WebAuthn credential for each role holder\n(FIDO2 hardware key — separate from SSO key)
+DFNS --> Admin: WebAuthn credential registered
+
+note over Admin #PaleGreen
+**CONTROL: WebAuthn Independent of SSO (DFNS_WEBAUTHN_SEPARATE_FROM_SSO)**
+Each role holder registers a dedicated FIDO2 key for DFNS approvals,
+separate from their Azure AD FIDO2 key.
+SSO session compromise cannot be used to approve DFNS signing.
+end note
+
+== Phase 4: External Redundancy Setup (Critical Roles) ==
+
+note over Admin, HWHolders
+**For upgrade authority and protocol config authority only:**
+These keys must NOT rely solely on DFNS.
+(Ref: DFNS_UPGRADE_KEYS_EXTERNAL_MULTISIG countermeasure)
+end note
+
+Admin -> Squads: Create external M-of-N Squads multisig\n(e.g., 3-of-5 for upgrade authority)
+HWHolders -> Squads: Register R3-owned hardware wallet keys\n(Ledger / Keystone — physically held)
+Squads --> Admin: Multisig PDA created\n{multisigAddress}
+
+note over Squads #PaleGreen
+**CONTROL: External Redundancy for Critical Keys**
+Upgrade authority transactions must pass through this Squads multisig.
+Even if DFNS is fully compromised, attacker cannot execute upgrades
+without M-of-N approval from R3-held physical keys.
+end note
+
+== Phase 5: Emergency Halt Key Setup ==
+
+Admin -> HAWallet: Provision Security Halt key on\nhigh-availability wallet\n(outside DFNS — e.g., mobile Ledger Live)
+Admin -> HAWallet: Configure push notifications:\n- Alert on pending time-locked actions\n- NCC SOC integration for monitoring
+
+note over HAWallet #PaleGreen
+**CONTROL: Emergency Halt Redundancy (DFNS_EMERGENCY_HALT_REDUNDANCY)**
+Vault pause key available independently of DFNS.
+If DFNS is unreachable, Security Halt can still be executed
+from this wallet without DFNS signing.
+end note
+
+HAWallet --> Admin: Emergency halt key ready\n(veto key also provisioned here)
+
+== Phase 6: On-Chain Role Assignment ==
+
+PCA -> BFF: Assign on-chain role:\n"Set Curator to <DFNS Curator wallet pubkey>"
+BFF -> DFNS: Sign vault config transaction\n(using Protocol Config Authority DFNS wallet)
+DFNS --> BFF: Signed transaction
+BFF -> Squads: Submit via Squads timelock\n(routes through Squads for timelock enforcement)
+Squads --> BFF: Proposal created\n(timelock window begins)
+
+note over Squads #PaleGreen
+**CONTROL: Timelock Integration (DFNS_TIMELOCK_INTEGRATION)**
+All protocol config changes submitted via Squads timelock.
+Veto window: configured timelock period.
+Veto key held on HA wallet (Phase 5) independent of DFNS.
+end note
+
+== Phase 7: Audit Baseline ==
+
+Admin -> DFNS: Export initial policy configuration snapshot\n(wallets, policies, WebAuthn registrations)
+DFNS --> Admin: Configuration export\n{JSON/CSV snapshot}
+Admin -> SecMgr: Store policy snapshot in immutable log store\n(Azure Sentinel — baseline for drift detection)
+
+note over Admin #PaleGreen
+**CONTROL: Audit Log Integrity (DFNS_AUDIT_LOG_INTEGRITY)**
+Baseline policy snapshot preserved outside DFNS.
+Periodic drift checks compare live DFNS config against baseline.
+Alert on any deviation from approved policy state.
+end note
+
+@enduml

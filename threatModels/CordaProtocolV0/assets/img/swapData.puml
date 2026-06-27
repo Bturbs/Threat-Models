@@ -1,0 +1,25 @@
+@startuml
+
+title Jupiter Swap Data Structure (On-Chain Instruction)
+
+!define DATA_STRUCT class
+
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor<<DataStruct>> LightGoldenRodYellow
+    BorderColor Black
+}
+
+package "Jupiter Swap Data (User-Provided, On-Chain Format)" {
+    DATA_STRUCT SwapInstruction <<DataStruct>> [[https://github.com/jup-ag/jupiter-core/blob/main/programs/jupiter/src/instruction.rs]] {
+        + instruction_discriminator: u8
+        + route_plan: Vec<u8>
+        + in_amount: Option<u64>
+        + quoted_out_amount: u64
+        + slippage_bps: u16
+        + platform_fee_bps: u8
+    }
+
+}
+
+@enduml

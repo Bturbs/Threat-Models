@@ -1,0 +1,72 @@
+@startuml 
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+title WYSIWYS (What You See Is What You Sign) for Corda Protocol V1 — Out-of-Band Verification Flow
+skinparam maxMessageSize 250
+skinparam sequenceMessageAlign center
+autonumber
+
+box "Environment A (Everyday Device / Dirty)" #LightPink
+actor "Protocol Dev\n(Initiator)" as Dev
+participant "Solana CLI / Squads UI\n(Untrusted)" as UI
+end box
+
+box "Communication" #White
+participant "Signal/Slack\n(OOB Channel)" as OOB
+end box
+
+box "Environment B (Secure Device / Clean)" #LightGreen
+actor "Tier 1 Upgrade Auth\n(4/7 Cold Signer)" as Approver
+participant "Custom Security CLI\n(Zero Trust Tool)" as CLI
+participant "Ledger Device\n(Cold Storage)" as HW
+end box
+
+box "Infrastructure (Tech Specific)" #LightBlue
+participant "Private Solana RPC\n(e.g., Helius)" as RPC
+participant "CI/CD / Auditor Repo\n(Verifiable Build)" as GitHub
+database "Solana Mainnet\n(Squads V4 Program)" as Squads
+database "BPF Loader Upgradeable\n(Solana Native)" as BPF
+end box
+
+== Phase 1: On-Chain Buffer Upload & Proposal ==
+Dev -> BPF: `solana program write-buffer <compiled.so>`
+BPF --> Dev: Returns Buffer Address
+Dev -> UI: Drafts Squads V4 Proposal\nInstruction: `bpf_loader_upgradeable::upgrade`\nTarget: Corda Protocol ID\nBuffer: Buffer Address
+UI -> Squads: Send `CreateProposal` & `AddInstruction` to Squads PDA
+Squads --> UI: Proposal PDA Created (e.g., Index 12)
+
+== Phase 2: Out-of-Band Hand-off ==
+Dev -> OOB: "Tier 1: Please approve Upgrade Proposal #12.\nAudited Target Hash: [e7b4...f9a1]"
+OOB -> Approver: Receives notification
+
+== Phase 3: Cryptographic Fetch (Zero-Trust) ==
+note over Approver, CLI: Approver operates on air-gapped or dedicated clean device.
+Approver -> CLI: Run `$ verify-upgrade --proposal 12`
+CLI -> RPC: Fetch Squads V4 Proposal PDA (Index 12)
+RPC --> CLI: Returns raw instructions
+CLI -> CLI: Decode Instruction payload (Borsh deserialization)
+note right of CLI: CLI verifies instruction is specifically `bpf_loader_upgradeable`\nExtracts Buffer Address.
+
+== Phase 4: Buffer Hash Verification (The "Simulation") ==
+CLI -> RPC: Fetch raw byte data from Buffer Address
+RPC --> CLI: Returns on-chain compiled bytecode
+CLI -> CLI: Calculate SHA256 Hash of bytecode locally
+CLI -> GitHub: Fetch Deterministic Build Hash\n(from Verifiable Anchor Build / Audit Report)
+GitHub --> CLI: Returns Expected Hash
+CLI -> Approver: UI displays:\n**WARNING: PROGRAM UPGRADE**\nLocal On-Chain Hash: [e7b4...f9a1]\nAudited CI/CD Hash: [e7b4...f9a1]\n**MATCH VERIFIED**
+
+== Phase 5: Air-Gapped Signature ==
+Approver -> CLI: Confirms (Types 'Y')
+CLI -> HW: Sends `Squads::ApproveTransaction` instruction to Ledger
+Approver -> HW: Physically signs transaction on Ledger
+HW --> CLI: Returns Signature
+
+== Phase 6: Broadcast & Squads V4 Timelock ==
+CLI -> RPC: Broadcast Signed TX
+RPC -> Squads: Execute `ApproveTransaction`
+Squads --> CLI: State: Proposal Approved (Signer added)
+
+note over Squads: **Squads V4 Logic:**\nIf Approvals reach 4 of 7 Threshold:\nStatus = 'Approved'\n`approved_at` timestamp recorded.\n**Tier 1 Timelock (e.g., 72h) begins.**
+
+CLI -> Approver: "Success. 4/7 Reached. 72h Timelock Active."
+
+@enduml

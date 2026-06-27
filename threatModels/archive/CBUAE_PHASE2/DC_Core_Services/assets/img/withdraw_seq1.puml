@@ -1,0 +1,70 @@
+@startuml
+
+actor Retail1 as R1
+participant LFI1
+actor Retail2 as R2 
+participant Issuer
+
+participant LFI2
+
+autonumber
+
+R2 -> LFI2: Top up 1000
+activate LFI2
+LFI2 -> Issuer: Move collateral 1000
+activate Issuer
+Issuer -> Issuer: Move from LFI2 \nto Pooled account
+Issuer -> LFI2: Moved collateral 1000
+deactivate Issuer
+deactivate LFI2
+Issuer -> LFI2: Update Corda DLT
+note over Issuer, LFI2:  Update Corda DLT \n can happen only after collateral movement
+
+R2 -> LFI2: Request Transfer 1000 to R1
+
+note over LFI1, LFI2:  Update Corda DLT 
+
+LFI1 -> R1: Notify Transfer 1000 from R2
+' R1 -> R2: Transfer 1000
+' note over Issuer, LFI1:  Update Corda DLT 
+R1 -> LFI1: Withdraw 1000
+activate LFI1
+LFI1 -> Issuer: Move collateral 1000
+activate Issuer
+Issuer -> Issuer: Move from Pooled\n account to LFI1 account
+Issuer -> LFI1: Moved collateral 1000
+note over Issuer, LFI1:  Update Corda DLT
+' note over Issuer, LFI1 #pink: This second update can happen only after \
+' \nthe collateral movement is completed
+deactivate Issuer
+deactivate LFI1
+R1 -> LFI1: Transfer 1000 to R2
+note across #pink 
+Analysis includes: case of Transfer before Withdrawal completion 
+What happens if Withdraw 1000 and Transfer 1000 are not in sync?
+How is double spending prevented? 
+- Collateral moves have precedence over DLT updates 
+- DLT updates have precedence over retail transfers 
+
+Consistency Hierarchy:
+1. Collateral accounts (Flexcube)
+2. DLT
+3. Retail DBs accounts
+
+=> Transfers are safe only if collateral accounts are updated first
+===> Queued collateral moves (listener logic) may fail if a transfer makes it invalid after withdrawal
+
+Deadlock? 
+1. Withdrawal collateral move ok
+1.1 DLT update start for withdrawal (...no two-phase commits with rollback of Flexcube here...)
+2. Transfer initiated (nobody is blocking it)
+2. DLT update for transfer ok (DLT wallets have still funds... 1.1 is not finished yet)
+3. DLT update start for withdrawal FAILS (collateral accounts being wrong)
+
+
+
+end note
+
+
+
+@enduml

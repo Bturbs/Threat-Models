@@ -1,0 +1,270 @@
+ID: Signing_Service
+schemaVersion: 2
+title: Signing service
+parent: CBUAE_PHASE2
+scope:
+  assets:
+    - ID: SIGNING_SERVICE
+      type: process
+      title: Signing Service
+      description: |
+        Service that allows the signing of a message with a private key.
+
+        **Refs:** [LLD - 7.3.12.5 Corda Distributed Ledger Technology/Infrastructure requirements/Corda Signing Service](#LLD), [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+      inScope: true
+    - ID: DF_SIGN_SERVICE
+      type: dataflow
+      title: Signing Service Data Flow
+      description: |
+        Data flow that represents the call to the signing service 
+        from a workflow App to ensure messages integrity and authenticity.
+
+        **Refs:** [LLD - 8.3.5 Corda Workflow SDK Overview/Solution design/Networking](#LLD)
+      inScope: true
+    - ID: PUBLIC_KEY_REPOSITORY
+      type: process
+      title: Public Key Repository
+      description: |
+        Repository that stores the public keys of the participants in the network.
+
+        **Refs:** [LLD - 10.9 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store](#LLD)
+      inScope: true
+    - ID: DF_GET_PUBKEY_REPO
+      type: dataflow
+      title: Fetch Public Key from Repository
+      description: |
+        Data flow that represents the call to the public key repository 
+        to get the public key of a participant.
+
+        **Refs:** [LLD - 10.9.3 Cryptography and Public Key Infrastructure/Certificate propagation: platform operator and local certificate store/Solution design](#LLD)
+      inScope: true
+    - ID: HSM
+      type: hardware
+      title: Hardware Security Module
+      description: |
+        Hardware device that provides secure key storage and cryptographic operations.
+
+        **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+      inScope: false
+    - ID: HSM_CREDS
+      type: credentials
+      title: HSM Credentials
+      description: |
+        Credentials used to authenticate with the HSM to perform cryptographic operations.
+
+        **Refs:** [LLD - 10.12 Cryptography and Public Key Infrastructure/Authentication with Vault](#LLD)
+      applicationRelated: true
+      infrastructureRelated: false
+      inScope: true
+    - ID: DF_GET_MASTERKEY_HSM
+      type: dataflow
+      title: Fetch Master Key from HSM
+      description: |
+        Data flow that represents the call to the HSM to get the master key for decrypting 
+        stored encrypted private keys and then signing the messages for App Clients.
+
+        **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+      inScope: true
+    - ID: SECURE_KEY_STORAGE
+      type: database
+      title: Secure Key Storage
+      description: |
+        Component for generating and holding cryptographic keys, 
+        ensuring private keys never leave the secure storage environment.
+        (RFI: what is the secure key storage: process memory, dedicated database?)
+
+        **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD), [LLD - 10.13.3 Cryptography and Public Key Infrastructure/Resiliency and recovery/HashiCorp Vault storage](#LLD)
+      inScope: true
+    - ID: CRYPTO_CLIENT_LIBRARY
+      type: process
+      title: Crypto Client Library
+      description: |
+        Library that abstracts the signing service and some details of the PKI,
+         allowing application developers to focus on high-level business logic.
+
+        **Refs:** [LLD - 10.11 Cryptography and Public Key Infrastructure/Cryptography SDK](#LLD), [LLD - 13.4.6 Network Identity Detailed Design/Exchanging application identity via tokens/Crypto Client Library integration](#LLD)
+      inScope: true
+    - ID: WRAP_MASTER_KEY
+      type: key
+      title: Wrap Master Key
+      description: |
+        Master key for secure storage decryption
+
+        **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+      inScope: true
+      ##TODO properties
+      applicationRelated: true
+      infrastructureRelated: false
+analysis: |2
+
+  <img src="img/transitSeq1.svg"/>
+
+  **Refs:** [LLD - 10.6.3.2 Cryptography and Public Key Infrastructure/Cryptographic key management/Solution design/Architecture/context](#LLD), [LLD - 10.12.2.2 Cryptography and Public Key Infrastructure/Authentication with Vault/Solution design/Sequence and interactions](#LLD)
+
+threats:
+  - ID: UNAUTHORIZED_KEY_ACCESS
+    title: Unauthorized Key Access
+    attack: |
+      An attacker may gain unauthorized access to the private keys stored in the
+       Secure Key Storage.
+
+      **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+    impactDesc: |
+      Unauthorized access to private keys can compromise the 
+      integrity and confidentiality of the signing operations,
+       leading to potential data breaches and unauthorized transactions.
+
+      **Refs:** [LLD - 10.11.4.5 Cryptography and Public Key Infrastructure/Cryptography SDK/Component - Key management library/Security guarantees](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H
+    threatType: Spoofing, Information Disclosure
+    countermeasures:
+      - ID: KEY_STORAGE_ENCRYPTION
+        title: Key Storage Encryption
+        description: |
+          Implement encryption mechanisms to protect private keys stored in 
+          the Secure Key Storage. This is based on a master key stored in an HSM.
+
+          **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD), [LLD - 10.13.3 Cryptography and Public Key Infrastructure/Resiliency and recovery/HashiCorp Vault storage](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: KEY_EXFILTRATION
+    title: Key Exfiltration
+    attack: |
+      An attacker may exfiltrate private keys from the Secure Key Storage.
+
+      **Refs:** [LLD - 10.11.4.5 Cryptography and Public Key Infrastructure/Cryptography SDK/Component - Key management library/Security guarantees](#LLD)
+    impactDesc: |
+      Key exfiltration can compromise the confidentiality of the signing operations, leading to potential data breaches and unauthorized transactions.
+
+      **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H
+    threatType: Spoofing, Information Disclosure
+    countermeasures:
+      - REFID: KEY_STORAGE_ENCRYPTION
+
+  - ID: UNAUTHORIZED_SIGNING_REQUEST
+    title: Unauthorized Signing Request
+    attack: |
+      An attacker may make unauthorized calls to the signing service to sign malicious data.
+
+      **Refs:** [LLD - 10.12.2.4 Cryptography and Public Key Infrastructure/Authentication with Vault/Solution design/Component 2 - Username/password authentication for signing operations](#LLD)
+    impactDesc: |
+      Unauthorized signing requests can lead to the signing of malicious data, 
+      compromising the integrity and trustworthiness of the system.
+
+      **Refs:** [LLD - 10.11.4.5 Cryptography and Public Key Infrastructure/Cryptography SDK/Component - Key management library/Security guarantees](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
+    threatType: STRIDE
+    countermeasures:
+      - ID: SIGN_REQUEST_AUTHORIZATION
+        title: Request Authorization
+        description: |
+          Implement robust authorization mechanisms to ensure 
+          that only authorized requests are processed by the signing service.
+          (RFI: what is the authorization mechanism for SIGN SERVICE?)
+
+          **Refs:** [LLD - 10.12.2.4 Cryptography and Public Key Infrastructure/Authentication with Vault/Solution design/Component 2 - Username/password authentication for signing operations](#LLD), [LLD - 12.11 Identity and Access Management (IAM)/Authorization services](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: UNAUTHORIZED_HSM_MASTER_WRAP_KEY_RETRIEVAL
+    title: Unauthorized HSM Master wrapping Key Retrieval
+    assets:
+      - REFID: DF_GET_MASTERKEY_HSM
+      - REFID: HSM
+      - REFID: HSM_CREDS
+      - REFID: SIGNING_SERVICE
+    attack: |
+      An attacker may attempt to retrieve the HSM master wrapping key without authorization.
+
+      **Refs:** [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+    impactDesc: |
+      Unauthorized retrieval of the HSM master wrapping key can compromise the 
+      security of the entire key management system, leading to potential data 
+      breaches and unauthorized access to cryptographic keys (spoofing).
+
+      **Refs:** [LLD - 10.11.4.5 Cryptography and Public Key Infrastructure/Cryptography SDK/Component - Key management library/Security guarantees](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H
+    threatType: S.T.R.I.D.E.
+    countermeasures:
+      - ID: HSM_ACCESS_CONTROL
+        title: HSM Access Control
+        description: |
+          Implement strict access control mechanisms to ensure that only
+           authorized processes can access the HSM master key.
+           (RFI: what are HSM credentials used?)
+
+          **Refs:** [LLD - 10.12 Cryptography and Public Key Infrastructure/Authentication with Vault](#LLD), [LLD - 10.6.4.1 Cryptography and Public Key Infrastructure/Cryptographic key management/Implementation components/Component 1 - HashiCorp Vault Transit secrets engine](#LLD)
+        inPlace: true
+        public: true
+
+  - ID: SIGNATURE_PROCESS_EFFICIENCY
+    title: Signature Process Efficiency
+    attack: |
+      The performance overhead from the centralized signing service can lead to increased latency and reduced efficiency in signing operations
+
+      **Refs:** [LLD - 10.11.4.3 Cryptography and Public Key Infrastructure/Cryptography SDK/Component - Key management library/Availability guarantees](#LLD)
+    impactDesc: |
+      The performance overhead potentially affects the overall system performance and availability.
+
+      **Refs:** [LLD - 10.13.2 Cryptography and Public Key Infrastructure/Resiliency and recovery/Service instances and availability](#LLD)
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    public: true
+    fullyMitigated: true
+    pentestTestable: false
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:N/I:N/A:L
+    threatType: Availability
+    countermeasures:
+      - ID: PERFORMANCE_MONITORING
+        title: Performance Monitoring
+        description: |
+          Implement performance monitoring to track and manage the latency and efficiency of signing operations, ensuring that the performance overhead is kept within acceptable limits.
+
+          **Refs:** [LLD - 10.14 Cryptography and Public Key Infrastructure/Security information and event management (SIEM), monitoring and alerting](#LLD)
+        inPlace: true
+        public: true
+      - ID: OPTIMIZED_NETWORK_CONFIGURATION
+        title: Optimized Network Configuration
+        description: |
+          Optimize network configuration to minimize the latency introduced by the network hop required for signing operations.
+
+          **Refs:** [LLD - 5.1.4 Corda Networks/Networking/Solution design](#LLD)
+        inPlace: true
+        public: true
+      - ID: REDUCED_SIGNATURE_USE
+        title: Reduced Signature Use
+        description: |
+          Implement caching mechanisms or local encryption capabilities to reduce the reliance on the centralized signing service
+           for every signing operation.
+          Examples are HMAC or use PKI keys to share a symmetric encryption key as in S/MIME, PKCKS#7 CMS, WS for SOAP, etc.
+
+          **Refs:** [LLD - 7.3.4.3 Corda Distributed Ledger Technology/Solution design/Privacy and cryptography/Cryptography](#LLD)
+        inPlace: false
+        public: true

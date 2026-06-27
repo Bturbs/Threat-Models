@@ -1,0 +1,46 @@
+
+        <!DOCTYPE html>
+<html>
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Threat Model</title>
+<link href="../css/style.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body>
+        <div class='topKey'> parent <br> </div><div class='topValue'><p>cluster</p></div>
+<div class='topKey'> ID <br> </div><div class='topValue'><p>VirtualNode</p></div>
+<div class='topKey'> prefix <br> </div><div class='topValue'><p>C5.cluster.virtualNode</p></div>
+<div class='topKey'> scope <br> </div><div class='topValue'><table class='list'><tr><td class='key'>diagram</td><td class='value'> <iframe src="../img/corda5.drawio.html" width="100%" height="1200px">C5 diagram</iframe></td></tr><tr><td class='key'>description</td><td class='value'> <p>ref. https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/virtual-node/onboarding-journey.md</p></td></tr></table></div>
+<div class='topKey'> assets <br> </div><div class='topValue'></br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>HoldingID</p></td></tr><tr><td class='key'>type</td><td class='value'> <p>data</p></td></tr><tr><td class='key'>description</td><td class='value'> <p>The VNode identity that will be used for the node for all operations inside the cluster. 
+First 48 bits of SHA-256 (X500 Corda identity + Group Membership ID ) it is also known as Holding ID</p></td></tr><tr><td class='key'>notes</td><td class='value'> <p>ref. https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/virtual-node/onboarding-journey.md</p></td></tr><tr><td class='key'>inScope</td><td class='value'> <p>True</p></td></tr></table></div>
+<div class='topKey'> assumptions <br> </div><div class='topValue'></br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>1</p></td></tr><tr><td class='key'>description</td><td class='value'> <p>HoldingID uniqueness control implementation executed
+on the HoldingID (not only on Membership Group ID and X.500 identity) TBC</p></td></tr></table></br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>2</p></td></tr><tr><td class='key'>description</td><td class='value'> <p>HoldingID uniqueness control is executed in a synchronized way. Resilient to ToCToU (time of check time of use issues) TBC</p></td></tr></table></div>
+<div class='topKey'> threat analysis <br> </div><div class='topValue'><h3>STRIDE</h3>
+<h4>HoldingID:</h4>
+<ul>
+<li><strong>Spoofing</strong>: yes (VNode1.HoldingID.1)</li>
+<li><strong>Tampering</strong>: no </li>
+<li><strong>Repudiation</strong>: yes (same as spoofing), final user can claim another x500 actor had the same HoldingID</li>
+<li><strong>Info disclosure</strong>: no (TBC HoldingID is not a secret/sensitive data)</li>
+<li><strong>DoS</strong>: no</li>
+<li><strong>ElevationOfPrivileges</strong>: yes, due to Spoofing</li>
+</ul></div>
+<div class='topKey'> threats <br> </div><div class='topValue'></br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>VNode1.HoldingID.1</p></td></tr><tr><td class='key'>assets</td><td class='value'> </br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>HoldingID</p></td></tr></table></td></tr><tr><td class='key'>CVSS</td><td class='value'> <table class='list'><tr><td class='key'>base</td><td class='value'> <p>9.8</p></td></tr><tr><td class='key'>vector</td><td class='value'> <p>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/MC:H/MI:H/MA:H</p></td></tr></table></td></tr><tr><td class='key'>threatType</td><td class='value'> <p>Spoofing (caused by HoldingID collision)</p></td></tr><tr><td class='key'>description</td><td class='value'> <p>The entropy chosen for HoldingID is not enough to avoid collisions based on a controllable part of the attacker 
+(any malleability/parameter of a X.500 name).The cost of this attack may make it feasible:
+For example In August 2022, the bitcoin block number 750884 has the 
+SHA-256 HASH:000000000000000000001ad6481a4b43b110bea93cce4150e2779e3ce23db0e8.
+IT has 20 trailing 0 and then a '1' chars (HEX) it means 43 bits. 
+The combined costs of generating a single collision with efficient ASIC hardware could be estimated 
+to be less than a current Bitcoin clock reward 6.15 (TBC), the additional 5 bits of collision would cost less than 32 time 6.15 = 36.9 BTC 
+that is less than 1 million USD as today countervalue. A successful attack may be economically sustainable. Also, the past cost of 
+hashing has been decreasing and the cost may only be even lower in the future.</p></td></tr><tr><td class='key'>public</td><td class='value'> <p>False</p></td></tr><tr><td class='key'>fullyMitigated</td><td class='value'> <p>true (TBC)</p></td></tr><tr><td class='key'>countermeasures</td><td class='value'> </br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>None</p></td></tr><tr><td class='key'>description</td><td class='value'> <p>Use a full SHA-256 hash (suggested) or at least a length than makes creating a collision identity un-economical for the attacker</p></td></tr><tr><td class='key'>inPlace</td><td class='value'> <p>False</p></td></tr><tr><td class='key'>vulnManagementLink</td><td class='value'> <p>None</p></td></tr><tr><td class='key'>public</td><td class='value'> <p>False</p></td></tr></table></br><table class='list'><tr><td class='key'>ID</td><td class='value'> <p>None</p></td></tr><tr><td class='key'>description</td><td class='value'> <p>Check uniqueness when onboarding a virtual Node, abort if not unique
+ref: https://github.com/corda/platform-eng-design/blob/master/core/corda-5/corda-5.0/virtual-node/onboarding-journey.md#node-creation-journey
+TODO: check assumptions: if the uniqueness is on HoldingID or in the X.500 AND Membership group or in the data triad 
+(the real remediation here is if the uniqueness control is executed on the HoldingID or on the triad, see assumption)</p></td></tr><tr><td class='key'>inPlace</td><td class='value'> <p>true (TBC)</p></td></tr><tr><td class='key'>public</td><td class='value'> <p>True</p></td></tr></table></td></tr></table></div>
+ 
+</body>
+</html>
+        

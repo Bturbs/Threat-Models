@@ -1,0 +1,296 @@
+ID: Contracts
+schemaVersion: 2
+parent: CBUAE_PHASE2
+
+
+scope:
+  description: |
+    Corda Contracts define the rules and logic that govern the behavior of
+     digital assets and transactions on the retail CBDC platform.
+    **Refs:** [HLD - 4.6 Solution Design/Corda Contracts](#HLD), [LLD - 6 Corda Contracts](#LLD)
+
+  assets:
+    - ID: CONTRACT_ENGINE
+      type: process
+      title: Contract engine
+      description: |
+        The contract engine is a process that evaluates the rules defined in the a contract code.
+
+        **Refs:** [LLD - 6.3.2.3 Corda Contracts/Solution design/Detail design/Evaluation Engine](#LLD)
+      inScope: true
+    - ID: CONTRACT_SERVICE
+      type: process
+      title: Contract Serive
+      description: |
+        The contract service is a process that provides the contracts code to the network participants.
+
+        **Refs:** [LLD - 6.3.2.1 Corda Contracts/Solution design/Detail design/Contract Service API](#LLD)
+      inScope: true
+    - ID: CON_GET_BY_ID
+      type: dataflow
+      title: Contract get by ID
+      description: |
+        The contract get by ID is a data flow that retrieves a contract by its unique identifier.
+
+        **Refs:** [LLD - 6.3.2.1 Corda Contracts/Solution design/Detail design/Contract Service API](#LLD)
+      inScope: true
+    - ID: CON_EVAL_CALL
+      type: dataflow
+      title: Contract evaluation call
+      description: |
+        The contract evaluation call is a call that evaluates a contract code.
+
+        **Refs:** [LLD - 6.3.2.3 Corda Contracts/Solution design/Detail design/Evaluation Engine](#LLD)
+      inScope: true
+
+    - ID: CON_EVAL_RESULT
+      type: dataflow
+      title: Contract evaluation result
+      description: |
+        The contract evaluation result is the result of the contract evaluation call.
+
+        **Refs:** [LLD - 6.3.2.3 Corda Contracts/Solution design/Detail design/Evaluation Engine](#LLD)
+      inScope: true
+
+
+
+analysis: |
+  While the 'contract' part of the design effectively achieves a framework for defining arbitrary rules
+   it is not clear where the rules (contract) enforcement is tight to the DLT transaction itself.
+   The current 'contract' design does not contribute to network consensus, and does not meet the definition of a contract -
+   which is an enforceable and verifiable set of rules between two or more participants.
+   The security objective [TRUSTLESS_CONTRACTS_EXECUTION](#CBUAE_PHASE2.TRUSTLESS_CONTRACTS_EXECUTION) means that a contract must be 
+   enforced by the TX consensus. However the current Contract design does not meet this objective. 
+   This is the main difference between a classic 'smart-contract' DLT and the current design.
+
+  **Refs:** [HLD - 4.6 Solution Design/Corda Contracts](#HLD), [HLD - 5.3.9 Solution Analysis/Design decisions/Corda Contracts execution model](#HLD), [LLD - 1.4.7 Wallet Service implementation/Programmable wallets](#LLD)
+   
+    The logic example in the design: 
+
+    ``` 
+    check(transaction.value > wallet.maxPurchaseLimit){
+      "payments with a value over ${wallet.maxPurchaseLimit} are not allowed"
+      }
+    ```
+
+    Is not automatically guaranteed to be executed by the retail users (in this design the execution AND enforcement is delegated to the LFIs)
+    Colluding LFIs could also create transactions that while being valid in the DLT (notarized) are not enforcing the (non smart)
+    contract. 
+    As **Corda Contract** suggest smart contract logic, a more complete design version should demonstrate how retails transaction 
+    rules are enforced by the whole system without potential colluding parties, atomically etc. 
+    [REF](https://docs.r3.com/en/platform/corda/4.9/enterprise/cordapps/api-transactions.html#verifying-the-transactions-contents) 
+
+    **Refs:** [LLD - 1.4.7.3 Wallet Service implementation/Programmable wallets/Contract execution](#LLD), [LLD - 7.3.6 Corda Distributed Ledger Technology/Solution design/Contract validation](#LLD)
+
+    <img src="img/contractSequence1.png"/>
+threats:
+
+  # - ID: LIMITED_FUNCTIONALITY
+  #   title: Limited functionality of rules
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+  #   threatType: DoS
+  #   attack: |
+  #     The current implementation of Corda Contracts does not fully address the design description:
+  #     > Corda Contracts, a solution that enables clients to integrate custom business rules and policies into their Corda-based systems. Corda Contracts allow organizations to embed business logic and compliance requirements into transaction workflows and user activities, ensuring that all processes adhere to specific operational and regulatory standards. By using Corda Contracts, businesses can customize their transaction processes to meet strategic goals while utilizing the built-in features of Wallets and DLT applications within the Corda Network.
+  #     Currently `contracts` support the integration of custom business rules and policies into transaction workflows.
+  #     The functionality is limited to the validation of transaction based on data available to one intermediary, ensuring that the 
+  #     transaction adheres to validation rules. 
+  #     This limitation prevents organizations from embedding comprehensive business logic 
+  #     (like consequencial actions and transactions, future committments/requiremets and other business logic)
+  #      and compliance requirement into their Corda-based systems.
+  #   impactDesc: |
+  #     Without the ability to integrate custom business rules and policies, 
+  #     organizations cannot ensure that all processes adhere to specific operational and regulatory standards. 
+  #     This limitation undermines the strategic goals of businesses and reduces the effectiveness of Wallets and 
+  #     DLT applications within the Corda Network.
+  #   impactedSecObj:
+  #     - REFID: TRUSTLESS_CONTRACTS_EXECUTION
+  #   public: true
+  #   fullyMitigated: false
+  #   pentestTestable: true
+  #   countermeasures:
+  #     - ID: COMPLETE_CONTRACT_FUNCTIONALITY
+  #       title: Enhanced Corda Contract functionality
+  #       description: |
+  #         Implement support for integrating custom business executives business rules, trigger and depends on other 
+  #         tranasctions, and policies into Corda Contracts.
+  #         This enhancement should allow organizations to embed comprehensive
+  #          business logic and compliance requirements into transaction workflows.
+  #       inPlace: false
+  #       public: true
+  - ID: UNVERIFIABLE_CONTRACTS
+    title: Unverifiable enforcement of contract rules
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H
+    threatType: Integrity
+    attack: |
+      Any intermediary or LFI involved in a transaction can circumvent transaction verification logic, with no way
+      for any other counterparty to be able to detect the abuse taking place. This is because there is no 
+      consensus mechanism between counterparties other than having to blindy trust everybody on the network.
+
+      **Refs:** [LLD - 7.3.6 Corda Distributed Ledger Technology/Solution design/Contract validation](#LLD), [LLD - 7.3.5 Corda Distributed Ledger Technology/Solution design/Finality & consensus](#LLD)
+    impactDesc: |
+      The contract system is based on distributed trust on many parties (not only the central notary).  Enforcement cannot be 
+      defined for example by the Central Bank as compromised LFIs may be able to produce valid TXs that can be spent while 
+      their contracts are either invalid or not being enforced by these parties.
+      For example, to avoid double spending (a specific kind of contract), DLT systems need to have specific characteristic.
+      Smart contract-based systems tend to have similar requirements to those required to avoid double spending and arbitrary minting.
+
+      **Refs:** [HLD - 5.3.9 Solution Analysis/Design decisions/Corda Contracts execution model](#HLD), [LLD - 7.3.5.2 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Notary implementation](#LLD)
+    impactedSecObj:
+      - REFID: TRUSTLESS_CONTRACTS_EXECUTION
+    public: false
+    fullyMitigated: false
+    pentestTestable: true
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4244
+    countermeasures:
+      - ID: VALIDATION_NOTARY
+        title: Validating notarization protocol
+        description: |
+          The notarization protocol should be designed to ensure that the contract rules are enforced by
+           the network participants.
+
+          **Refs:** [LLD - 7.3.5.2 Corda Distributed Ledger Technology/Solution design/Finality & consensus/Notary implementation](#LLD), [LLD - 7.3.6.1 Corda Distributed Ledger Technology/Solution design/Contract validation/Agreeing a block](#LLD)
+        inPlace: true
+        public: true
+
+      - ID: LEDGER_BASED_CONTRACTS
+        title: DLT-based contracts and verification
+        description: |
+          Contract verification is enforced by the Ledger.
+          The ledger contains all the data to deterministically identify and verify all the contract rules.
+          This contract verification needs to be extendible to the backchain.
+
+          **Refs:** [LLD - 7.3.6.2 Corda Distributed Ledger Technology/Solution design/Contract validation/Use of Corda contracts](#LLD)
+        inPlace: false
+        public: true
+
+  - ID: UNTRUSTED_CONTRACT_CODE
+    title: An untrusted party can create a malicious contract
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:H
+    threatType: Integrity
+    attack: |
+      A network participant can create contract code that is not trustworthy and link it to transactions.
+      This is because there is not way to determine the provenance and authenticity of contract code.
+
+      **Refs:** [LLD - 6.3.2.2 Corda Contracts/Solution design/Detail design/Access controls and security](#LLD)
+    impactDesc: |
+      Network participant will run untrustworthy contract code linked to arbitrary transaction from peers.
+
+      **Refs:** [LLD - 6.3.2.3 Corda Contracts/Solution design/Detail design/Evaluation Engine](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    countermeasures:
+      - ID: CONTRACT_SIGNING
+        title: Contract code signing
+        description: |
+          Contracts are signed by the author and the signature is verified by the network participants importing a contract.
+          The signature is on the deterministic ID is verified at import time.
+
+          **Refs:** [LLD - 6.3.2.2 Corda Contracts/Solution design/Detail design/Access controls and security](#LLD)
+        inPlace: true
+        public: true
+
+
+  - ID: ZERO_DAY_CONTRACT_VULN
+    title: Exploiting a zero days vulnerable contract
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H
+    threatType: Elevation of Privileges
+    attack: |
+      A zero-day vulnerability is found in a valid contract and is actively exploited by a network participant.
+
+      **Refs:** [LLD - 6.3.2.3 Corda Contracts/Solution design/Detail design/Evaluation Engine](#LLD)
+    impactDesc: |
+      Attackers can run arbitrary code in LFIs and CB nodes, leading to a whole compromised currency system.
+
+      **Refs:** [LLD - 6.3.4 Corda Contracts/Solution design/Resilience and disaster recovery](#LLD)
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    countermeasures:
+
+      - ID: SECURE_CONTRACT_CODING
+        title: Secure contract coding
+        description: |
+          Static code analysis and formal code verification.
+
+          **Refs:** [LLD - 6.3.2.2 Corda Contracts/Solution design/Detail design/Access controls and security](#LLD)
+        inPlace: false
+        public: true
+
+      - ID: RESTRICTED_CONTRACT_PROGRAMMING
+        title: Restricted programming for contracts
+        description: |
+          The Common Expression Language (CEL) is a restricted programming language that can be used to define
+          contract rules. This language is designed to be safe and deterministic, and it is not Turing complete.
+
+          **Refs:** [LLD - 6.3.2.3 Corda Contracts/Solution design/Detail design/Evaluation Engine](#LLD), [HLD - 5.3.10 Solution Analysis/Design decisions/Asset programmability](#HLD)
+        inPlace: true
+        public: true
+
+  - ID: CONTRACT_HALTING_PROBLEM
+    title: Contract execution halting problem
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:N/A:H
+    threatType: Denial fo Service
+    attack: |
+      A combination of vulnerable code and input data may cause contract to continue execution forever.
+
+      **Refs:** [LLD - 6.3.5 Corda Contracts/Solution design/Performance and scalability](#LLD)
+    impactDesc: |
+      Nodes stop processing transactions by resource exhaustion. This result in a Denial of Service.
+
+      **Refs:** [LLD - 6.3.4 Corda Contracts/Solution design/Resilience and disaster recovery](#LLD)
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    countermeasures:
+      - ID: CONTRACT_EXECUTION_TIMEOUT
+        title: Contracts are from trusted sources
+        description: |
+          Contract developers can implement timeouts and circuit breakers to 
+          forcibly halt the execution of a contract if it
+           exceeds a predefined time limit or exhibits other problematic behavior.
+
+          **Refs:** [LLD - 6.3.5 Corda Contracts/Solution design/Performance and scalability](#LLD)
+        inPlace: false
+        public: true
+
+      - REFID: RESTRICTED_CONTRACT_PROGRAMMING
+
+  - ID: CONTRACT_DOWNGRADE
+    title: Referencing a superseded contract in newer transactions
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H
+    threatType: Elevation of Privileges
+    attack: |
+      A valid network participant can initiate a transaction referencing a superseded contract (older version) 
+      that results still valid in the system.
+
+      **Refs:** [LLD - 1.4.7.2 Wallet Service implementation/Programmable wallets/Managing contracts](#LLD)
+    impactDesc: |
+      Old business rules are applied to newer transactions. For example,
+      an update in a control `maxPurchaseLimit` in a newer contract version is overridden
+      by the old `maxPurchaseLimit` value, effectively allowing a valid contract and
+      transaction with outdated logical business rules.
+
+      **Refs:** [LLD - 1.4.7.4 Wallet Service implementation/Programmable wallets/Example: Transaction and balance limits](#LLD)
+    impactedSecObj:
+      - REFID: INTEGRITY
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    ticketLink:
+    countermeasures:
+      - REFID: CONTRACT_SIGNING
+title: Contracts

@@ -1,0 +1,81 @@
+@startuml
+
+title Corda Token Issuance and Transfer
+
+participant "Issuer" as Issuer
+participant "Alice" as Alice
+participant "Bob" as Bob
+participant "Charlie" as Charlie
+participant "Notary" as Notary
+autonumber "<b>STEP_00"
+
+group Token Issuance to Alice
+    Issuer -> Issuer: Issue 100 tokens to Alice
+    Issuer -> Notary: Request notarization
+    activate Notary
+    note over Notary #pink: Info Disclosure: Transaction metadata (filtered)
+    Notary -> Notary: Validate transaction\n (check for double-spends)
+    Notary --> Issuer: Return signature
+    Notary --> Alice: Return signature
+    deactivate Notary
+    Issuer -> Alice: Send finalized transaction
+    note right of Notary: Unspent: {Tx1, *?}
+    note right of Alice: Alice stores Tx1 and its signatures\nand knows the full backchain of transactions.
+end
+
+group Token Transfer from Alice to Bob (50 tokens)
+    Alice ->> Bob: Request identity key
+    Bob -->> Alice: Provide identity key
+    Alice -> Alice: Build transaction (Tx2):\nInput: {Tx1, 0}\nOutputs: {50 to Bob, 50 to Alice}
+    Alice ->> Bob: Send transaction for verification and signature
+    activate Bob
+    note over Bob, Alice #pink: Info Disclosure: metadata about issuing
+    Bob -> Alice: Call ResolveTransactionsFlow to fetch backchain (Tx1)
+    Alice --> Bob: Provide backchain (Tx1)
+    Bob -> Bob: Verify transaction & backchain
+    note over Bob: Bob receives Tx2 and the full backchain (Tx1)\nfrom Alice using ResolveTransactionsFlow.
+    Bob -->> Alice: Return signature
+    deactivate Bob
+    Alice -> Notary: Request notarization for Tx2
+    activate Notary
+    note over Notary #pink: Info Disclosure: Transaction metadata (filtered)
+    Notary -> Notary: Validate transaction (check for double-spend on {Tx1, 0})
+    Notary --> Alice: Return signature
+    Notary --> Bob: Return signature
+    deactivate Notary
+    note right of Notary
+        Spent: {Tx1, 0}
+        Unspent: {Tx2, *?}
+    end note
+    note right of Bob: Bob stores Tx2 and its signatures\nand knows the full backchain of transactions.
+    Alice -> Bob: Send finalized transaction
+end
+
+group Token Transfer from Bob to Charlie (30 tokens)
+    Bob ->> Charlie: Request identity key
+    Charlie -->> Bob: Provide identity key
+    Bob -> Bob: Build transaction (Tx3):\nInput: {Tx2, 0}\nOutputs: {30 to Charlie, 20 to Bob}
+    Bob ->> Charlie: Send transaction for verification and signature
+    activate Charlie
+    note over Charlie, Bob #pink: Info Disclosure: metadata about previous owner (Alice)
+    Charlie -> Bob: Call ResolveTransactionsFlow to fetch backchain (Tx2, Tx1)
+    Bob --> Charlie: Provide backchain (Tx2, Tx1)
+    Charlie -> Charlie: Verify transaction & backchain
+    note over Charlie: Charlie receives Tx3 and the full backchain (Tx2, Tx1)\nfrom Bob using ResolveTransactionsFlow.
+    Charlie -->> Bob: Return signature
+    deactivate Charlie
+    Bob -> Notary: Request notarization for Tx3
+    activate Notary
+    note over Notary #pink: Info Disclosure: Transaction metadata (filtered)
+    Notary -> Notary: Validate transaction (check for double-spend on {Tx2, 0})
+    Notary --> Bob: Return signature
+    Notary --> Charlie: Return signature
+    deactivate Notary
+    note right of Notary
+        Spent: {Tx1, 0}, {Tx2, 0}
+        Unspent: {Tx2, *?}, {Tx3, *?}
+    end note
+    note right of Charlie: Charlie stores Tx3 and its signatures\nand knows the full backchain of transactions.
+    Bob -> Charlie: Send finalized transaction
+end
+@enduml

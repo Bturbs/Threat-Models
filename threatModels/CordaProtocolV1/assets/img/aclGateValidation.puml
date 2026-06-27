@@ -1,0 +1,227 @@
+@startuml
+' REVIEWED_MAIN_2026_05_13: aligned to current merged code; large-investment retained pending simplification merge.
+' LEGACY_NOTE_2026_05_13: this diagram may include historical ACL/receipt/tokenizer details pending upstream simplification merge; validate against current code before implementation decisions.
+title ACL Gate Transfer Hook Validation
+
+actor "User" as User
+
+box "Token-2022 Program" #LightYellow
+participant "Token-2022\n<<program>>" as TokenProgram
+participant "vToken Mint\n<<with transfer hook>>" as VTokenMint
+end box
+
+box "Token ACL Program" #LightCyan
+participant "Token ACL\n<<program>>" as TokenAcl
+end box
+
+box "ACL Gate Program\n(CPACLKiGDA9wD5LqoTuoxKiFdtToDAB6WpEEjUVZtb8v)" #LightGreen
+participant "ACL Gate\n<<program>>" as AclGate
+end box
+
+box "Vault Program PDAs\n(EMDZftqHQgUkj2WB5zGDsGdShWu2GKG8qkhq8AwwSGxa)" #LightBlue
+participant "Whitelist Entry\n<<PDA>>" as WhitelistEntry
+end box
+
+box "Token ACL PDAs" #LightCoral
+participant "MINT_CONFIG\n<<PDA>>" as MintConfig
+participant "FLAG_ACCOUNT\n<<PDA>>" as FlagAccount
+end box
+
+box "Token Accounts" #pink
+participant "Source vToken\n<<account>>" as SourceVToken
+participant "Dest vToken\n<<account>>" as DestVToken
+end box
+
+=== TRANSFER VALIDATION: User attempts vToken transfer ==
+
+User -> TokenProgram : transfer(source, dest, amount)
+
+note over TokenProgram
+  Token-2022 detects transfer hook
+  configured on vToken mint
+end note
+
+TokenProgram -> VTokenMint : read transfer_hook extension
+VTokenMint --> TokenProgram : hook_program_id = ACL_GATE_ID
+
+note over TokenProgram, AclGate
+  Token-2022 invokes ACL Gate
+  before executing transfer
+end note
+
+TokenProgram -> AclGate : <b>[[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs invoke transfer hook callback]]
+
+note over AclGate
+  ACL Gate determines if transfer
+  should be allowed based on
+  account freeze state
+end note
+
+=== SCENARIO A: Thaw Request (Unfreeze Account) ==
+
+AclGate -> AclGate : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs process_acl_instruction]]
+note over AclGate
+  Discriminator matches:
+  CanThawPermissionlessInstruction
+end note
+
+AclGate -> AclGate : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs can_thaw_permissionless]]
+
+note over AclGate
+  CHECK 1: Validate FLAG_ACCOUNT
+end note
+
+AclGate -> FlagAccount : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs assert_permissionless_flag]]
+note right of FlagAccount
+  Verify:
+  - owner == Token ACL program
+  - data[0] == 1 (flag set)
+end note
+
+alt Invalid Flag Account
+  AclGate --> TokenProgram : ❌ GateError::InvalidFlagAccount
+end
+
+note over AclGate
+  CHECK 2: Validate Vault Program ID
+end note
+
+AclGate -> AclGate : check vault_program.key == VAULT_PROGRAM_ID
+alt Wrong Vault Program
+  AclGate --> TokenProgram : ❌ GateError::InvalidWhitelistEntry
+end
+
+note over AclGate
+  CHECK 3: Validate Extra Account Metas PDA
+end note
+
+AclGate -> AclGate : derive expected thaw extra metas address
+AclGate -> AclGate : check extra_metas.key == expected
+alt Invalid Extra Metas
+  AclGate --> TokenProgram : ❌ GateError::InvalidExtraMetas
+end
+
+note over AclGate, WhitelistEntry
+  CHECK 4: Validate Whitelist Entry PDA
+end note
+
+AclGate -> WhitelistEntry : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs derive expected PDA]]
+note right of WhitelistEntry
+  Expected seeds: [
+    "vault_whitelist_entry",
+    mint.key(),
+    token_account_owner.key()
+  ]
+  Program: VAULT_PROGRAM_ID
+end note
+
+AclGate -> WhitelistEntry : check actual_key == expected_key
+alt Invalid Whitelist Entry PDA
+  AclGate --> TokenProgram : ❌ GateError::InvalidWhitelistEntry
+end
+
+note over AclGate, WhitelistEntry
+  CHECK 5: Validate Whitelist Status
+end note
+
+AclGate -> WhitelistEntry : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs call is_whitelisted]]
+AclGate -> WhitelistEntry : check owner == VAULT_PROGRAM_ID
+alt Not Owned by Vault Program
+  AclGate --> TokenProgram : ❌ return false (not whitelisted)
+end
+
+AclGate -> WhitelistEntry : check data not empty
+alt Empty Account Data
+  AclGate --> TokenProgram : ❌ return false (not whitelisted)
+end
+
+AclGate -> WhitelistEntry : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs deserialize VaultWhitelistEntry]]
+AclGate -> WhitelistEntry : check entry.mint == mint
+AclGate -> WhitelistEntry : check entry.owner == token_account_owner
+AclGate -> WhitelistEntry : check entry.whitelisted == true
+alt Not Whitelisted
+  AclGate --> TokenProgram : ❌ GateError::NotWhitelisted
+  note over AclGate
+    **Security Enforcement:**
+    Transfer denied because
+    owner is not whitelisted
+  end note
+end
+
+note over AclGate
+  CHECK 6: Validate Token Account
+end note
+AclGate -> AclGate : check token_account != Pubkey::default()
+alt Invalid Token Account
+  AclGate --> TokenProgram : ❌ InvalidAccountData
+end
+
+AclGate -> AclGate : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs all checks passed]]
+AclGate --> TokenProgram : ✅ Ok() - Thaw allowed
+
+TokenProgram -> SourceVToken : set frozen = false
+TokenProgram -> User : ✅ Transfer proceeds
+
+=== SCENARIO B: Freeze Request (Freeze Account) ==
+
+AclGate -> AclGate : process_acl_instruction
+note over AclGate
+  Discriminator matches:
+  CanFreezePermissionlessInstruction
+end note
+
+AclGate -> AclGate : [[https://github.com/corda/corda-protocol-mvp/blob/main/programs/vault-acl-gate/src/lib.rs can_freeze_permissionless]]
+
+note over AclGate
+  Same checks as thaw:
+  1. assert_permissionless_flag
+  2. vault_program == VAULT_PROGRAM_ID
+  3. extra_metas PDA (freeze variant)
+  4. whitelist_entry PDA derivation
+end note
+
+AclGate -> FlagAccount : assert_permissionless_flag
+AclGate -> WhitelistEntry : derive expected PDA
+AclGate -> WhitelistEntry : validate PDA matches
+AclGate -> WhitelistEntry : is_whitelisted check
+
+alt Still Whitelisted
+  AclGate --> TokenProgram : ❌ GateError::AlreadyWhitelisted
+  note over AclGate
+    Cannot freeze if still whitelisted
+  end note
+end
+
+note over AclGate
+  CHECK: Owner NOT whitelisted
+  (whitelisted == false OR account closed)
+end note
+
+AclGate -> WhitelistEntry : verify not whitelisted
+AclGate -> AclGate : check token_account != Pubkey::default()
+AclGate --> TokenProgram : ✅ Ok() - Freeze allowed
+
+TokenProgram -> SourceVToken : set frozen = true
+note right of SourceVToken
+  vToken account frozen
+  All transfers blocked
+end note
+
+TokenProgram -> User : ❌ Transfer denied (account frozen)
+
+
+note over WhitelistEntry, SourceVToken
+  **Security Model Summary:**
+  
+  1. vToken accounts start frozen by default
+     (DefaultAccountState::Frozen on mint)
+  2. Whitelist addition allows thaw
+  3. Whitelist removal triggers freeze
+     (account closed via exit())
+  4. All transfers check whitelist via ACL Gate
+  5. No bypassing whitelist enforcement
+  6. FLAG_ACCOUNT must be funded and owned
+     by Token ACL program
+end note
+
+@enduml

@@ -1,0 +1,350 @@
+ID: Flexcube_Connector
+schemaVersion: 2
+parent: CBUAE_PHASE2
+scope:
+  description: |
+    The FLEXCUBE Connector automates and secures interactions between the Oracle FLEXCUBE core banking service
+    and external systems (for example, payment orchestration flows and digital currency solutions). It covers
+    user authentication, transaction processing, data synchronisation, and error handling to streamline
+    financial operations.
+
+    <img src="img/FlexcubeConnector1.svg"/>
+
+  assets:
+    - ID: FLEXCUBE_CONNECTOR_ENGINE
+      type: service
+      title: FLEXCUBE Connector Engine
+      description: |
+        Orchestrates requests and responses with Oracle FLEXCUBE,
+        handling business logic, validations, and transaction lifecycle.
+      inScope: true
+    - ID: FLEXCUBE_CORE
+      type: external
+      title: Oracle FLEXCUBE Core Banking
+      description: |
+        Processes retail and corporate transactions, maintains ledger data,
+        and enforces core banking business rules.
+      inScope: false
+
+    - ID: FLEXCUBE_AUTHZ_MODULE
+      type: service
+      title: Connector Authentication & Authorization Module
+      description: |
+        Provides secure credential storage, role-based permissions, and session management
+        for external APIs to interact with the FLEXCUBE Connector.
+      inScope: true
+
+    - ID: FLEXCUBE_CONNECTOR_DB
+      type: data
+      title: Connector Database
+      description: |
+        Stores transaction records, configuration, and logs for tracking requests
+        and ensuring reliability/recovery.
+      inScope: true
+
+    - ID: FC_API_GATEWAY
+      type: system
+      title: API Gateway
+      description: |
+        Fronts the FLEXCUBE Connector, applying rate limiting and security policies
+        before forwarding requests to the connector engine.
+      inScope: true
+
+    - ID: FLEXCUBE_PASSWORD
+      type: credential
+      title: FLEXCUBE Password
+      description: |
+        Secret password used to authenticate the connector with Oracle FLEXCUBE.
+      inScope: true
+      applicationRelated: true
+      infrastructureRelated: false
+      properties:
+        format: 16 bytes AES key
+        storage: vault
+
+analysis: |
+  The connector must protect end-to-end data integrity, prevent unauthorized requests,
+  enforce least privilege, and handle concurrency reliably. Ensuring robust
+  authentication, validation, and logging is critical, given the sensitivity of
+  financial data processed.
+
+  **Password mechanism**
+
+  Based on the implementation-derived mechanism we conclude that the mechanism itself do not provide extra security features
+   compared with a standards application level cleartext password; nevertheless, the mechanisms could confuse system 
+   designer into thinking the contrary.
+  In particular, these features are not provided:
+
+  - Password encryption: The decryption key (Message ID) is in the same message as the encrypted password.
+  - Unique use of encrypted password: Even in the case of secure encryption with the key not being part of the message,
+   the mechanism will not prevent tampering/replay attack (replay attack could be mitigated with the deduplication 
+   method based on Message ID but would not be a complete mitigation). This then is equivalent again to the cleartext 
+   password and could bring the same confusion and misunderstanding into the design.
+
+  For the security design and its review of the solution we then consider the derived PASSWORD field in the XML message as 
+  the originating secret password. The system needs then to protect the derived password from less trusted systems, 
+   maintain the secure architecture qualities of defence in depth, and minimize the attack surface and zero trust.
+    Maintaining the secure architectural qualities implies that the derived password field value must not be transmitted and 
+    stored in systems other than the target FLEXCUBE and its direct middleware (JMS). In particular, the XML message should
+     not be stored in MMessaging Service as-is (redacting and masquerading of the FLEXCUBE XML message could be taken into consideration).
+  As the password mechanism is likely a customer requirement and not part of the solution's design, it still can be securely used with all the mitigations proposed.
+
+
+  ```java
+
+    @Throws(Exception::class)
+
+
+    fun encrypt(plainText: String, key: String): String {
+
+        val cryptedKey = doEnCrypt(plainText.toByteArray(), 1, key)
+
+        val encryptedKey = Base64.getEncoder().encode(cryptedKey)
+
+        return String(encryptedKey)
+
+    }
+
+    fun hashKey(msgId: String): String {
+
+        val mDigest: MessageDigest = MessageDigest.getInstance("SHA-512")
+        val secretKey = msgId.toByteArray()
+        val digestSeed: ByteArray = mDigest.digest(secretKey)
+        val result = StringBuilder(digestSeed.size * 2)
+
+        digestSeed.forEach {
+
+            val i = it.toInt()
+            result.append(HEX_CHARS[i shr 4 and 0x0f])
+            result.append(HEX_CHARS[i and 0x0f])
+
+        }
+
+        return result.toString()
+    }
+
+    @Throws(java.lang.Exception::class)
+
+    fun doEnCrypt(inputText: ByteArray, operation: Int, key: String): ByteArray? {
+
+        try {
+            val hashedKey = hashKey(key) //obtained SHA-512 of the MSGID
+            val hashKey: ByteArray = hashedKey.toByteArray(charset("UTF-8")).copyOf(16) //converted hash to byte array
+            val cipher: Cipher =
+                Cipher.getInstance("AES/CBC/PKCS5Padding") // obtained Cipher for the transformation 'AES/CBC/PKCS5Padding'
+            val secretKeySpec = SecretKeySpec(hashKey, "AES") //obtained secretKeySpec for 'AES' algorithm
+            val ivKey = String(key.toByteArray()) // ivKey obtained from the MSGID
+            val ivParams = IvParameterSpec(
+                ivKey.substring(
+                    0,
+                    16
+                ).toByteArray()
+            )
+
+            cipher.init(operation, secretKeySpec, ivParams)
+
+            val stringBeforeEncryption = String(inputText) + hashedKey //concatenated the password and SHA-512 of MSGID
+
+            return cipher.doFinal(stringBeforeEncryption.toByteArray()) //encrypted the concatenated string
+            
+        } catch (e: Exception) {
+            throw ConnectorDataConversionException.ConversionFailed()
+        }
+
+    }
+
+  ```
+threats:
+  - ID: FC_UNAUTH_ACCESS
+    title: Unauthenticated or Unauthorized Access
+    attack: |
+      Attackers bypass or exploit authentication APIs to invoke connector methods
+      or retrieve transaction records without valid credentials.
+    impactDesc: |
+      Leads to fraudulent transactions, data exfiltration, and potential system compromise.
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+      - REFID: INTEGRITY
+    fullyMitigated: true
+    threatType: Elevation of Privilege
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+    countermeasures:
+      - ID: IN_PROCESS_AUTH_ENFORCEMENT
+        title: In-Process authorization and authentication Enforcement
+        description: |
+          Validate user credentials and session tokens at the start of each connector request
+          inside the process itself, rejecting unauthorized request
+           and reporting them to the monitoring system.
+           By leveraging the Workflow SDK, the application logic will have a secure credential for authenticating 
+           the caller. Based on that identity, the application logic validates the 
+           request and enforces the correct authorization policy.
+        inPlace: true
+        public: true
+
+  - ID: MISROUTED_TRANSACTIONS
+    title: Incorrect Routing or Data Mismatch
+    attack: |
+      Connector or network misconfiguration leading to incomplete or redirected
+      requests, potentially causing mismatch between the connector database
+      and FLEXCUBE records.
+    impactDesc: |
+      Results in transaction duplication, lost or uncredited transactions,
+      and unsynchronized ledger states.
+    impactedSecObj:
+      - REFID: INTEGRITY
+    fullyMitigated: true
+    threatType: Tampering
+    pentestTestable: false
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H
+    countermeasures:
+      - ID: RECONCILIATION_LOGIC
+        title: Periodic Transaction Reconciliation & Validation
+        description: |
+          Implement scheduled checks comparing local transactions in the database to FLEXCUBE's ledger,
+          quickly detecting mismatches for corrective action.
+        inPlace: false
+        public: true
+      - ID: DEDUPLICATION_LOGIC
+        title: Transaction Deduplication Logic
+        description: |
+          Use unique transaction IDs and deduplication logic to prevent duplicate
+          requests from being processed, ensuring data consistency.
+        inPlace: true
+        public: true
+      - ID: ATOMIC_DATABASE_TRANASCTIONS_AND_LOCKING
+        title: Atomic Database Transactions & Locking Mechanisms
+        description: |
+          Use database transactions with row-level locking to ensure that
+          transactions are processed atomically and to prevent data corruption.
+        inPlace: true
+        public: true
+
+
+  - ID: FCC_DATA_TAMPERING_IN_TRANSIT
+    title: Manipulation of Transaction Requests in Transit
+    attack: |
+      Intercept or modify API calls between the connector and FLEXCUBE via
+      unencrypted channels or compromised network components.
+    impactDesc: |
+      Alters requested amounts, beneficiary details, or metadata for fraudulent transfers.
+    impactedSecObj:
+      - REFID: INTEGRITY
+    fullyMitigated: true
+    threatType: Tampering
+    pentestTestable: true
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:N/UI:N/S:C/C:L/I:H/A:H
+    countermeasures:
+      - ID: TLS_SIGNED_REQUESTS
+        title: End-to-End Encryption & Message Integrity
+        description: |
+          Use TLS 1.2+ with secure cipher suites and sign critical fields to
+          detect tampering attempts, ensuring data cannot be altered in transit.
+        inPlace: true
+        public: true
+
+  # - ID: EXCESS_EXPOSURE
+  #   title: Overly Broad Connector Permissions in Flexcube
+  #   attack: |
+  #     Unrestricted or “super-user” credentials are stored in the connector,
+  #     allowing any external request to initiate high-impact transactions or
+  #     query sensitive account data.
+  #   impactDesc: |
+  #     Enables large-scale unauthorized operations or data breaches if the connector is compromised.
+  #   impactedSecObj:
+  #     - REFID: CONFIDENTIALITY
+  #     - REFID: INTEGRITY
+  #   fullyMitigated: false
+  #   threatType: Elevation of Privilege
+  #   pentestTestable: false
+  #   countermeasures:
+  #     - ID: LEAST_PRIVILEGE_ACCOUNTS
+  #       title: Least Privilege for Connector-Flexcube Service Accounts
+  #       description: |
+  #         Create limited-scope Flexcube user profiles for the connector, each with minimal
+  #         permissions to handle its tasks, preventing system-wide commands.
+  #       inPlace: false
+  #       public: true
+
+  - ID: FC_CONNECTOR_DOS
+    title: Denial of Service Against Connector
+    attack: |
+      An attacker or compromised LFI flood the connector with excessive 
+      requests or exploit resource-intensive operations,
+      preventing legitimate banking transactions from proceeding.
+    impactDesc: |
+      Interrupts core banking operations, delaying or blocking legitimate transactions
+      and causing customer dissatisfaction.
+    impactedSecObj:
+      - REFID: AVAILABILITY
+    fullyMitigated: true
+    threatType: Denial of Service
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+    pentestTestable: true
+    countermeasures:
+      - ID: RATE_LIMITING_AND_TIMEOUTS
+        title: Throttling & Circuit Breakers
+        description: |
+          Protect connector endpoints using rate limiting, resource usage monitoring,
+          and timeouts to mitigate large request bursts and heavy computing tasks.
+        inPlace: false
+        public: true
+      - ID: HA_SETUP
+        title: High Availability Setup
+        description: |
+          Deploy the connector in a high-availability configuration with load balancing
+          and failover mechanisms to ensure continuous service availability.
+        inPlace: true
+        public: true
+      - ID: PER_LFI_CONNECTOR
+        title: Having one separate Flexcube connector per LFI
+        description: |
+          Having one separate Flexcube connector per LFI to avoid the DOS attacks.
+        inPlace: false
+        public: true
+
+
+
+  - ID: FLEXCUBE_PASSWORD_LEAK_AT_REST
+    title: Flexcube credential leaked to less trusted system
+    CVSS:
+      vector: CVSS:3.1/AV:A/AC:H/PR:L/UI:N/S:C/C:L/I:H/A:H
+    threatType: Tampering, Elevation of Privileges
+    assets:
+      - REFID: FLEXCUBE_PASSWORD
+    attack: |
+      An attacker can reverse the original passwowrd just by accessing any message (that contains MSGID encryption key itself in it).
+      The password is not actually encrypted but just obfuscated with the MSGID.
+      Another option for an attaccker is just to replay the message with the same MSGID and ##PASSWORD XML field in a new fabricated
+      message, as MSGID is not bound to the message itself (at least, before processing it in FLEXCUBE).
+      Storing the password in a secure Vault while storing it at the same time in an easily reversible manner in persistent storage (for example, a database)
+      is a security risk. Transaction messages are likely also logged; again, this is a another potential FLEXCUBE password leak vector.
+    impactDesc: |
+      FLEXCUBE Core banking request execution, including fund transfers, DoS on redemptions and issuances, 
+      integrity and repudiation issues of the LFI accounts movements.
+    impactedSecObj:
+      - REFID: COMPLIANCE
+      - REFID: NON_REPUDIATION
+      - REFID: INTEGRITY
+    public: false
+    fullyMitigated: false
+    ticketLink: https://r3-cev.atlassian.net/browse/R3SOL-4245
+    countermeasures:
+      - ID: DO_NOT_STORE_REVERSIBLE_PASSWORDS
+        title: Do not store reversible passwords
+        description: |
+          Treat FLEXCUBE encrypted passwords as plaintext sensitive passwords: for example, by masking in logs and in any persistence 
+          layer.
+          Do not store the password in a reversible manner in the persistence layer: the connector should mask the calculated
+           value when storing the message. 
+           It is always possible to reset the password after it has been read from the storage prior to being sent to FLEXCUBE. 
+          Store the password only in a secure Vault. 
+          To execute retries for HA and so on, the FLEXCUBE connector needs to re-calculate
+          the ##PASSWORD XML field from the password in the Vault.
+        inPlace: false
+        public: true
+title: Flexcube Connector

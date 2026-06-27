@@ -1,0 +1,64 @@
+@startuml
+digraph G {
+rankdir="BT";
+
+
+    n20;
+    n1 -> n20
+    
+    n6 -> n1
+    
+    poi -> n20
+    poi -> n20
+    poi -> n20
+    
+    n7 [ fillcolor=pink, style=filled,
+    
+    label = < <b>Attack</b>: frfrefreferffverferfrefreferferf <br/> re fref ref erf erfdcfer rfef ref erfe <br/>
+        <br/>
+        <b>Impact</b>: frfrefreferffverfer frefreferferf <br/>
+        <br/>
+        >
+    ]
+  
+    n5 [ 
+        label = < <b>Attack</b>: frfrefreferffverferfrefreferferf <br/> re fref ref erf erfdcfer rfef ref erfe <br/>
+        <br/>
+        <b>Impact</b>: frfrefreferffverfer frefreferferf <br/>
+        <br/>
+        >
+        
+        shape=polygon, color="AAAAAA", labelURL="ddd", fillcolor=pink, style=filled]
+    n6 [ shape=polygon,color=blue, label=<  <table 
+     border="1" >
+       <tr>
+         <td>Attack:  fewf 
+         </td>
+         <td bgcolor="#ccccff" color="green">two</td> <!-- Note the color attribute -->
+       </tr>
+       <tr>
+         <td bgcolor="#ccffcc">three</td>
+         <td bgcolor="#ffffcc">four</td>
+      </tr>
+    </table> >]
+    n5 -> n6 [label = "exploits", labelURL="ddd"]
+    n7 -> n6 [label = "exploits"]
+    n8 -> n6 [label = "exploits"]
+    n11 -> n6 [label = "exploits"]
+    n13 -> n11 [label = "exploits"]
+    n14 [ style=bold color="#a34f4f" shape=Mdiamond]
+    n14 -> n13
+    n13 -> Siamese
+    
+    subgraph domestic_cats {
+    // This subgraph is also a cluster, because cluster=true.
+    cluster=true;
+
+    Siamese [ shape=polygon, color=red, labelURL="ddd"];
+    "Persian" [ shape=polygon, color=red, labelURL="ddd"];
+    Siamese -> Persian
+  }
+
+}
+
+@enduml

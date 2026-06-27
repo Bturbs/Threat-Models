@@ -1,0 +1,679 @@
+parent: C5
+ID: HTTPGateway
+schemaVersion: 2
+title: HTTP RPC Gateway
+
+gantt:
+  startDate: 2022-09-01
+  endDate: 2022-12-31
+  status: done
+
+scope:
+  description: |
+    The HTTP RPC Gateway a component service of a Corda 5 node that exposes a variety of API endpoints that enable
+    control of a Corda cluster.
+
+    The Gateway service and its transport mechanism is considered here as the subject
+    of this threat-model; individual API endpoints are out-of-scope and are subject to their
+    specific threat-models.
+
+    Inbound connections are authenticated by the HTTP Gateway using HTTP Basic. User
+    credentials (passwords) are salted and hashed using a secure password-based
+    key derivation function (PBKDF2), and stored in an external database. A 
+    volatile in-memory cache of password hashes (SHA2) is used to speed up the 
+    authentication of repeated clients requests.  
+
+  attackers: #imported from C5 Threat model TBD hot to reference them in here e.g. C5.cordApp_user
+    # - ID: UserManager
+    #   description: Creates user roles and manages permissions for all Virtual Nodes
+    #     in the cluster
+    #   inScope: true
+
+  assumptions:
+    - ID: 1
+      description: |
+        HTTP Gateway will be operated in an environment that prohibits direct connections from the Internet.
+        Only connections from an internal/trusted private network will be possible.
+        TBC that this is the case also in a B2C cordapp.
+    - ID: 2
+      description: |
+        All incoming HTTP requests are over a secure TLS connection, authenticated using a server
+        Client authentication is currently performed using HTTP Basic.
+        The server authentication is performed via a DNS-linked certificate issued by a trusted PKI
+        ( TBC public root CA, same as the browsers?). Certificate pinning is not used by gateway clients.
+        Self-signed certificates will only be used in testing and development scenarios, and never in a production 
+        environment.
+    - ID: 3
+      description: |
+        The deployment of workers are in separated processes/PODs
+
+
+  assets:
+
+    - ID: CACHED_PASSWORD
+      inScope: true
+      title: In memory cached user password
+      type: credentials
+      description: In memory cached user password. A volatile in-memory cache of
+        password hashes (SHA2) is used to speed up the authentication of 
+        repeated clients requests.
+      properties:
+        location: HTTP_GATEWAY Java process memory
+        type: Hashed password
+        format: AES
+        length: 256
+      applicationRelated: true
+      infrastructureRelated: false
+
+    - ID: DF_REST_STATE
+      type: DataFlow
+      title: State Manager DB connection for [REST_WORKER]
+      description: |
+        Flow status storage updates [REF](https://github.com/corda/platform-eng-design/blob/main/core/corda-5/corda-5.2/flow/flow-status-storage/flow-status-storage.md)
+        The FlowStatus contains:
+
+          - key: FlowKey
+          - initiatorType: FlowInitiatorType
+          - flowId: String
+          - flowClassName: String
+          - flowStatus: FlowStates
+          - result: String
+          - error: ExceptionEnvelope
+          - processingTerminatedReason: String
+          - createdTimestamp: Instant
+          - lastUpdateTimestamp: Instant
+      inScope: true
+
+    - ID: DF_ALL_HTTP_ENDP
+      type: DataFlow
+      title: API endpoints
+      description: |
+        Generic HTTPS calls/responses from CordApp clients to API endpoints. This is an encrypted TLS channel (non mutual by default)
+      inScope: true
+
+    - ID: DF_adminPolicyEndP1
+      type: DataFlow
+      title: admin APIs endpoints
+      description: |
+        HTTPS calls/response from Cluster Operator to manage users and permissions
+      specifies: DF_ALL_HTTP_ENDP
+      authentication: >
+        One of:
+
+        - **HTTP Basic Auth**:
+         may be provisioned at installation time by
+        the superuser. CLI tools are used
+        to setup the initial "Admin" password is
+        provided at installation time, stored in the DB1 (Slow hash is BCrypt TBC)    -
+        **SSO**:
+        preferred, OAuth2 (credential storage depends on installation/Out Of Scope),
+        - **SAML**:
+        this is also an option
+
+        Communication is over TLS with server authentication (non mutual)
+      inScope: true
+    - ID: DF_anonEndP1
+      type: DataFlow
+      specifies: DF_ALL_HTTP_ENDP
+      title: Anonymous endpoints
+      description: |
+        HTTPS calls/responses from anonymous unauthenticated users. Exposed functionality
+        is limited to the minimum functionality required to enable a basic level of 
+        service to node clients. e.g. `GetProtocolVersion()` and `OpenApi()` Swagger files.
+      inScope: true
+    - ID: DF_VNodeAnyEndP
+      type: DataFlow
+      title: VNode APIs endpoints
+      specifies: DF_ALL_HTTP_ENDP
+      description: |
+        Generic HTTPS calls/responses from VNode operators (any API exposed endpoint).
+        The VNode operator user account is created by CLUSTER_OPERATOR and given the role `VNodeOperator`. 
+        Roles are checked by HTTP_GATEWAY (RBAC). User IDs will be email addressed for SSO users (OAuth2/SAML).
+        Same authentication/credentials and credential storage as Admin. 
+      inScope: true
+
+    - ID: DF_CRUDIntPol1
+      title: Update policy internal
+      type: Internal call (TBC)
+      description: Internal call to the RBAC component(library) from the API 
+        server endpoint code
+      inScope: false
+    - ID: DF_CRUD_Pol2
+      type: DataFlow
+      title: Policy update Kafka message
+      description: Kafka Message to update RBAC policy definition
+      inScope: true
+    - ID: DF_TLS_HSM1
+      type: dataFlow
+      title: HSM link
+      description: Connection to the HSM which manages the private TLS key
+      inScope: true
+    - ID: HTTP_GATEWAY_TLS_KEY
+      type: key
+      title: REST Gateway TLS key
+      description: TLS key for REST API / HTTP Gateway connections
+      inScope: true
+      properties:
+        location: TBD
+        type: Private authentication key
+        format: ECDSA private key
+        length: 256
+      applicationRelated: false
+      infrastructureRelated: true
+
+
+    - ID: DF_StartupCredentials1
+      type: DataFlow
+      title: Configured credentials
+      description: Credentials passed to the Gateway Worker at start time
+      inScope: false
+    - ID: DF_GenericMSGtoWorker
+      type: DataFlow
+      title: Any Kafka message
+      description: |
+        Generic Kafka message sent form a configured API endpoint (server-side code) to another internal component/worker.
+        *<br>TODO** channel protocol (TLS/HTTP, SSH), auth protocol (BASIC, client cert...), 
+         credential storage (config file, salted hash, HSM...) and how they are trusted (root of trust key, delegation to MGM/Flow, pinned certificates...)
+      inScope: false
+    - ID: RBAC_component
+      type: library
+      title: RBAC
+      description: internal java library responsible for enforcing the RBAC 
+        policies and read/update/store them
+      inScope: true
+    - ID: Configured_API_endpoints
+      type: java library
+      title: APIs configuration
+      description: web controller (MVC) configured at runtime connecting the API
+        to the correct logic/implementation
+      inScope: true
+    - ID: TLS_LIBRARY
+      type: java library
+      title: TLS lib
+      description: Javalin internal implementation; Jetty/Netty TLS default 
+        library and its configuration
+      inScope: true
+    - ID: KAFKA_CREDENTIALS
+      type: environment variable
+      title: Kafka credentials
+      description: credentials used to connect to Kafka
+      inScope: false
+    - ID: DF_StartupConf1
+      type: DataFlow
+      title: APIs config (java annotated classes)
+      description: |
+        Configuration of HTTP APIs endpoints by annotation in Java classes
+      inScope: true
+    - ID: DF_UsrMngAnyEndP
+      title: User Manager APIs endpoints
+      description: all HTTP calls to user manager APIs endpoints
+      type: DataFlow
+      inScope: true
+    - ID: cred_db
+      title: credentials stored in DB
+      description: |
+        Credentials stored in the CLUSTER_DB or the trusted SSO provider 
+        (authorization server) according to [OAuth2 RFC roles](https://www.rfc-editor.org/rfc/rfc6749#section-1.1)
+        for example Azure Active Directory credentials (RFI: what Azure credentials: API keys?) or SAML 
+
+        (RFI: what SAML credentials?) 
+
+
+        (RFI: how are they encrypted at rest? -> this will likely be part of another Threat model for workers configurations)
+      type: credential
+      inScope: false
+      icon: img/corda5-HTTP-RPC-worker_SSO_CREDENTIALS.svg
+    - ID: SSO_cred
+      title: SSO config credentials
+      description: |
+        SSO credentials living inside the HTTP Gateway process. The credential is currently an API_ID 
+        (long randon string) provided by Azure AD. It is retrieved at startup by ... 
+        (RFI:configuration service name? K8s secret?)
+      type: credential
+      inScope: true
+
+analysis: "<b>Attack tree diagrams</b><br/> <img src=\"img/corda5-ATTACK TREE HTTP
+  GW1.png\"  style=\"width:680px\"/><hr/> <img src=\"img/corda5-ATTACK TREE HTTP GW2.png\"\
+  \  style=\"width:350px\"/>\n<h4>DF_VNodeAnyEndP Repudiation analysis, attack tree</h4>
+  <img src=\"img/DF_VNodeAnyEndP_Repudiation_analysis.png\"/>"
+
+threats:
+
+
+  - ID: VNodeAPICallsRepudiation
+    assets:
+      - REFID: DF_VNodeAnyEndP
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:L/A:L
+    threatType: Repudiation
+    impactedSecObj:
+      - REFID: NON_REPUDIATION
+    conditional: |
+      non `Single tenant` Cluster operational modes
+    attack: |
+      In the case of ``Multiple tenants with trusted CPIs`` and ``Full multi-tenancy`` operation model of the Cluster
+      One or more of the following could happen:
+
+        - A VNODE_OPERATOR claims not executing the request while executing it
+        - A VNODE_OPERATOR claims executing the request while not executing it
+        - A CLUSTER_OPERATOR claims not receiving the request while receiving it
+        - A CLUSTER_OPERATOR claims receiving a request while not receiving it
+
+      This is likely not a problen for ``Single tenant`` Cluster operation mode.
+    public: true
+    fullyMitigated: false
+    title: Vnodeapicallsrepudiation
+    countermeasures:
+      - ID: API_SGNATURES
+        title: Signed API request and responses
+        description: |
+          Both parties in the DataFlow, the VNODE_OPERATOR and the HTTP_GATEWAY (or in general the Cluster) sign the request/hash with a trusted 
+          key (e.g. identity key for VNODE_OPERATOR). 
+          Both actors can collect those signatures as self living evidence: proof of request (collected by the Cluster) and proof of response (receipt).
+        inPlace: false
+        operational: false
+        public: true
+      - ID: AUDITABLE_API_CALLS
+        title: Auditable API calls
+        description: |
+          Every API call is logged and auditable including changes in critical configurations, 
+          this is also the case when the call is performed by CLUSTER_OPERATOR or VNODE_OPERATOR.
+          Logs are auditable, persistant and not tamperable (e.g. signed and timestamped)
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+        inPlace: false
+        public: true
+
+  #     - ID: DF_ALL_HTTP_ENDP
+  # - ID: T1
+  #   assets:
+  #     - ID: DF_ALL_HTTP_ENDP
+  #   CVSS:
+  #     vector: 
+  #   threatType: Spoofing
+  #   impact: Major authentication failure
+  #   attack: |
+  #    The client (Cordapp user) can assume another identity and start a Flow.    
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: C1
+  #       description: (RFI we need information about how RBAC is implemented)
+  #       inPlace: yes
+  #       public: false
+
+
+    # fullyMitigated: false
+  - ID: UNAUTH_API_DISCLOSURE
+    title: Unauthenticated API info disclosure
+    assets:
+      - REFID: DF_ALL_HTTP_ENDP
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N
+    threatType: Information disclosure
+    pentestTestable: true
+    attack: |
+      An anonymous attacker can access endpoints `getAPIVersion()` and the Swagger `openAPI()`, enabling them
+      to harvest information about installed CorDapps, flow definitions, and cluster version.
+    impactDesc: Minor information disclosure (version and API docs)
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: UNAUTH_API_NON_SENSITIVE_DATA
+        description: Calling public APIs, including openAPI() as an anonymous 
+          user will not give information about flows or other sensitive data, 
+          directly or via side channels (e.g. slower response depending on 
+          parameters) This is also enforced by RBAC controls implemented by the 
+          Gateway.
+        title: Minimize info public API in response
+        inPlace: yes
+        public: true
+
+  # - ID: T3
+  #   assets:
+  #     - ID: DF_ALL_HTTP_ENDP
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+  #   threatType: Denial of Service
+  #   attack: | 
+  #     DDOS attack flooding the service's endpoints with valid requests.
+  #   impact: Major loss of availability 
+  #   public: true
+  #   fullyMitigated: false
+  #   countermeasures:
+  #     - ID: T3.C1
+  #       description: autoscale Kubernetes cluster partially mitigated mitigates 
+  #       title: autoscale
+  #       inPlace: yes
+  #       public: true
+
+  - ID: JAVA_API_DESERIALIZATION
+    title: Dangerous data deserialization in REST APIs
+    assets:
+      - REFID: DF_ALL_HTTP_ENDP
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H
+    threatType: Elevation of Privileges
+    pentestTestable: true
+    attack: |
+      An attacker with API access can send specially crafted malicious deserialization objects as part of the endpoints' request data.
+      [REF](https://cwe.mitre.org/data/definitions/502.html). 
+      Examples may include nested serialized objects like. `"[...]data": { "value": [...]` field in `POST holdingidentityshorthash/{holdingidentityshorthash}`<br/>
+      `registration context` and its PEM encode certificate etc.
+
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - ID: DESERIALIZATION_PROTECTION
+        title: Deserialization AllowList
+        description: |
+          Disable native Java deserialization and restrict non native
+          deserialization to safe types (allow list).
+        inPlace: true
+        public: true
+
+
+
+  - ID: CLUSTER_OPERATOR_RESTRICTED1
+    title: Enforce authN also to Highly Privileged users e.g. CLUSTER_OPERATOR
+    assets:
+      - REFID: DF_adminPolicyEndP1
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H
+    threatType: Elevation of Privileges, Tampering, Repudiation
+    attack: |
+      A malicious user could abuse CLUSTER_OPERATOR abilities for performing attacks. The breach 
+      in compliance is given by the fact that there is a 'super user' CLUSTER_OPERATOR
+      that has the ability to call any API endpoint without RBAC limit or with RBAC policies that are not restricted.
+    pentestTestable: true
+    impactedSecObj:
+      - REFID: FULL_CIA
+      - REFID: COMPLIANCE
+      - REFID: CLUSTER_OPERATOR_PROTECTION
+    public: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: CLUSTER_OPERATOR_AUTHZ
+        title: CLUSTER_OPERATOR Authorization enforcement
+        description: |
+          CLUSTER_OPERATOR or any other `super-user` can only perform a well defined set of actions that do not exceed the 
+          strict necessary. All user have enforced RBAC with minimal access.
+          No API user should be able to:
+            
+            1. Compromise logs, monitoring and accountability in general
+            2. Impersonate another user
+            3. Lower the security configuration of the system
+        inPlace: false
+        public: true
+
+
+  - ID: API_UPLOAD1
+    assets:
+      - REFID: DF_StartupConf1
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H
+    threatType: Elevation of Privileges, Tampering, Repudiation
+    title: Malicious upload, e.g. CPIs
+    attack: |
+      An upload of a malicious/tampered artifact (e.g. CPI) from any user, even authorized ones may include
+      server side code (e.g. implementation of the API annotated Java classes) that is run in the memory context of the Java process/classpath 
+      (HTTP gateway itself, as it discover classpath annotated services) leading to arbitrary code execution.
+      REF:
+      ```kotlin
+      package net.corda.rest.annotations
+
+      import net.corda.rest.annotations.RestApiVersion.C5_0 as MIN_SUPPORTED
+      import net.corda.rest.annotations.RestApiVersion.C5_2 as CURRENT
+
+      /**
+      * Marks an interface extending `RestResource` to be exposed as an HTTP resource.
+      *
+      * @property name The name of the resource, used for documentation. Defaults to the class name.
+      * @property description The description of the resource, used for documentation. Defaults to empty string.
+      * @property path The endpoint path of the resource. All exposed functions of the annotated class will have their path
+      * prepended with this. Defaults to the class name.
+      * @property minVersion version when API has been introduced.
+      * @property maxVersion version till which API is still supported.
+      */
+      @Target(AnnotationTarget.CLASS)
+      @Retention(AnnotationRetention.RUNTIME)
+      @SuppressWarnings("LongParameterList")
+      annotation class HttpRestResource(
+          val name: String = "",
+          val description: String = "",
+          val path: String = "",
+          val minVersion: RestApiVersion = MIN_SUPPORTED,
+          val maxVersion: RestApiVersion = CURRENT
+      )
+      ```
+    impactDesc: Full integrity availability and confidentiality loss of the 
+      Corda cluster
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: true
+    pentestTestable: true
+    countermeasures:
+      - ID: UPLOAD_VALIDATION
+        title: Upload validation
+        description: |
+          Uploaded files are handled securely and not persisted in Java classpath. For example the CordApp code, even when loaded,
+           is not introspceted for dynamicAPI endpoint confiugration, for example
+          the default installation with separate HTTP_GATEWAY WORKER_PROCESS also prevents this.
+        inPlace: true
+        public: true
+      # - ID: C2
+      #   title: Separate Kubernetes workers in production
+      #   description: | 
+      #    Combined worker deployment may expand the attack surface of the CPI untrusted code to the point that it
+      #     can elverage the network connectivity of the HTTP_GATEWAY. It is not intended for production use.
+      #   inPlace: true
+      #   public: true
+
+  # - ID: RBAC_TOCTOU
+  #   assets:
+  #     - REFID: DF_CRUDIntPol1
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+  #   threatType: Elevation of Privileges
+  #   attack: |
+  #     TODO TOCTOU issues, synchronization in policy definition VS policy enforcement in RBAC_component
+  #   impactedSecObj:
+  #     - REFID: FULL_CIA
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: RBAC_POLICY_ACTIVATION_ATOMICITY
+  #       title: Policy enforcement synchronization
+  #       description: |
+  #         TODO describe cache, problem, assumptions and residual risks 
+  #       inPlace: false
+  #       public: true
+
+  # - ID: T8
+  #   assets:
+  #     - ID: SSO_cred
+  #   # CVSS: 
+  #   #   vector: CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+  #   threatType: Information disclosure
+  #   attack: | 
+  #     Credentials are read from the logs and monitoring services by unauthorized personnel.
+  #   impact: Major loss of C.I.A. on Corda Cluster
+  #   public: true
+  #   fullyMitigated: true (RFI)
+  #   countermeasures:
+  #     - ID: C1
+  #       title: Deactivate serialization
+  #       description: | 
+  #         This sensitive Java Object is non serializable, specific countermeasures for serialization are implemented
+  #         : toString(), serialize, use transient keyword to hide sensitive data, also in stacktraces, logs, 
+  #         serialization vulnerabilities (resilience to, e.g. expression language injection, OGNL injection), etc
+  #         RFI: implementation link would be nice to have
+  #       inPlace: true RFI
+  #       public: true
+  #     - ID: C2
+  #       title: scrap ENV variables
+  #       description: | 
+  #         Sensitive data is not in ENV variables, at least after the process startup. RFI: ...
+  #       inPlace: true RFI
+  #       public: true
+
+  - ID: NON_AUDITABLE_CONFIG_API_CALLS
+    title: Non auditable or tamperable logs for configuration API
+    assets:
+      - REFID: SSO_cred
+      - REFID: DF_UsrMngAnyEndP
+      - REFID: DF_adminPolicyEndP1
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:N
+    attackers:
+      - REFID: CLUSTER_OPERATOR
+    threatType: Repudiation
+    pentestTestable: true
+    attack: |
+      A malicious CLUSTER_OPERATOR temporarily changes configuration and perform an attack that can be also based on
+      the temporary created identity. Then the CLUSTER_OPERATOR rolls the change back. 
+      The attack cannot be traced back to the attacker user
+      by verifying logs, creating a repudiation issues. 
+    impactDesc: Repudiation
+    impactedSecObj:
+      - REFID: COMPLIANCE
+      - REFID: CLUSTER_OPERATOR_PROTECTION
+    public: true
+    fullyMitigated: true
+    countermeasures:
+      - REFID: AUDITABLE_API_CALLS
+
+
+  - ID: CACHED_PASSWORD_CHANGE
+    title: Cached credential non evicted after credential rotation
+    assets:
+      - REFID: DF_ALL_HTTP_ENDP
+      - REFID: CACHED_PASSWORD
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:L/A:L
+    threatType: Spoofing
+    attack: |
+      An attacker that compromises an account may be still able to access the account even after a password change. 
+      A compromised password would still work even after it has changed in the database, as the old one it is still in 
+      the unevicted in-mempory cache used by the REST_WORKER to authenticate clients.
+    impactDesc: RPC broken authentication, ultimatelly compromising the security
+      of the entire cluster
+    impactedSecObj:
+      - REFID: FULL_CIA
+    public: true
+    fullyMitigated: false
+    pentestTestable: true
+    countermeasures:
+      - ID: CACHED_PASSWORD_EVICTION
+        title: Password cache eviction/invalidation
+        description: |
+          Password cache invalidation on password update on all the HTTP_GATEWAY processes.
+        inPlace: false
+        public: true
+
+  # - ID: RPC_TLS_OVER_KAFKA
+  #   toReview: true
+  #   title: Non feasibility of TLS handshake over Kafka
+  #   assets:
+  #     - ID: DF_TLS_HSM1
+  #     - ID: TLS_LIBRARY
+  #   CVSS:
+  #     vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H
+  #   threatType: Denial Of Service
+  #   attack: |
+  #     Kafka messages are not supported for TLS initializations (TLS offload) by the [TLS Java library](#DF_TLS_HSM1) 
+  #     TLS session initialiazation requires PKCS#11 that cannot be implemented asyncronously over 
+  #     Kafka messages provider by the Crypto Worker.
+  #   impact: Implementation impediment
+  #   public: true
+  #   fullyMitigated: true
+  #   countermeasures:
+  #     - ID: C1
+  #       description: | 
+  #         TLS credentials are used in the HSM via the PKCS#11 from the HTTP Gateway itself, not via the Crypto Library Worker.
+  #       title: Direct HSM access
+  #       inPlace: true
+  #       public: false
+  #     - ID: C2
+  #       description: | 
+  #         Implement TLS offloading via an abstraction proxy/façade. This may be challenging and needs to mitigate related threats. 
+  #         This coutnermeasure is discouraged.
+  #       title: TLS offloading façade implementation
+  #       inPlace: true
+  #       public: false
+
+  - ID: API_CSRF
+    title: Cross Site Request Forgery (XSRF) in APIs
+    threatType: Spoofing
+    assets:
+      - REFID: DF_VNodeAnyEndP
+    attackers:
+      - REFID: ANONYMOUS
+    impactedSecObj:
+      - REFID: FULL_CIA
+    attack: |
+      An anonymous user can forge a target page/email that once a UI logged in user (e.g. Swagger API UI)
+       user visits triggers arbitrary HTTP requests: [Cross Site Request forgery](https://owasp.org/www-community/attacks/csrf)
+       For example an anonymous could target a CLUSTER_OPERATOR to perform an arbitrary configuration (may be prevented by PUT HTTP method)
+       or target a VNODE_OPERATOR to execute a flow tracsaction (not prevented by POST HTTP method)
+    CVSS:
+      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H/E:U/RC:U
+    fullyMitigated: false
+    pentestTestable: true
+    countermeasures:
+      # - ID: NON_STD_HTTP_METHOD
+      #   title: Do not use GET/POST HTTP methods
+      #   description: |
+      #     Not using GET/POST method together with a default or not relaxed same-origin policy/CORS.
+      #   inPlace: false
+      #   public: true
+      #   operational: true
+      # - ID: XSS_PREVENTION1
+      #   title: Do not use the same API domain for content (HTML ot other)
+      #   description: |
+      #     No other content should be served on the same domain/http origin as the APIs.
+      #     Content management systems needs to be avoided on the same API domain.
+      #   inPlace: false
+      #   public: true
+      #   operational: true
+      - ID: RESTRICTIVE_HTTP_CORS
+        title: Do not relax Same Origin Policy/CORS
+        description: |
+          Do not relax [Same Origin Policy](https://en.wikipedia.org/wiki/Same-origin_policy),
+          for example by defining specific CORS headers
+        inPlace: true
+        public: true
+        operational: true
+        operator: INFRASTRUCTURE_OPERATOR
+      - ID: XSS_PREVENTION
+        title: Cross Site Scripting (XSS) prevention
+        description: |
+          APIs should not serve HTML or user content (reflected or stored) that is not correctly encoded to avoid XSS.
+        inPlace: true
+        public: true
+      - ID: CLIENT_ANTI_CSRF
+        title: Custom web GUIs CSRF prevention
+        description: |
+          Custom GUIs that stored credentials to call Cluster APIs need to put in place special prevention to avoid CSRF:
+           e.g. `anti-CSRF tokens`
+        inPlace: false
+        operational: true
+        operator: CORDAPP_PUBLISHER
+        public: true
+
+      - ID: CLUSTER_ANTI_CSRF
+        title: Custom web GUIs CSRF prevention
+        description: |
+          Configure the cluster to not accept HTTP Basic Authentication, NTLM, cookie based authenticatino or any other 
+          mechanism in a web Browser/user agent that automatically sends credential to a specific origin (the HTTP_GATEWAY); for example 
+          a specific authentication header populated by the user agent from credentials stored in the DOM of the user agent itself.
+        inPlace: false
+        operational: true
+        operator: CLUSTER_OPERATOR
+        public: true
+

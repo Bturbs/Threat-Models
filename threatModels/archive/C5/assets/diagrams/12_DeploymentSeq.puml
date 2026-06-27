@@ -1,0 +1,80 @@
+@startuml
+
+title Deployment Sequence
+actor "Application Publisher/\nLibrary Developer" as APP_PUB order 10 #LightGreen 
+'actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "System Operator Installation Environment\n System operator, Helm files, Helm CLI" as SYS_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 30 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+actor "VNode\n Operator" as VNODE_OP order 3 #LightPink 
+actor "Cluster\n Operator" as CLUSTER_OP order 200 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nKubernetes API\n" as KUBE order 70 #LightGreen 
+participant "\nBoostrap:\n Kafka, DB, RBAC\n" as BT_STRP order 70 #LightGreen 
+participant "\nAny Corda worker/processes: \nCluster DB, Kafka Message Bus\n" as C_WORKER order 70 #LightGreen 
+participant "\nWorkers\n Container: JVM worker in K8 pods\n All Corda 5 Workers" as WORKERS order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 4 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "\n<size:14> **CertAuth** </size> \n <size: 11>Cordapp Network CA/OSCP \n from GroupPolicy.json" as CA1 order 100
+participant "\n<size:14> **CertAuth** </size>\n <size: 11> TLS CA/OSCP\nfrom GroupPolicy.json" as CA2 order 200
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+' actor "Cluster Operator" as CLUSTER_OP
+' actor "VNode Operator" as VNODE_OP
+' actor "NETWORK OPERATOR" as NET_OP
+' participant "MGM Cluster" as MGM
+' participant "Corda Member Cluster" as MEMBER
+' participant "Certificate Authority \n +OSCP" as CA
+
+skinparam sequenceMessageAlign center
+hide unlinked
+autonumber 1
+
+[-> SYS_OP : <font color=blue><b>DF_RELEASE_CERT_ACQUISITION\nTrusted certificate acquisition
+[-> SYS_OP : <font color=blue><b>DF_CORDA_RELEASE_ACQUISITION\nSoftware acquisition
+SYS_OP -> SYS_OP ++-- : <font color=blue><b>CODE_SIGNING_VERIFICATION\nCode signing verification: OK
+SYS_OP -> SYS_OP ++-- : <font color=blue><b>INSTALL_SECRET_CREATION\ncreate secrets
+group Options 1: direct K8s secreat creation 
+SYS_OP -> KUBE ++ : <font color=blue><b>DF_K8S_SECRET_CONFIG\ncreate K8s secrets
+KUBE --> SYS_OP -- : return
+
+end 
+group Options 2: direct K8s secreat creation 
+
+SYS_OP -> SYS_OP ++-- : <font color=blue><b>SECRETS_IN_HELM_CHART\nHelm overrides values yaml (configure secrets)
+
+end 
+SYS_OP -> KUBE ++ : <font color=blue><b>DF_APPLY_HELM_CHARTS\napply charts
+KUBE -> KUBE ++-- : <font color=blue><b>DF_IN_HELMC_SECRETS_CREATION\ncreate K8s secrets (if Option 2)
+KUBE -> BT_STRP : <font color=blue><b>DF_BOOTSTRAP_PODS_CREATION\n create boostrap pods
+BT_STRP -> C_WORKER ++ : <font color=blue><b>DF_BOOTSTRAP_TO_KAFKA\n configure Kafka
+C_WORKER --> BT_STRP -- : return
+
+BT_STRP -> C_WORKER ++ : <font color=blue><b>DF_BOOTSTRAP_TO_DB\n configure DB
+C_WORKER --> BT_STRP -- : return
+
+KUBE -> WORKERS ++-- :  <font color=blue><b>DF_WORKER_PODS_CREATION\n Create workers PODS
+|||
+group SETUP TLS crets
+|||
+end
+group SETUP initial Cluster Operator User
+SYS_OP -> CLUSTER_OP : <font color=blue><b>DF_SETUP_CLUSTER_OP_USER\nsend initial access RPC GW API credentials
+|||
+CLUSTER_OP -> C_WORKER ++ : <font color=blue><b>DF_SETUP_CLUSTER_OP_USER\nFirst Login
+C_WORKER --> CLUSTER_OP -- : return 
+
+CLUSTER_OP -> C_WORKER ++ : Initial config: TLS
+C_WORKER --> CLUSTER_OP -- : return 
+
+CLUSTER_OP -> C_WORKER ++ : reset password
+C_WORKER --> CLUSTER_OP -- : return 
+
+|||
+end
+@enduml

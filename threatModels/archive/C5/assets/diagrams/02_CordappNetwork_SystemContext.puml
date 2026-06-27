@@ -1,0 +1,91 @@
+@startuml
+actor "Library \n & Application Developer" as APP_DEV order 10 #LightGreen 
+actor "Application Publisher" as APP_PUB order 10 #LightGreen 
+actor "System/Infra\n Operator" as INFRA_OP order 20 #LightGreen 
+actor "Network\n Operator" as NET_OP order 30 #LightGreen 
+actor "CorDapp\n User" as CORDAPP_USER order 35 #LightPink
+'actor "VNode\n Operator" as VNODE_OP order 1 #LightPink 
+actor "VNode\n Operator\n**Member1**" as Member1 order 1 #LightPink
+actor "VNode\n Operator\n**Other active members**" as Member2 order 1 #LightPink
+actor "Cluster\n Operator" as CLUSTER_OP order 12 #LightYellow 
+
+participant "\nMGM\n Cluster\n" as MGM order 70 #LightGreen 
+participant "\nMember\n Cluster\n" as MEMBER order 32 #LightCoral 
+participant "\nNotary\n Cluster\n" as NOTARY order 80 #LightGreen
+participant "\nPeer\n Cluster\n" as PEER order 90 #red
+participant "Certificate Authority \n +OSCP" as CA order 100
+skinparam sequenceMessageAlign center
+
+
+hide footbox
+
+
+skinparam sequenceMessageAlign center
+hide unlinked
+
+    
+title Cordapp Network, System context diagram 
+
+NET_OP -> MGM++: Setup trust root certificate
+MGM --> NET_OP--: return
+
+APP_DEV -> APP_DEV++: Write CPK
+
+note over APP_DEV: The Developer creates a CPI from the CPK \n to test the CPK 
+APP_DEV -> APP_DEV: self sign test CPI
+APP_DEV -> APP_DEV--: Tests CPI
+
+APP_DEV -> APP_DEV ++: Create certificates and keys
+  
+APP_DEV -> NET_OP --: <font color=blue><b>DF_CPK_TRUSTED_CRED\nSends PubKey/Cer
+deactivate APP_DEV
+activate NET_OP
+NET_OP -> MGM: <font color=blue><b>DF_CONF_CPI_CPB_CPK_VER_CRED\nSet trusted credentials
+activate MGM
+MGM --> NET_OP : return
+deactivate MGM
+deactivate NET_OP
+APP_DEV -> APP_DEV : Sign CPK
+activate APP_DEV
+deactivate APP_DEV
+APP_DEV -> APP_PUB : Send CPK (dataflow TBD, maybe out of scope)
+APP_PUB -> APP_PUB ++: Write CPB
+
+note over APP_PUB: The Publisher creates a CPI from the CPB \n to test the CPB 
+
+APP_PUB -> APP_PUB : Self sign test CPI
+APP_PUB -> APP_PUB --: Tests CPI
+
+APP_PUB -> APP_PUB ++: Create certificates and keys
+
+deactivate APP_PUB
+
+APP_PUB -> NET_OP : <font color=blue><b>DF_CPK_TRUSTED_CRED\nSends PubKey/Cer
+activate NET_OP
+NET_OP -> MGM ++: <font color=blue><b>DF_CONF_CPI_CPB_CPK_VER_CRED\nSetTrustedCredentials()
+
+MGM --> NET_OP -- : return
+deactivate NET_OP
+
+APP_PUB -> NET_OP : <font color=blue><b>DF_CPB_AQUISITION
+activate NET_OP
+NET_OP -> MGM: <font color=blue><b>DF_CPB_Verify\nVerifyCPB API 
+activate MGM
+MGM -> CA : Verify with root of trust
+activate CA
+CA --> MGM: return
+deactivate CA
+MGM -> MGM : check authorized x500 names \n configured in DF_CONF_CPI_CPB_CPK_VER_CRED
+MGM --> NET_OP --: return CPB Verified OK
+
+NET_OP -> NET_OP ++--: Add Network policy + sign CPI \n (GroupPolicy.json)
+deactivate NET_OP
+
+MGM -> CLUSTER_OP : CPI distribution (TBD)
+
+MEMBER -> MGM ++: delegate CPI verification
+MGM --> MEMBER --: return
+CLUSTER_OP -> MEMBER ++: post_cpi
+
+MEMBER --> CLUSTER_OP --: return
+@enduml

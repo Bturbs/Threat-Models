@@ -1,0 +1,349 @@
+@startuml C2SBridge_stockDemo_detailed
+title Stock Token Bridging to Solana - Detailed Technical Sequence
+
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+skinparam noteFontSize 10
+skinparam sequenceGroupBorderThickness 2
+
+box "Stock CorDapp Parties" #LightPink
+actor "WayneCo\n(Stock Issuer)" as WayneCo
+actor "Shareholder\n(Token Holder)" as Shareholder
+end box
+
+box "Corda Bridge Infrastructure" #LightGreen
+participant "Bridge Authority\n<Corda Node>" as BA
+participant "Locking Identity\n(Confidential)" as LockID
+participant "General Notary" as GN
+participant "Solana Notary" as SN
+end box
+
+box "Solana Network" #LightBlue
+participant "SPL Token 2022\nProgram" as SPL
+database "Token Mint\nAccount" as Mint
+database "Shareholder\nATA" as ATA
+end box
+
+== Phase 0: Stock Token Issuance (Standard Token SDK) ==
+
+WayneCo -> WayneCo : IssueTokenFlow
+note right
+  TokenType: StockClass
+  FungibleToken amount
+  Holder: WayneCo
+end note
+
+WayneCo -> GN : NotarisationRequest
+GN --> WayneCo : SignedTransaction
+
+WayneCo -> Shareholder : MoveFungibleTokensFlow
+note right
+  Input: FungibleToken(holder=WayneCo)
+  Output: FungibleToken(holder=Shareholder)
+  Command: Move
+end note
+
+Shareholder -> GN : NotarisationRequest
+GN --> Shareholder : SignedTransaction
+
+== Phase 1: Initiate Bridging - Transfer to Bridge Authority ==
+
+Shareholder -> BA : MoveFungibleTokensFlow
+note right #Yellow
+  Input: FungibleToken(holder=Shareholder)
+  Output: FungibleToken(holder=BridgeAuthority)
+  **Triggers bridging process**
+end note
+
+BA -> GN : NotarisationRequest
+GN --> BA : SignedTransaction
+
+== Phase 2: Lock Token to Confidential Locking Identity ==
+
+BA -> BA : LockFungibleTokenFlow
+note right #Orange
+  **[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt FungibleTokenBridgeContract.LockToken]]**
+  Validates:
+  - Single input FungibleToken
+  - Single output BridgedFungibleTokenProxy
+  - Holder changes to lockingIdentity
+  - Amount preserved
+end note
+
+BA -> LockID : Generate confidential identity
+note right
+  UUID-based lockingIdentityLabel
+  ConfidentialIdentityUtils
+end note
+
+LockID --> BA : AnonymousParty (lockingIdentity)
+
+BA -> BA : Create BridgedFungibleTokenProxy
+note right
+  BridgedFungibleTokenProxy {
+    amount: TokenAmount
+    holder: lockingIdentity
+    tokenType: original.tokenType
+    solanaTokenAddress: null (set later)
+  }
+end note
+
+BA -> GN : NotarisationRequest
+note right
+  General Notary signs
+  Token now locked
+end note
+GN --> BA : SignedTransaction (locked)
+
+== Phase 3: Notary Change to Solana Notary ==
+
+BA -> BA : ChangeNotaryFlow
+note right #LightGray
+  Move from GeneralNotary 
+  to SolanaNotary
+  Required for Solana signing
+end note
+
+BA -> GN : Request notary change
+GN --> BA : Approved
+
+BA -> SN : Register state with Solana Notary
+SN --> BA : Acknowledged
+
+== Phase 4: Mint on Solana (Atomic with Notarisation) ==
+
+BA -> BA : MintToSolanaFlow
+note right #Orange
+  **[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenBridgeContract.kt FungibleTokenBridgeContract.MintToSolana]]**
+  Validates:
+  - Holder is lockingIdentity
+  - Exactly 1 SolanaInstruction
+  - Instruction matches mintTo format
+  - Program ID = SPL Token 2022
+end note
+
+BA -> BA : Build SolanaInstruction
+note right
+  SolanaInstruction {
+    programId: TOKEN_2022_PROGRAM_ID
+    keys: [mint, destination, authority]
+    data: mintTo(amount)
+  }
+end note
+
+BA -> SN : NotarisationRequest + SolanaInstruction
+note right #Red
+  **Critical: Solana Notary**
+  1. Validates instruction
+  2. Signs Solana TX
+  3. Submits to Solana
+  4. Notarises Corda TX
+end note
+
+SN -> SN : Load Bridge Authority keypair
+note right
+  [[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/ConfigHandler.kt ConfigHandler.getKeypair()]]
+  bridgeAuthorityWalletFile config
+end note
+
+SN -> SPL : mintTo instruction
+SPL -> Mint : Update supply
+SPL -> ATA : Credit tokens
+SPL --> SN : Transaction signature
+
+SN -> SN : Notarise Corda transaction
+SN --> BA : SignedTransaction + Solana TX signature
+
+note over BA, ATA #LightGreen
+  **Bridging Complete**
+  Corda: BridgedFungibleTokenProxy (locked, Solana notary)
+  Solana: SPL tokens in Shareholder's ATA
+end note
+
+== Phase 5: Optional - Transfer on Solana ==
+
+Shareholder -> SPL : transfer instruction
+note right
+  Standard SPL transfer
+  No Corda involvement
+end note
+SPL -> ATA : Debit source
+SPL --> Shareholder : Tokens transferred
+
+== Phase 5A: Redemption Wallet Setup (One-Time Configuration) ==
+
+note over BA, Shareholder #Wheat
+  **Pre-requisite for Redemption (DFC2S_SEND_FOR_REDEMPTION)**
+  Redemption wallet addresses must be created and 
+  mapped to Corda holders before redemption can occur
+end note
+
+BA -> BA : Create Solana redemption wallet(s)
+note right
+  Bridge Authority generates or provisions
+  dedicated Solana wallet keypairs for
+  receiving redemption deposits
+  
+  redemptionWalletAccount (Pubkey)
+  - Owned by Bridge Authority
+  - One per holder or shared pool
+end note
+
+BA -> SPL : Create Associated Token Account (ATA)
+note right
+  redemptionTokenAccount for each
+  redemptionWalletAccount
+  
+  Token2022.createAssociatedTokenAccount(
+    redemptionWalletAccount,
+    mintAccount
+  )
+end note
+SPL --> BA : redemptionTokenAccount created
+
+BA -> BA : Configure holder mappings
+note right #LightYellow
+  **[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/ConfigHandler.kt ConfigHandler]]**
+  
+  redemptionWalletAccountToHolder = {
+    "ShareholderRedemptionPubkey": "O=Shareholder,L=NYC,C=US"
+  }
+  
+  Maps Solana redemption wallet addresses
+  to Corda X500 identities
+end note
+
+BA -> BA : Start WebSocket subscription
+note right
+  BridgingService.onStart()
+  Subscribe to logsSubscribe for each
+  redemptionWalletAccount
+  
+  Listens for incoming transfers
+end note
+
+BA -> Shareholder : Communicate redemption address
+note right #LightBlue
+  **Out-of-band communication**
+  Bridge Authority provides:
+  - redemptionWalletAccount (Pubkey)
+  - Instructions for redemption process
+  
+  Shareholder must send tokens to THIS
+  specific address to initiate redemption
+end note
+
+note over BA, Shareholder #Wheat
+  **Setup Complete**
+  Shareholder now knows where to send tokens
+  Bridge Authority monitors that address
+end note
+
+== Phase 6: Redemption Flow (Solana → Corda) ==
+
+Shareholder -> SPL : transfer to redemption wallet
+note right #LightBlue
+  **DFC2S_SEND_FOR_REDEMPTION**
+  Shareholder initiates redemption by
+  transferring tokens to the Bridge Authority's
+  designated redemptionWalletAccount
+  
+  Token2022.transfer(
+    source: ShareholderATA,
+    destination: redemptionTokenAccount,
+    amount
+  )
+end note
+SPL --> BA : WebSocket notification (logsSubscribe)
+note left
+  Bridge Authority's subscription
+  receives real-time notification
+  of incoming transfer
+end note
+
+BA -> BA : Detect redemption deposit
+note right
+  Parse WebSocket message
+  Match to holder mapping
+  Initiate unlock flow
+end note
+
+BA -> BA : BurnAndUnlockFlow
+note right #Orange
+  **[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt FungibleTokenRedemptionContract.BurnOnSolana]]**
+  Creates FungibleTokenBurnReceipt
+  Validates burn instruction format
+end note
+
+BA -> BA : Build burn SolanaInstruction
+note right
+  SolanaInstruction {
+    programId: TOKEN_2022_PROGRAM_ID
+    keys: [account, mint, authority]
+    data: burn(amount)
+  }
+end note
+
+BA -> SN : NotarisationRequest + burn instruction
+
+SN -> SPL : burn instruction
+SPL -> ATA : Burn tokens
+SPL -> Mint : Reduce supply
+SPL --> SN : Burn confirmed
+
+SN --> BA : Notarised burn receipt
+
+== Phase 7: Notary Change Back & Unlock ==
+
+BA -> BA : ChangeNotaryFlow
+note right
+  Move back to GeneralNotary
+  For standard Corda operations
+end note
+
+BA -> SN : Request notary change
+SN --> BA : Approved
+
+BA -> GN : Register state
+GN --> BA : Acknowledged
+
+BA -> BA : MoveAndUnlockFungibleTokenFlow
+note right #Orange
+  **[[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-contracts/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/contracts/FungibleTokenRedemptionContract.kt FungibleTokenRedemptionContract.UnlockToken]]**
+  Consumes: BridgedFungibleTokenProxy
+  Outputs: FungibleToken (original type)
+  Holder: Shareholder (redeemer)
+  Flow: [[https://github.com/corda/corda-solana-toolkit/blob/main/bridging-token-workflows/src/main/kotlin/com/r3/corda/lib/solana/bridging/token/flows/MoveAndUnlockFungibleTokenFlow.kt MoveAndUnlockFungibleTokenFlow]]
+end note
+
+BA -> GN : NotarisationRequest
+GN --> BA : SignedTransaction
+
+BA -> Shareholder : Tokens unlocked
+note right
+  FungibleToken {
+    holder: Shareholder
+    amount: redeemed amount
+    tokenType: original StockClass
+  }
+end note
+
+note over Shareholder, ATA #LightGreen
+  **Redemption Complete**
+  Solana tokens burned
+  Corda tokens unlocked to holder
+end note
+
+== Error Handling ==
+
+note over BA #LightCoral
+  **HospitalizeFlowException**
+  Thrown for unexpected errors
+  Allows manual recovery
+  
+  **NotaryError.Conflict**
+  Treated as already-processed
+  Idempotent recovery
+end note
+
+@enduml

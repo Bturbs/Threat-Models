@@ -1,0 +1,688 @@
+ID: C5
+schemaVersion: 2
+title: Corda 5.2
+version: 2023.v2-DRAFT
+children:
+  - REFID: CPIPackaging
+  - REFID: HTTPGateway
+  - REFID: VNodeOnboarding
+  - REFID: ClusterConfiguration
+  - REFID: CryptoLibrary
+  - REFID: e2e
+  - REFID: ClusterDeployment
+  - REFID: Sandboxes
+  - REFID: Ledger
+  - REFID: Notary
+  - REFID: MGM
+  - REFID: Flows
+authors: |
+  Security Research team at *R3*
+
+
+  - David Cervigni
+  - James Brown
+  - Bassem Ammar
+
+history: |
+  - 2023.1 Draft  2023-05-12: First draft release
+  - 2023.1 Draft  2023-07-11: Second draft release
+
+
+# TODO:
+# -  Cordapp update
+# -  participant list distribution
+# 
+scope:
+  securityObjectives:
+    - ID: FULL_CIA
+      title: Confidentiality Integrity and availability of a Corda Cluster and 
+        Network
+      description: |
+        Ability to maintain fundamental confidentiality
+        integrity and availability of the Corda network or of a specific Corda Cluster
+      group: General security Objectives
+      treeImage: true
+
+    - ID: INTEGRITY
+      title: Data integrity
+      description: |
+        Ability to maintain fundamental integrity of the Corda network or of a specific Cluster data 
+      contributesTo:
+        - REFID: FULL_CIA
+      group: General security Objectives
+    - ID: CONFIDENTIALITY
+      title: Data confidentiality
+      description: |
+        Ability to maintain fundamental confidentiality of the Corda network or of a specific Cluster data
+      contributesTo:
+        - REFID: FULL_CIA
+      group: General security Objectives
+    - ID: AVAILABILITY
+      title: System availability
+      description: |
+        Ability to maintain fundamental availability of the Corda network or of a specific Cluster
+      contributesTo:
+        - REFID: FULL_CIA
+      group: General security Objectives
+
+    - ID: COMPLIANCE
+      title: Corda 5 compliance
+      description: |
+        Ability to obtain and maintain maintain compliance with required regulations
+      # failureImpact: Non compliance, legal repercussions, business monetary
+      #    loss, non adequacy for regulated markets 
+      contributesTo:
+        - REFID: AVAILABILITY
+      group: Business specific
+    - ID: NON_REPUDIATION
+      title: Non repudiation of Corda 5 actors actions
+      description: |
+        Ability to have available cryptographic evidence of the user and actor main actions executed in the joining nad in the participating of 
+        a Corda network.
+      contributesTo:
+        - REFID: INTEGRITY
+        - REFID: COMPLIANCE
+      group: Business specific
+
+    - ID: LEDGER_INTEGRITY
+      title: Corda ledger and transactions Integrity
+      description: Ability to guarantee that Corda ledger transaction are 
+        authentic, reliable, trustable and enforceable by the Corda network 
+        participants.
+      contributesTo:
+        - REFID: INTEGRITY
+      group: Business specific
+      treeImage: true
+
+    - ID: LEDGER_SPOOFING_PREVENTION
+      title: Ledger Signature spoofing prevention
+      description: |
+        Ability to prevent the signature forging in which one identity impersonates another.
+      contributesTo:
+        - REFID: LEDGER_INTEGRITY
+      treeImage: true
+      group: Business specific
+
+    # - ID: TX_NON_DOUBLE_SPENDING
+    #   title: Transaction Double Spending prevention
+    #   description: Ability to assure that transaction outputs cannot be spent multiple
+    #     times
+    #   contributesTo:
+    #     - REFID: LEDGER_INTEGRITY
+    #   group: Business specific
+    #   treeImage: true
+
+
+    # - ID: SUSPENDED_MEMBER_COMMUNICATION_BLOCKED
+    #   title: Suspended Members blocked From Communicating with other members
+    #   description: Once a member has been suspended, flow communication between it
+    #     and other members of the group will be blocked. A suspended member performing
+    #     a member lookup will not see any updates for the other members, apart from
+    #     the Membership Group Manager. They will be able to see that they have been
+    #     suspended.
+    #   contributesTo:
+    #     - REFID: CONFIDENTIALITY
+    #   group: Business specific
+
+    # - ID: PERMISSIONED_NETWORK
+    #   title: Permissioned network
+    #   description: This could be represented by a root of trust, an MGM etc. It ensures
+    #     authenticity of the group members data, and the use of trusted notarization
+    #     service.
+    #   contributesTo:
+    #     - REFID: COMPLIANCE
+    #   group: Business specific
+    #   treeImage: true
+
+    # - ID: LEDGER_DURABILITY
+    #   title: Ledger durability
+    #   description: |
+    #     Ability to preserve the security (confidentiality, integrity and availability) of the ledger over long periods (e.g. 20 years)
+    #   contributesTo:
+    #     - REFID: AVAILABILITY
+    #     - REFID: COMPLIANCE
+    #     - REFID: NON_REPUDIATION
+    #   group: Business specific
+    #   treeImage: true
+
+    - ID: LEDGER_TX_CONFIDENTIALITY
+      title: Ledger transaction confidentiality
+      description: Ability to maintain expected confidentiality of sensitive 
+        data used in CordApps Flow and transactions
+      contributesTo:
+        - REFID: CONFIDENTIALITY
+      group: Business specific
+      treeImage: true
+
+    # - ID: CRYPTOGRAPHIC_FLEXIBILITY
+    #   title: Cryptographic flexibility
+    #   description: |
+    #     Possibility over time/releases to update cryptographic algorithms and schemas used in Corda cluster and ledger
+    #   failureImpact: Transaction history list
+    #   contributesTo:
+    #     - REFID: COMPLIANCE
+    #   group: Advanced
+    #   treeImage: false
+
+    - ID: DATABASE_LEAK_RESILIENCY
+      title: Database data disclosure resiliency
+      description: |
+        Ability to limit the impact of a DATABASE (cluster and VNode) leak. In particular to maintain related security
+         objectives like LEDGER_INTEGRITY and CONFIDENTIALITY
+      failureImpact: Transaction history list
+      contributesTo:
+        - REFID: LEDGER_TX_CONFIDENTIALITY
+        - REFID: COMPLIANCE
+      group: Advanced
+
+    - ID: DATABASE_TAMPER_RESILIENCY
+      title: Database data tampering resiliency
+      description: |
+        Ability to limit the impact of a DATABASE (cluster and VNode) tampering, for example due to SQL INJECTION 
+        or an infrastructure level attack on the databases.
+      failureImpact: Transaction history list
+      contributesTo:
+        - REFID: LEDGER_TX_CONFIDENTIALITY
+        - REFID: COMPLIANCE
+        - REFID: LEDGER_INTEGRITY
+      group: Advanced
+      treeImage: true
+
+    - ID: CLUSTER_OPERATOR_PROTECTION
+      title: Adversarial Cluster operator resiliency
+      description: |
+        Ability of a Corda Cluster to guarantee by design that a cluster operator is not able to impersonate 
+        Corda Network participants or disclose ledger sensitive data (or escalate an attack to achieve that).
+        This ability is preventing both adversarial/malicious cluster operators or attack by compromised cluster operator attacks.
+        Note: the prevention does not involve availability.
+      failureImpact: Transaction history list
+      contributesTo:
+        - REFID: INTEGRITY
+        - REFID: CONFIDENTIALITY
+        - REFID: COMPLIANCE
+      group: Advanced
+      treeImage: true
+
+    - ID: FLOW_HIGH_AVAILABILITY
+      title: High Availability aspects of CorDapps and flow protocol
+      description: |
+        FROM [REF](https://github.com/corda/platform-eng-design/blob/1677ffca79c269e997db0fe3e2dad0ef20999f92/core/corda-5/corda-5.0/p2p-ha/e2e-authentication-protocol.md):
+
+        Below is a list of requirements for this design work. As explained below, the design needs to address all of these, but they can be delivered incrementally as long as this is possible architecturally.
+
+            * The p2p layer should provide high availability. This translates into the following terms:
+              * as a short-term goal, the messaging layer should be able to tolerate single-machine failures without the need of operational intervention and with limited downtime (< 5 seconds).
+              * as a medium-term goal, the messaging layer should be able to tolerate single-datacenter failures without the need of operational intervention and with limited downtime (< 5 seconds).
+              * any maintenance windows required should be kept to minimum duration and impact. As a maintenance window, we define a time window where the platform's performance might degrade due to maintenance tasks.
+              * the messaging layer should provide the capability of performing rolling upgrades of Corda or CorDapps without any downtime. This can be tackled as a medium-term goal.
+              * customers should be able to setup a deployment of the components in a topology that could provide up to 5 9s of availability. This could be either on an on-premise setup, on the cloud or even using a managed service, if that's possible.
+            * It should be possible to deploy the messaging layer in a low-cost version that might compromise on performance, scalability & availability in order to reduce the total cost of ownership of the overall system.
+            * It should be possible to deploy Corda in a setup, where traffic is authenticated end-to-end, but only encrypted across the public network. This is a requirement from customers that want external traffic to be encrypted, but still want a way to inspect traffic as it enters their network perimeter. There should also be another operational mode for customers that are more security-sensitive, which would enforce end-to-end encryption to prevent any traffic from being exposed in cleartext before it reaches any Corda components performing the actual processing (e.g. Corda nodes).
+            * The platform should be using a communications protocol that is more widely adopted and that is supported by an ecosystem with extensive tooling. An example of such a protocol that has been requested by customers is HTTP (in contrast to AMQP).
+            * It should be possible to provide unreliable delivery in the future, i.e. specifying a TTL for messages that are going to be dropped after this has elapsed.
+            * It should be possible to preserve and reuse old certificates from Corda 4.x. It is acceptable if this is only possible within the same network, i.e. nodes with old-style certificates can only talk to nodes with old-style certificates (and the same for the new standard web certificates).
+            * The platform should be capable of exposing information to the operator, which can be used to determine where a message is stuck through the pipeline. This information could then be used to identify which component or link might be causing failures.
+            * The p2p layer should provide the ability to communicate across different networks/groups. For instance, a deployment of the p2p components can front two different holding identities belonging in different networks/groups.
+
+          [REF](https://github.com/corda/platform-eng-design/blob/1677ffca79c269e997db0fe3e2dad0ef20999f92/core/corda-5/corda-5.0/p2p-ha/e2e-authentication-protocol.md)
+          (RFI: @Dries, is it still the case?)
+
+      failureImpact: High availability not guaranteed
+
+      contributesTo:
+        - REFID: AVAILABILITY
+        - REFID: COMPLIANCE
+      group: Advanced
+      treeImage: true
+
+
+  description: |
+    This is the Corda NextGen Cluster threat model.
+
+    **Operational Modes**
+
+    There are different ways in which a Corda 5 Cluster can be used/operated, here summarized in three main tenancy modes:
+
+    1) **Single tenant**: Cluster with single VNode and single or multiple trusted CordApp CPIs
+
+    2) **Multiple tenants with trusted CPIs**: Cluster with multiple VNodes with a single or multiple trusted (by all NVodes) CordApp CPIs
+
+    3) **Full multi-tenancy**: Cluster with multiple VNodes with multiple untrusted CorDapps CPIs
+
+    The different operational modes may impact specific threats and their mitigations. 
+    In particular `Single tenant` poses less threats than `Multiple tenants with trusted CPIs`
+    that poses less threat than `Full multi-tenancy` operational mode.
+
+
+  assets:
+    - ID: C5CLUSTER
+      type: cluster
+      title: Corda 5 Cluster
+      description: Corda 5 Cluster
+      inScope: true
+    - ID: DF_CPI_UPLOAD
+      type: dataflow
+      title: CPI upload
+      description: Application Publisher uploads a CPI to create a Virtual Node
+      inScope: true
+    - ID: DF_CONF_CPIBK_VER_CRED
+      type: dataflow
+      title: CPI verification credentials configuration
+      description: |
+        configure the credentials (RFI: root cert, PubK, x500 name only?) to verify the CPI,CPB,CPK (nested) signatures by the Cluster Operator REF RFI
+        Example from [REF](https://github.com/corda/corda-runtime-os/wiki/CorDapp-Packaging):
+        ``` 
+        curl --insecure -u admin:admin -X PUT -F alias="signingkey1-2022" -F certificate=@signingkey1.pem https://localhost:8888/api/v1/certificates/codesigner
+        ```
+      inScope: true
+    - ID: DF_CONF_CPIBK_VER_TRANS
+      type: dataflow
+      title: CPI verification credentials transmission
+      description: |
+        trusted root credentials (RFI: PubKs, X500 Name...with root PKICert?) transmitted out of band (RFI) by the network operator to the Cluster
+         operator to then configure no the cluster (same MGM cluster or another non MGM cluster)
+      inScope: false
+    - ID: CDF_PB_ACQUISITION
+      type: dataflow
+      title: transmission of the CPI from the APP publisher (RFI also App Dev?)
+      description: |
+        out of band transmission of the CPI from the APP publisher to the Network Operator
+      inScope: false
+    - ID: DF_CPK_TRUSTED_CRED
+      type: dataflow
+      title: transmission of the trusted credentials from the App Developer to 
+        the Network operator
+      description: |
+        out of band transmission of the trusted credentials (RFI what credentials, X500 name, cert, pubK?) from the App Developer to the Network operator
+      inScope: false
+    - ID: DF_CPI_CREATION
+      type: dataflow
+      title: CPI signing
+      description: Network Operator signs CPI 
+        [REF](https://github.com/corda/corda-runtime-os/wiki/CorDapp-Packaging#signing-key-setup-only-needed-first-time)
+      inScope: true
+    - ID: DF_CPI_TRANSIT_OPERATOR
+      type: dataflow
+      title: CPI transmission to Cluster Operator
+      description: out of band CPI transmission to Cluster Operator from the 
+        Network Operator
+      inScope: false
+    - ID: DF_CPI_TESTING
+      type: dataflow
+      title: CPI testing with self signed certs
+      description: |
+        CPI testing ith self signed certs RFI: TBC
+      inScope: false
+    - ID: DF_CPB_ACQUISITION
+      type: dataflow
+      title: CPB acquisition
+      description: Group network operator acquires a .cpb to form a CPI by 
+        signing it
+      inScope: false
+    - ID: DF_FLOW_1
+      type: dataflow
+      title: Flow transaction
+      description: CordApp executes a transactions with another CorDapp (Virtual
+        lNode)
+      inScope: true
+    - ID: DF_OP_1
+      type: dataflow
+      title: Cluster installation and initial configuration
+      description: Cluster installation and initial configuration
+      inScope: false
+    # - ID: C5Cluster
+    #   type: asset
+    #   title: Corda 5 Cluster
+    #   description: Kubernetes deployment/namespace, OSGi bundles for workers, Kafka
+    #     and Databases for workers communications
+    #   inScope: true
+    # - ID: cred_db
+    #   type: credentials
+    #   description: credentials stored in the database
+    #   inScope: true
+    - ID: CLUSTER_DB
+      type: database
+      title: Cluster database
+      description: |
+        Corda Cluster main databases including:
+           - Config DB
+           - RBAC for REST APIs
+      inScope: true
+
+    - ID: WORKER_PROCESS
+      title: Any worker process
+      type: process
+      description: Any worker process part of the Cluster. Process are typically
+        Java running in Docker containers.
+      inScope: true
+
+    - ID: CRYPTO_WORKER
+      type: Java process
+      title: Crypto Worker/Library
+      description: Manages keys on behalf of members as well as the cluster 
+        itself 
+        [ref](https://github.com/corda/corda-runtime-os/wiki/Crypto-library)
+      inScope: true
+    - ID: LINK_MANAGER
+      type: process
+      title: Link manager
+      description: |
+        This component is responsible for link session establishment, peer authentication,
+        secure & reliable transport of messages. Messages might be delivered out-of-order and potentially even duplicated
+        This component will create relatively long-lived authenticated link sessions with peers. The clients (flow workers) will 
+        be unaware for these sessions. It will also provide the ability for unauthenticated message exchange, which can be used in 
+        cases where there is no need for authentication or there is a need for a custom form of authentication
+         (e.g. registration process is a concrete use-case of this).
+          [REF](https://github.com/corda/platform-eng-design/blob/a6151195196bcfa20daf6f6a7f0901a73ab2da6f/core/corda-5/corda-5.0/p2p-ha/p2p-architecture.md)
+      inScope: true
+    - ID: P2P_GATEWAY
+      type: process
+      title: P2P Gateway
+      description: |
+        Process deployed in an external/intermediary network segment and communicates with gateways in other clusters using HTTPS.
+      inScope: true
+    - ID: HTTP_GATEWAY
+      type: process
+      title: HTTP_GATEWAY (A.K.A. REST_WORKER)
+      description: |
+        The HTTP RPC Gateway a component service of a Corda 5 node that exposes a variety of API endpoints that enable
+        control of a Corda node.
+      inScope: true
+
+    - ID: MGM_VNODE
+      title: MGM Node
+      type: software system
+      description: Membership Group Manager VNode
+      inScope: true
+
+    - ID: FLOW_MAPPER_WORKER
+      inScope: true
+      type: process
+      title: Flow Mapper Worker
+      description: The flow mapper will be separated from the flow worker, 
+        further un-bloating the critical-path flow code.
+      appliesToVersions: ">=5.1"
+
+    - ID: PERSISTENCE_WORKER
+      title: Persistence Worker
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: process
+      description: |
+        Flow and ledger persistence operating within the DB sandbox. 
+        (The LedgerPersistenceService and FlowPersistenceService are removed from the DB worker as in 5.0).
+
+    - ID: TOKEN_SELECTION_WORKER
+      title: Token Selection Worker
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: process
+      description: |
+        The TokenCacheProcessor will also be removed from the DB worker, leaving the DB worker to handle DB configuration and management.
+
+    - ID: UNIQUENESS_WORKER
+      title: Uniqueness Worker
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: process
+      description: |
+        Providing fixed-function checking for spent input and reference states, and time window validation.
+
+    - ID: VERIFICATION_WORKER
+      title: Verification Worker
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: process
+      description: |
+        Verification of ledger transactions within the ledger sandbox.
+
+    - ID: TOKEN_SELECTION_WORKER
+      title: Token Selection Worker
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: process
+      description: |
+        Handles the tokenization service within flows.
+
+    - ID: PERSISTENCE_WORKER
+      title: Persistence Worker
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: process
+      description: |
+        Flow and ledger persistence operating within the DB sandbox.
+
+    - ID: STATE_MANAGER_LIB
+      title: State Manager library
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: library
+      description: |
+        The State Manager is a new component responsible for retrieving and updating a generic state from an out-of-process storage.
+        [REF](https://github.com/corda/platform-eng-design/blob/main/core/corda-5/corda-5.1/state-manager/state-manager.md)
+
+    - ID: STATE_MANAGER_DB
+      title: State Manager storage/DB
+      appliesToVersions: ">=5.1"
+      inScope: true
+      type: database
+      description: |
+        A database used for storing states used by [StateManagerLib](#StateManagerLib). Examples os database are:
+
+          - flow
+          - flowMapper
+          - tokenSelection
+
+        [REF](https://github.com/corda/platform-eng-design/blob/main/core/corda-5/corda-5.2/state-manager/state-manager.md)
+
+    - ID: STATE_MANAGER_DB_CREDS
+      title: State Manager DB credentials
+      appliesToVersions: ">=5.1"
+      type: credentials
+      inScope: true
+      description: |
+        UserName and Password used to access every state [StateManagerDB](#StateManagerDB])
+      properties:
+        format: username/password
+        location: |
+          kubernetes secret [REF](https://github.com/corda/corda-runtime-os/blob/e0c0bfebd6f91a63bb48abf0b1de8ca325282dc7/charts/corda-lib/templates/_stateManager.tpl#L44)
+          TODO deployment dataflow details from last  REF
+        applicationRelated: false
+        infrastructureRelated: true
+
+    - ID: DF_STATE_MNG
+      appliesToVersions: ">=5.1"
+      type: dataflow
+      inScope: true
+      description: |
+
+    - ID: DF_INTERNAL_REST_APIS
+      title: Internal HTTP services
+      appliesToVersions: ">=5.1"
+      type: dataflow
+      inScope: true
+      description: |
+        A generic dataflow identifying any internal HTTP service exposed by any worker/POD communicating with the calling client.
+        Examples of internal REST API are:
+
+         - Crypto APIs [DF_CRYPTO_API1](#DF_CRYPTO_API1)
+         - Verification APIs
+         - Uniqueness APIs
+         - Token Selection APIs
+         - Persistence APIs
+
+  assumptions:
+    - ID:
+      description: |
+        A Corda cluster may host several identities. Identities trust the Cluster.   
+        > *It is worth highlighting that the Holding Identity has a trusting relationship with the Node 
+        and does not require any defensive measures to ensure privacy.* 
+        [REF](https://github.com/corda/platform-eng-design/blob/jmac/c5-identity/core/corda-5/corda-5.0/the-host/corda-identity.md)
+
+        The Cluster then has an higher level of trust than the identity: **the Corda cluster does not trust the identity.**  
+
+
+  attackers:
+    - ID: ANONYMOUS
+      title: Anonymous Internet User
+      description: |
+        Any anonymous internet user
+        Can call APIs: [post_hello](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Hello-RPC-API/operation/post_hello) and 
+        [get_hello_getprotocolversion](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Hello-RPC-API/operation/get_hello_getprotocolversion)
+        Can also connect to externally exposed endpoints e.g. [DF_P2P](#DF_P2P)
+      inScope: true
+
+    - ID: INFRASTRUCTURE_OPERATOR
+      title: Infrastructure Operator
+      description: |
+        Personnel delegated to install/deploy and maintain the Corda5 Cluster Infrastructure. Has access to basically all hardware/
+        software and infrastructure on the Corda 5 Cluster.
+
+        **Main use cases:**
+
+        - Install cluster:
+          - install Kafka
+          - install VNode DB
+          - install cluster DB
+          - Install K8s workers
+          - load balancers
+          - Proxies
+          -...
+        - Access K8 APIs, DBs networks,  hardware...
+        - **Do not** Authenticates as Coda user (does not use RPC APIs)
+
+      inScope: false
+    - ID: CORDAPP_PUBLISHER
+      title: CorDapp developer and publisher
+      description: |
+        Any user/entity that creates and signs CPKs and CPBs
+        **Main use cases:**
+
+          - Distribute his public key/sign certificate
+          - Signs and publish CPKs and CPBs
+#           - Distribute his public key/sign certificate (R.F.I.: pls confirm CORDAPP_PUBLISHER identity verification)
+
+      inScope: true
+
+    - ID: VNODE_OPERATOR
+      title: VNode Operator
+      description: |
+        Acts as the legal entity accountable for running a CPI/Cordapp/Flows
+
+        **Main use cases:**
+
+          - Joins an Application Network:
+              - Retrieves the group policy from the MGM required to join the membership group [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/MGM-API/operation/get_mgm__holdingidentityshorthash__info) 
+              - checks the statuses of all registration requests for a specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Member-Registration-API/operation/get_membership__holdingidentityshorthash_)
+              - checks the status of the specified registration request for a holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Member-Registration-API/operation/get_membership__holdingidentityshorthash___registrationrequestid_)
+              - configures a holding identity as a network participant by setting properties required for P2P messaging. 
+              [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Network-API/operation/put_network_setup__holdingidentityshorthash_)
+              
+          - Discovers Application Network members: 
+              - Retrieves a list of all active and pending members in the membership group.
+              [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Member-Lookup-API/operation/get_members__holdingidentityshorthash_)    
+
+        It is also referred as:
+          - **Group member** (after VNode onboarding)
+          - **Peer member** 
+          - **Counterparty** 
+
+      inScope: true
+
+    - ID: NOTARY_OPERATOR
+      title: Notary Operator
+      description: |
+        An user operator of a Notary VNode of the Corda network.
+
+      inScope: true
+
+    - ID: NETWORK_OPERATOR
+      title: Network Operator (MGM)
+      description: |
+        Initialize and maintain a Application Network: signs CPIs, accepts member requests, etc
+
+        **Main use cases:**      
+        - Uploads its own Session/Identity certificate for P2P communications 
+        - request the CSR (certificate signing request for its own identity) 
+        -  generate a certificate signing request (CSR) for a tenant [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Certificates-API/operation/post_certificates__tenantid___keyid_)
+
+        It is also referred as:
+          - **MGM** (Membership Group Manager) 
+#(R.F.I.: is it really the VNode operator? TODO: in case, why param holdingidentityid? X500 should be part of the signed cert)
+# - TODO fix API doc [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Certificates-API/operation/put_certificates_vnode__holdingidentityid___usage_)
+#(R.F.I.: what is the use case for https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Certificates-API/operation/get_certificates_vnode__holdingidentityid___usage_ ? debug?)
+#(R.F.I.: is it really the VNode operator? TODO: in case, why param holdingidentityid? X500 should be part of the signed cert)
+#        <br/>
+#        <img src="img/NETWORK_OPERATOR_usecases.svg"/>
+      inScope: true
+
+    - ID: CORDAPP_USER
+      title: CorDapp User
+      description: |
+        Cordapp user that calls the Flow REST API on a specific VNode.
+
+         **Main use cases:**
+
+          - Call and retrieve CordApp Flows:
+             - Gets all flows that can be used by the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Info-API/operation/get_flowclass__holdingidentityshorthash_)
+             - Starts a new instance for the specified flow for the specified holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/post_flow__holdingidentityshorthash_)
+             - gets the current status of the specified flow instance [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Flow-Management-API/operation/get_flow__holdingidentityshorthash___clientrequestid_)
+      inScope:
+#       TODO: To be defined precisely (R.F.I.: is it accessing RPC APIs with less privileges than VNODE_OPERATOR? is it the same legal entity as the VNODE_OPERATOR ? )
+    - ID: CLUSTER_OPERATOR
+      title: Cluster Operator
+      description: |
+        Performs routine operations like uploading a CPIs (i.e. making an app available), enabling VNodes onboarding, upgrading the platform ...
+        It uses sensitive APIs but by design it cannot execute remote code (even implicitly by downgrading security), impersonate a VNode or access its private data, 
+        cannot also access infrastructure credentials.
+
+        **Main use cases:**
+        - Register a VNode:
+            - starts the registration process for a holding identity [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Member-Registration-API/operation/post_membership__holdingidentityshorthash_)
+
+        - Upload and manages CPI 
+            - upload a Corda Package Installer (CPI) file to the Corda cluster [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/CPI-API/operation/post_cpi)
+            - list of all CPIs uploaded to the cluster. [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/CPI-API/operation/get_cpi)
+            - Get the status information for the CPI upload with the given request ID [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/CPI-API/operation/get_cpi_status__id_) 
+            - overwrite the previously stored CPI record. This operation also purges any sandboxes running [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Virtual-Node-Maintenance-API/operation/post_maintenance_virtualnode_forcecpiupload)
+        - Configure Cluster certificates (P2P, RPC API, CPI code signing checks)
+            - imports a certificate chain for a cluster. TODO: fix API DOC [API DOC](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Certificates-API/operation/put_certificates_cluster__usage_)
+            - gets the certificate chain aliases for a cluster. 
+            [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Certificates-API/operation/get_certificates_cluster__usage_) and other get APIs methods
+        - request the CSR (certificate signing request for its own identity) 
+            - enables to generate a certificate signing request (CSR) for a tenant (cluster tenant TLS: rpc-api or P2P) [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Certificates-API/operation/post_certificates__tenantid___keyid_)
+        - apply and read Cluster level configurations 
+            - updates a section of the cluster configuration. [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Configuration-API)
+            - returns the 'active' configuration for the given section, in both the 'raw' format and with defaults applied [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Configuration-API/operation/get_config__section_)
+        - Manages HSMs ('ACCOUNTS', 'CI', 'LEDGER', 'NOTARY', 'SESSION_INIT', 'TLS', or 'JWT_KEY'):
+            - assign a soft HSM to the tenant for the specified category. [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/HSM-API/operation/post_hsm_soft__tenantid___category_)
+            - retrieves information on the HSM of the specified category assigned to the tenant [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/HSM-API/operation/get_hsm__tenantid___category_)
+            - enables to assign a hardware-backed HSM to the tenant for the specified category. [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/HSM-API/operation/post_hsm__tenantid___category_)
+        - Create Cluster level Key Pairs:
+            - generates a new key pair for a tenant (cluster tenant being `rpc-api` or `p2p`) [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Keys-Management-API/operation/post_keys__tenantid__alias__alias__category__hsmcategory__scheme__scheme_)
+        - Setup permissions and RBAC:
+            - creates a new permission. [https://CLUSTER/api/v1/permission](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/RBAC-Permission-API/operation/post_permission)
+            - creates a set of permissions (bulk) and optionally assigns them to the existing roles. [https://CLUSTER/api/v1/permission/bulk](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/RBAC-Permission-API/operation/post_permission_bulk)
+            - creates a new role in the RBAC permission system. [https://CLUSTER/api/v1/role](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/RBAC-Role-API/operation/post_role)
+            - adds the specified permission to the specified role. [https://CLUSTER/api/v1/role/{roleid}/permission/{permissionid}](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/RBAC-Role-API/operation/put_role__roleid__permission__permissionid_)
+            - removes the specified permission from the specified role.
+            - creates a new user with initialPassword, roles, optional SSO ...
+            - assigns a specified role to a specified user.
+            - removes the specified role from the specified user.
+        - Creates and list Virtual Nodes (VNodes)
+            - creates a new virtual node[API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Virtual-Node-API/operation/post_virtualnode)
+            - lists all virtual nodes in the cluster[API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Virtual-Node-API/operation/get_virtualnode)
+            - updates the state of a new virtual node to one of the pre-defined values[API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/Virtual-Node-Maintenance-API/operation/put_maintenance_virtualnode__virtualnodeshortid__state__newstate_)
+
+        The operator with monitoring capabilities is also considered The Cluster Operator (not infrastructure operator, as this last is 
+        not considered an attacker).
+
+#            - retrieves information on the HSM of the specified category assigned to the tenant (R.F.I.: when?) [API doc](https://docs.r3.com/en/platform/corda/5.0-beta/rest-api/C5_OpenAPI.html#tag/HSM-API/operation/get_hsm__tenantid___category_)
+# - gets the certificate chain aliases for a cluster. (R.F.I.: when is it needed?)
+#        **use cases:** TODO: (RFI: complete the set of 'bau' use cases)
+#        <br/>
+#        <img src="img/CLUSTER_OPERATOR_usecases.svg"/>
+      inScope: true
+analysis: |
+
+threats:
