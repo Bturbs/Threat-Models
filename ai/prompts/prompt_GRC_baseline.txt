@@ -4468,7 +4468,7 @@ Context: threat modeling and its terminilogy
         
           securityObjectives:
             - ID: FULL_CIA
-              title: Confidentiality Integrity and availability of a Corda Network
+              title: Confidentiality, integrity, and availability of the target system
               description: |
                 Ability to maintain fundamental confidentiality
                 integrity and availability of the system
@@ -4941,4 +4941,3 @@ Action:
       - PCI-DSS like chapteps (without explicit PCI-DSS references)
       - Compromising the software product build pipeline (supply chain attacks)
       
-

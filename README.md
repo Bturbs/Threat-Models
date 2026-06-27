@@ -4,7 +4,7 @@ This repository contains structured threat models in YAML format and tools to tr
 
 ## Introduction
 
-Modern large-scale security reviews (like the CBUAE Phase 2) require a consistent, machine-readable format for threats, assets, and countermeasures. This approach allows for:
+Modern large-scale security reviews require a consistent, machine-readable format for threats, assets, and countermeasures. This approach allows for:
 - **Reproducibility**: Clear links between assets, threats, and mitigations.
 - **Automation**: Automatic generation of risk reports and security sites.
 - **Validation**: Ensuring all threats have assigned CVSS scores and mitigations.
@@ -161,9 +161,4 @@ Example workflow:
 
 ### Installation notes
 
-For normal installation, use:
-
-```bash
-pip install git+https://github.com/corda/threat-model-tool.git
-```
-
+This workspace uses the local threat-model tool package from `../Bturbs-TM-Tool`.
