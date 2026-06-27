@@ -1,8 +1,0 @@
-ID: Issuance
-schemaVersion: 2
-parent: CBUAE_PHASE2
-scope:
-  assets:
-analysis: TODO
-threats:
-title: Issuance
