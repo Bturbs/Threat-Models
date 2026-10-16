@@ -1,6 +1,6 @@
 # Makefile for Threat Modeling Data
 
-.PHONY: init test check-yaml site build-corda-solana-toolkit
+.PHONY: init test check-yaml site
 
 BASE_MODEL_DIR ?= threatModels
 MKDOC_ASSET_DIR ?= security_site/mkdocs
@@ -25,32 +25,3 @@ build-mkdocs:
 
 site:
 	$(MAKE) build-mkdocs
-
-generate-corda-solana-toolkit-html:
-	npm run generate:corda-solana-toolkit
-
-generate-corda-solana-toolkit-html-no-diagrams:
-	npm run generate:corda-solana-toolkit -- --skipDiagrams
-
-generate-CordaProtocolV1-html:
-	npm run generate:corda-protocolV1
-
-generate-CordaProtocolV1-pdf:
-	npm run generate:corda-protocolV1 -- --generatePDF --pdfHeaderNote "Property of R3 Private and confidential"
-
-jira-CordaProtocolV1-csv:
-	npx threat-model-jira \
-		--rootTMYaml threatModels/CordaProtocolV1/CordaProtocolV1.yaml \
-		--dest SEC --csv build/CordaProtocolV1/Jira.csv \
-		--epic PROT-303 \
-		--linkPrefix https://security.r3.com/CordaProtocolV1/index.html
-
-jira-CordaProtocolV1-dryrun:
-	npx threat-model-jira \
-		--rootTMYaml threatModels/CordaProtocolV1/CordaProtocolV1.yaml \
-		--dest SEC --dryRun
-
-jira-CordaProtocolV1-list:
-	npx threat-model-jira \
-		--rootTMYaml threatModels/CordaProtocolV1/CordaProtocolV1.yaml \
-		--dest SEC --list

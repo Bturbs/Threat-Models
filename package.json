@@ -1,10 +1,6 @@
 {
   "scripts": {
     "generate:mkdocsSite": "sh -c 'npx tsx node_modules/.bin/threat-model-mkdocs --TMDirectory \"${BASE_MODEL_DIR:-threatModels}\" --MKDocsDir \"${MKDOCS_DIR:-${BUILD_DIR:-build}/mkdocs}\" --MKDocsSiteDir \"${MKDOCS_SITE_DIR:-${BUILD_DIR:-build}/site-mkdocs}\" --templateSiteFolderSRC \"${MKDOC_ASSET_DIR:-security_site/mkdocs}\" --siteName \"${SITE_NAME:-R3 Threat Models}\"'",
-    "generate:kamino": "npx tsx node_modules/.bin/threat-model-tool threatModels/Kamino/Kamino.yaml build/Kamino --mainTitle 'Kamino: Threat Model and Security Review'",
-    "generate:corda-solana-toolkit": "npx tsx node_modules/.bin/threat-model-tool threatModels/CordaSolanaToolkit/CordaSolanaToolkit.yaml build/CordaSolanaToolkit --mainTitle 'Corda Solana Toolkit: Threat Model and Security Review'",
-    "generate:corda-protocolV0": "npx tsx node_modules/.bin/threat-model-tool threatModels/CordaProtocolV0/CordaProtocolV0.yaml build/CordaProtocolV0 --mainTitle 'Corda Protocol v0: Threat Model and Security Review'",
-    "generate:corda-protocolV1": "npx tsx node_modules/.bin/threat-model-tool threatModels/CordaProtocolV1/CordaProtocolV1.yaml build/CordaProtocolV1 --mainTitle 'Corda Protocol v1: Threat Model and Security Review'",
     "serve:mkdocsSite": "mkdocs serve --config-file build/mkdocs/mkdocs.yml --dev-addr 127.0.0.1:3000"
     , "serve:html": "python3 -m http.server 4325 --directory ./build"
   },

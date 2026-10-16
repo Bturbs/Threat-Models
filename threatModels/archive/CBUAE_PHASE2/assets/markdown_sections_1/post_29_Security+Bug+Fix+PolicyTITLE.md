@@ -1,1 +1,0 @@
-# Annex B: Security Bug Fix Policy

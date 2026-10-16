@@ -1,1 +1,0 @@
-# Annex A: Vulnerability Disclosure Handling

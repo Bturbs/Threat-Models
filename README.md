@@ -1,5 +1,10 @@
 # Structured Threat Models
 
+> **Current repository state:** this repository contains no threat model YAML
+> files. Build commands can be used to verify an empty model set; they should
+> not generate model reports or model pages. The shared assets under
+> `threatModels/assets/` are retained for future use.
+
 This repository contains structured threat models in YAML format and tools to transform them into various report formats (Markdown, HTML, PDF, MkDocs).
 
 ## Introduction
@@ -166,4 +171,3 @@ For normal installation, use:
 ```bash
 pip install git+https://github.com/corda/threat-model-tool.git
 ```
-
