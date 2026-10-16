@@ -62,6 +62,39 @@ jobs:
             BUILD_DIR="${BUILD_DIR}" \
             SITE_NAME="${SITE_NAME}"
 
+      - name: Create an empty site when no threat models are present
+        run: |
+          SITE_DIR="${BUILD_DIR}/site-mkdocs"
+          HAS_MODELS=false
+          for MODEL_DIR in "${BASE_MODEL_DIR}"/*/; do
+            [ -d "${MODEL_DIR}" ] || continue
+            MODEL_NAME="$(basename "${MODEL_DIR}")"
+            if [ -f "${MODEL_DIR}${MODEL_NAME}.yaml" ]; then
+              HAS_MODELS=true
+              break
+            fi
+          done
+
+          if [ "${HAS_MODELS}" = false ] && [ ! -f "${SITE_DIR}/index.html" ]; then
+            mkdir -p "${SITE_DIR}"
+            cat > "${SITE_DIR}/index.html" <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Threat Models</title>
+          </head>
+          <body>
+            <main>
+              <h1>Threat Models</h1>
+              <p>No threat models are currently published.</p>
+            </main>
+          </body>
+          </html>
+          EOF
+          fi
+
       - name: Upload generated site
         uses: actions/upload-pages-artifact@v3
         with:
