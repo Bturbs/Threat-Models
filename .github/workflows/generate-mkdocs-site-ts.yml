@@ -8,6 +8,7 @@ on:
     - main
     paths:
     - '**.yaml'
+    - '.github/workflows/generate-mkdocs-site-ts.yml'
 
 permissions:
   contents: read
