@@ -17,6 +17,18 @@ scope:
     deployment. Production network, backup, host-isolation, and GitHub
     branch-protection configurations have not been demonstrated and are not
     treated as deployed controls.
+  diagram: |
+    **Issue intake and worker context flow.** The first view follows
+    ISSUE_INTAKE, WORKER_CHANNEL, PROVIDER_PROMPT_FLOW, and the
+    ISSUE_PROMPT_INJECTION and ADMIN_BEARER_ABUSE threats.
+
+    ![Issue intake and worker context sequence](img/sequence_issue_to_worker.svg)
+
+    **Security gate and delivery flow.** The second view follows THREAT_MODEL,
+    SECURITY_DECISION, GITHUB_DELIVERY, and the MODEL_PR_REVIEW_DRIFT and
+    UNPROTECTED_MERGE threats. Optional policy branches are labeled.
+
+    ![Security gate and delivery sequence](img/sequence_security_gate.svg)
   securityObjectives:
     - ID: CONFIDENTIALITY
       title: Confidentiality of credentials and work data
