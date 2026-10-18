@@ -48,7 +48,15 @@ The active isolated Mac staging stack uses its own PostgreSQL volume. With dispa
 
 The active Mac staging API runs with `HYBRID_MODE=true`. Its [Caddy worker proxy](https://github.com/Bturbs/Blueprint-Gate/blob/8fdcdfc/deploy/local-tls/Caddyfile) binds to loopback port 8443 and exposes only worker routes; `/control` returned HTTP 404. The dedicated Lima VM reaches this port through an SSH reverse tunnel. Without the Caddy private root, a VM HTTPS health request failed certificate verification; with that root supplied explicitly, the VM worker completed a paused authenticated poll. A synthetic ticket was then claimed and completed from the VM over the validated HTTPS route, both HTTP 200, and the API was immediately paused again with zero running jobs. The resulting ticket state was `REQUIREMENTS_READY`. No worker or administrator bearer was printed or stored in the source checkout.
 
+[Blueprint Gate PR #30](https://github.com/Bturbs/Blueprint-Gate/pull/30), merged at [revision `e016dd9`](https://github.com/Bturbs/Blueprint-Gate/tree/e016dd9), moved the private CA path into the VM supervisor's protected `worker.yaml`. The worker creates its HTTP client with that CA bundle and rejects a missing, symlinked, or writable bundle. The full local suite passed 101 tests with four skipped and both CI jobs passed. After installing the merged revision in the VM, `scripts/run-worker-vm.sh --once` completed a paused HTTPS poll without `SSL_CERT_FILE`; the VM's supervisor/agent group switch no longer loses TLS trust configuration.
+
 `TRUSTED_TLS_TERMINATION` is `inPlace: true` for this local Mac/VM topology. `HYBRID_CHANNEL_INTERCEPTION` remains `fullyMitigated: false` because no externally reachable hybrid endpoint, public certificate, or remote worker deployment has been defined or verified. Keep [issue #12](https://github.com/Bturbs/Blueprint-Gate/issues/12) open for any such deployment and its trust/rotation policy.
+
+## Evidence review gate progress
+
+[Blueprint Gate PR #29](https://github.com/Bturbs/Blueprint-Gate/pull/29), merged at [revision `f1eb7aa`](https://github.com/Bturbs/Blueprint-Gate/tree/f1eb7aa), adds an optional repository policy that blocks security approval until an authenticated owner records reviewed trust boundaries and evidence for every verified in-place control at the exact design and model revisions. The API checks the committed model digest again before publication. The full local suite passed 100 tests with four skipped and both CI jobs passed. On the active staging repository, `evidence_review_required` was enabled through an owner-authenticated, paused-and-drained transition. The control token alone returned HTTP 401; the verified owner request returned 200 and recorded the numeric GitHub identity in the audit log.
+
+`INDEPENDENT_EVIDENCE_REVIEW` remains `inPlace: false` and `FALSE_MODEL_ASSURANCE` remains `fullyMitigated: false`. The owner has not performed the substantive review of a real ticket's model and evidence. The gate enforces a review record but cannot prove that the model includes every relevant boundary or that the submitted evidence is sound. In this solo project, independence means the human owner reviews agent-authored work. Keep [issue #8](https://github.com/Bturbs/Blueprint-Gate/issues/8) open for an actual review and negative/positive workflow evidence.
 
 ## Deployment facts to verify
 
@@ -57,4 +65,4 @@ The active Mac staging API runs with `HYBRID_MODE=true`. Its [Caddy worker proxy
 - Whether workers use dedicated disposable identities or VMs, limited network access, and minimal GitHub permissions.
 - Whether hybrid HTTPS termination, secret storage, and monitoring have been validated.
 - Whether database backups are taken and restores have been tested.
-- Whether security approvals are performed by distinct authenticated people; the current API does not bind the actor string to a human identity.
+- Whether the owner has substantively reviewed an agent-authored model and its evidence before approval.
