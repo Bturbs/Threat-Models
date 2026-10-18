@@ -323,9 +323,9 @@ threats:
     title: Stolen worker credential claims or completes jobs
     attack: |
       An attacker obtains a worker bearer token from a host or configuration
-      and calls the job API as that worker. Tokens now expire and are scoped,
-      but a coding CLI running under the worker host account can still read a
-      token file accessible to that account if the host is not isolated.
+      and calls the job API as that worker. Tokens expire and are scoped.
+      The staged VM keeps its token in the supervisor's private home, but a
+      compromised supervisor or misconfigured worker host can still expose it.
     threatType: Spoofing, Tampering
     impactDesc: |
       Jobs may be claimed, yielded, or completed with attacker-supplied results,
@@ -356,7 +356,9 @@ threats:
         title: Set expiry and rotate worker credentials
         description: |
           Require expiry, rotation, and secure storage for deployed worker
-          credentials, including the local shared token if used.
+          credentials. Local VM staging stores a scoped token outside the
+          checkout and denied an agent read of a supervisor-only sentinel;
+          a real ticket and recovery sequence still need verification.
         inPlace: false
         public: true
         operational: true
@@ -365,11 +367,10 @@ threats:
   - ID: ADMIN_BEARER_ABUSE
     title: Administrative bearer token enables unaccountable decisions
     attack: |
-      The startup path now removes the control token from the worker process,
-      and worker subprocesses use restricted environments. A compromised CLI
-      running under the same host account can still read accessible credential
-      files, including the local control configuration, without host isolation.
-      A holder can approve a security design, accept a risk, register policy,
+      The startup path removes the control token from worker processes, and
+      the staged VM separates provider CLIs from the supervisor identity.
+      A compromised administrator host or leaked bearer token can still
+      approve a security design, accept a risk, register policy,
       or alter pause state. Actor names are supplied in request bodies rather
       than bound to authenticated human identities.
     threatType: Spoofing, Repudiation
@@ -453,6 +454,8 @@ threats:
         description: |
           Restrict App and worker credentials to required repositories and
           permissions, store them outside check processes, and rotate them.
+          The staged VM separates supervisor credential files from the agent,
+          but repository-scoped GitHub delivery is not yet provisioned there.
         inPlace: false
         public: true
         operational: true
@@ -498,7 +501,9 @@ threats:
         description: |
           Define a deployment-specific data policy, exclude secret-bearing
           files from worker context, and limit prompt content to what each
-          stage needs.
+          stage needs. The staged agent cannot read supervisor credentials,
+          but it can read other issue worktrees and base Git object history
+          inside the same VM; provider egress is not yet restricted.
         inPlace: false
         public: true
         operational: true
