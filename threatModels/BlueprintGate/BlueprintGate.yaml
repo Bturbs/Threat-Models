@@ -10,7 +10,7 @@ scope:
     Blueprint Gate turns GitHub issues into staged software delivery. This model
     covers the implemented control plane, durable job state, host workers,
     threat-model verification and review, and delivery policy. It covers the
-    documented local deployment and optional hybrid worker mode. GitHub, coding
+    planned first rollout with both local and hybrid workers. GitHub, coding
     CLI providers, and the threat-model tool are external dependencies; their
     internal implementations are outside this model. No worker is currently
     running. In-place software controls describe implemented code, not a live
@@ -102,7 +102,8 @@ scope:
       title: Control-plane administrator credential
       description: |
         Bearer credential used for repository registration, approvals, risk
-        acceptance, pause controls, and merge reconciliation.
+        acceptance, pause controls, and merge reconciliation. The documented
+        local startup path also places it in the worker process environment.
       inScope: true
     - ID: WORKER_TOKEN
       type: credential
@@ -129,8 +130,9 @@ scope:
       type: dataflow
       title: Control-plane to worker API channel
       description: |
-        Outbound worker requests for claims, heartbeats, and results. Hybrid
-        workers require an HTTPS control URL.
+        Outbound worker requests for claims, heartbeats, and results. The local
+        mode permits loopback HTTP and a shared worker token; hybrid workers
+        require an HTTPS control URL and individually issued scoped tokens.
       inScope: true
     - ID: PROVIDER_PROMPT_FLOW
       type: dataflow
@@ -336,10 +338,12 @@ threats:
   - ID: ADMIN_BEARER_ABUSE
     title: Administrative bearer token enables unaccountable decisions
     attack: |
-      A stolen or shared control token lets its holder approve a security
-      design, accept a risk, register policy, or alter pause state. Actor names
-      are supplied in request bodies rather than bound to distinct authenticated
-      human identities.
+      The local startup path exports the control token before launching the
+      worker. Coding CLI subprocesses inherit that worker environment, so
+      hostile worktree content or a compromised CLI can read the administrator
+      credential. A holder can approve a security design, accept a risk,
+      register policy, or alter pause state. Actor names are supplied in
+      request bodies rather than bound to authenticated human identities.
     threatType: Spoofing, Repudiation
     impactDesc: |
       An attacker can authorize code dispatch or record an exception while the
@@ -372,6 +376,14 @@ threats:
         description: |
           Use distinct operator identities and role checks so approval actor
           fields cannot be supplied arbitrarily by a token holder.
+        inPlace: false
+        public: true
+      - ID: DROP_ADMIN_CREDENTIAL_FROM_WORKER
+        title: Keep administrator credentials out of worker execution
+        description: |
+          Run worker and coding CLI processes with an explicit environment
+          allowlist that excludes administrator credentials and other secrets
+          unrelated to the active job.
         inPlace: false
         public: true
 
