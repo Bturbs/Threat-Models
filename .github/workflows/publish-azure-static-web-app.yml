@@ -90,4 +90,3 @@ jobs:
           app_location: build/site-mkdocs
           output_location: ''
           skip_app_build: true
-          production_branch: main
