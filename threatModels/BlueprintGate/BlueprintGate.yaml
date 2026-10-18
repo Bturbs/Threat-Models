@@ -369,14 +369,16 @@ threats:
     attack: |
       The startup path removes the control token from worker processes, and
       the staged VM separates provider CLIs from the supervisor identity.
-      A compromised administrator host or leaked bearer token can still
-      approve a security design, accept a risk, register policy,
-      or alter pause state. Actor names are supplied in request bodies rather
-      than bound to authenticated human identities.
+      The active Mac staging API additionally checks a GitHub user token and
+      configured numeric role IDs for manual decisions. A leaked control
+      token alone cannot supply those decisions. A compromised Mac operator
+      account may still access both its control token and GitHub login, then
+      approve a design, accept risk, register policy, or alter pause state.
     threatType: Spoofing, Repudiation
     impactDesc: |
-      An attacker can authorize code dispatch or record an exception while the
-      audit trail attributes the decision to a self-declared actor.
+      An attacker who obtains both credentials can authorize code dispatch or
+      record an exception while the audit trail attributes the act to the
+      compromised operator identity.
     impactedSecObj:
       - REFID: ACCOUNTABILITY
       - REFID: AUTHORIZED_DISPATCH
@@ -404,9 +406,14 @@ threats:
       - ID: HUMAN_IDENTITY_BINDING
         title: Bind approvals to authenticated human identity
         description: |
-          Use distinct operator identities and role checks so approval actor
-          fields cannot be supplied arbitrarily by a token holder.
-        inPlace: false
+          Merged Blueprint Gate PR #27 verifies a separate user token against
+          GitHub /user for each manual decision, checks numeric reviewer or
+          operator IDs, rejects a mismatched actor, and records the verified
+          identity in approvals and audit events. Strict mode was enabled and
+          exercised in the active isolated Mac staging API; the prior API was
+          stopped with zero jobs. Both credentials still reside within the
+          Mac operator account, so host compromise remains a material gap.
+        inPlace: true
         public: true
       - ID: DROP_ADMIN_CREDENTIAL_FROM_WORKER
         title: Keep administrator credentials out of worker execution
