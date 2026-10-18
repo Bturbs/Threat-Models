@@ -15,14 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv
 RUN pip install uv
 
-# Layer 2: Python dependencies
-COPY threat-model-tool/requirements-dev.txt /tmp/
-COPY threat-model-tool/src/r3threatmodeling/requirements.txt /tmp/app-requirements.txt
-
-# Install dependencies using uv for speed
-RUN sed '/^tree-node @/d' /tmp/app-requirements.txt > /tmp/app-requirements-filtered.txt \
-    && uv pip install --system --no-cache -r /tmp/app-requirements-filtered.txt \
-    && uv pip install --system --no-cache \
+# Layer 2: Python development tools
+RUN uv pip install --system --no-cache \
         pytest>=7.0.0 pytest-cov black flake8 mypy pre-commit \
         sphinx sphinx-rtd-theme \
         build twine wheel debugpy \

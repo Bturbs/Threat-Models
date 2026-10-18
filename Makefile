@@ -5,7 +5,7 @@
 BASE_MODEL_DIR ?= threatModels
 MKDOC_ASSET_DIR ?= security_site/mkdocs
 BUILD_DIR ?= build
-SITE_NAME ?= R3 Threat Models
+SITE_NAME ?= Threat Models
 MKDOCS_DIR ?= $(BUILD_DIR)/mkdocs
 MKDOCS_SITE_DIR ?= $(BUILD_DIR)/site-mkdocs
 TM_CLI_DIR ?= tm-cli

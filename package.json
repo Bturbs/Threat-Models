@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "generate:mkdocsSite": "sh -c 'npx tsx node_modules/.bin/threat-model-mkdocs --TMDirectory \"${BASE_MODEL_DIR:-threatModels}\" --MKDocsDir \"${MKDOCS_DIR:-${BUILD_DIR:-build}/mkdocs}\" --MKDocsSiteDir \"${MKDOCS_SITE_DIR:-${BUILD_DIR:-build}/site-mkdocs}\" --templateSiteFolderSRC \"${MKDOC_ASSET_DIR:-security_site/mkdocs}\" --siteName \"${SITE_NAME:-R3 Threat Models}\"'",
+    "generate:mkdocsSite": "sh -c 'npx tsx node_modules/.bin/threat-model-mkdocs --TMDirectory \"${BASE_MODEL_DIR:-threatModels}\" --MKDocsDir \"${MKDOCS_DIR:-${BUILD_DIR:-build}/mkdocs}\" --MKDocsSiteDir \"${MKDOCS_SITE_DIR:-${BUILD_DIR:-build}/site-mkdocs}\" --templateSiteFolderSRC \"${MKDOC_ASSET_DIR:-security_site/mkdocs}\" --siteName \"${SITE_NAME:-Threat Models}\"'",
     "serve:mkdocsSite": "mkdocs serve --config-file build/mkdocs/mkdocs.yml --dev-addr 127.0.0.1:3000"
     , "serve:html": "python3 -m http.server 4325 --directory ./build"
   },

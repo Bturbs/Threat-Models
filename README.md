@@ -5,11 +5,11 @@
 > not generate model reports or model pages. The shared assets under
 > `threatModels/assets/` are retained for future use.
 
-This repository contains structured threat models in YAML format and tools to transform them into various report formats (Markdown, HTML, PDF, MkDocs).
+This repository is prepared to hold structured threat models in YAML format and generate reports in Markdown, HTML, PDF, and MkDocs.
 
 ## Introduction
 
-Modern large-scale security reviews (like the CBUAE Phase 2) require a consistent, machine-readable format for threats, assets, and countermeasures. This approach allows for:
+Large security reviews benefit from a consistent, machine-readable format for threats, assets, and countermeasures. This approach allows for:
 - **Reproducibility**: Clear links between assets, threats, and mitigations.
 - **Automation**: Automatic generation of risk reports and security sites.
 - **Validation**: Ensuring all threats have assigned CVSS scores and mitigations.
