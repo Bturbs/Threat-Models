@@ -9,6 +9,7 @@ on:
     paths:
     - '**.yaml'
     - '.github/workflows/generate-mkdocs-site-ts.yml'
+    - 'security_site/**'
 
 permissions:
   contents: read
@@ -78,22 +79,7 @@ jobs:
 
           if [ "${HAS_MODELS}" = false ] && [ ! -f "${SITE_DIR}/index.html" ]; then
             mkdir -p "${SITE_DIR}"
-            cat > "${SITE_DIR}/index.html" <<'EOF'
-          <!doctype html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Threat Models</title>
-          </head>
-          <body>
-            <main>
-              <h1>Threat Models</h1>
-              <p>No threat models are currently published.</p>
-            </main>
-          </body>
-          </html>
-          EOF
+            cp security_site/empty-site/index.html "${SITE_DIR}/index.html"
           fi
 
       - name: Upload generated site

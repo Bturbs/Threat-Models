@@ -1,33 +1,84 @@
-.wy-nav-content {
-    max-width: 100%
+:root {
+  --tm-ink: #182d3a;
+  --tm-accent: #126e79;
+  --tm-surface: #f4f7f6;
+  --tm-border: #d9e4e2;
 }
 
-
-.wy-table-responsive table td, .wy-table-responsive table th td {
-    white-space: wrap;
-    word-wrap: break-word;
+body.wy-body-for-nav {
+  color: var(--tm-ink);
+  background: var(--tm-surface);
 }
 
-@media print {
-    .pagebreak {
-        clear: both;
-        min-height: 1px;
-        page-break-after: always;
-    }
-    body {
-        margin: 0.1in;  
-      }
-  }
+.wy-nav-side {
+  background: #193744;
+}
 
-/* override theme header */
+.wy-side-nav-search,
+.wy-nav-top {
+  background: #193744;
+}
+
 .wy-side-nav-search {
-  background-color: black;
   text-align: left;
-  border-bottom: 3px solid red;
+  border-bottom: 3px solid #69c6bd;
   padding-bottom: 2.809em;
   margin-bottom: 0;
 }
 
-.wy-nav-top {
-  background-color: black;
+.wy-side-nav-search > a,
+.wy-side-nav-search .wy-dropdown > a,
+.wy-nav-top a {
+  color: #fff;
+}
+
+.wy-menu-vertical a {
+  color: #e0eeee;
+}
+
+.wy-menu-vertical a:hover,
+.wy-menu-vertical a:focus-visible {
+  background: #315967;
+  color: #fff;
+}
+
+.wy-menu-vertical li.current > a {
+  color: var(--tm-ink);
+  border-color: var(--tm-border);
+}
+
+.wy-nav-content-wrap {
+  background: var(--tm-surface);
+}
+
+.wy-nav-content {
+  max-width: 1100px;
+  min-height: 100vh;
+  background: #fff;
+}
+
+.rst-content a {
+  color: var(--tm-accent);
+}
+
+.rst-content a:hover {
+  color: #0c535c;
+}
+
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media print {
+  .pagebreak {
+    clear: both;
+    min-height: 1px;
+    page-break-after: always;
+  }
+
+  body {
+    margin: 0.1in;
+  }
 }

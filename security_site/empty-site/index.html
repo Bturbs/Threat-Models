@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Threat Models</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182d3a;
+      --muted: #546973;
+      --accent: #126e79;
+      --border: #d9e4e2;
+      --page: #f4f7f6;
+      --surface: #fff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .site-header {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .header-inner,
+    main,
+    .site-footer {
+      width: min(100% - 48px, 1080px);
+      margin-inline: auto;
+    }
+
+    .header-inner {
+      min-height: 78px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .site-name {
+      font-size: 16px;
+      font-weight: 720;
+      letter-spacing: -0.025em;
+    }
+
+    .header-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    main { padding: clamp(76px, 11vw, 150px) 0 100px; }
+
+    .eyebrow {
+      margin: 0 0 20px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(48px, 8vw, 88px);
+      font-weight: 700;
+      letter-spacing: -0.065em;
+      line-height: 1.04;
+    }
+
+    .intro {
+      max-width: 610px;
+      margin: 26px 0 0;
+      color: var(--muted);
+      font-size: clamp(18px, 2.4vw, 21px);
+      line-height: 1.6;
+    }
+
+    .status-card {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: start;
+      gap: 20px;
+      max-width: 730px;
+      margin-top: 72px;
+      padding: 28px 32px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: 0 12px 30px rgba(24, 45, 58, 0.035);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      margin-top: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px #e4f2f0;
+    }
+
+    .status-card h2 {
+      margin: 0 0 8px;
+      font-size: 19px;
+      font-weight: 690;
+      letter-spacing: -0.025em;
+    }
+
+    .status-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .site-footer {
+      padding: 24px 0 36px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      .header-inner, main, .site-footer { width: min(100% - 36px, 1080px); }
+      .header-inner { min-height: 68px; }
+      .header-label { display: none; }
+      main { padding: 76px 0 80px; }
+      .status-card { margin-top: 56px; padding: 24px; gap: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="site-name">Threat Models</div>
+      <div class="header-label">Security documentation</div>
+    </div>
+  </header>
+
+  <main>
+    <p class="eyebrow">Model library</p>
+    <h1>Threat models</h1>
+    <p class="intro">A clear view of the systems, risks, and decisions that shape security work.</p>
+
+    <section class="status-card" aria-labelledby="status-title">
+      <span class="status-dot" aria-hidden="true"></span>
+      <div>
+        <h2 id="status-title">No models published yet</h2>
+        <p>This library is currently empty. Published threat models will appear here when they are available.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">Threat Models</footer>
+</body>
+</html>
