@@ -544,8 +544,13 @@ threats:
       - ID: REMOTE_SIDE_EFFECT_RECONCILIATION
         title: Reconcile remote side effects after claim loss
         description: |
-          Inspect existing branches and pull requests against the authorized
-          revision before continuing a reclaimed job.
+          A merged control-plane change records attempt-specific publication
+          intents, quarantines uncertain jobs, and checks branches and pull
+          requests before release. Retired attempts remain under observation
+          and automatic merge rechecks them. Local tests cover lost responses
+          after successful push and pull-request creation. GitHub can still
+          accept an already submitted request between checks, and recovery
+          has not been exercised with a real staged delivery credential.
         inPlace: false
         public: true
 

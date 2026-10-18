@@ -20,6 +20,12 @@ This retrospective model covers the implemented code and the first rollout plan.
 | Hybrid transport | [Worker URL validation](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/worker.py) requires HTTPS outside loopback. |
 | Durable state | [PostgreSQL models](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/db.py), [Compose volume](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/compose.yaml), and [backup instructions](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/docs/OPERATIONS.md). |
 
+## Stale-publication remediation progress
+
+[Blueprint Gate PR #26](https://github.com/Bturbs/Blueprint-Gate/pull/26), merged at [revision `0f50f8b`](https://github.com/Bturbs/Blueprint-Gate/tree/0f50f8bf7b105b8ab9fc71d9219246803177566d), adds durable publication attempts, attempt-specific refs, claim-loss quarantine, audited recovery, late-effect observation, and a check before automatic merge. The [publication tests](https://github.com/Bturbs/Blueprint-Gate/blob/0f50f8bf7b105b8ab9fc71d9219246803177566d/tests/test_publication.py) simulate a successful push and pull-request creation followed by lost claim responses, duplicate-publication paths, and multi-attempt late-effect recovery. Both CI jobs passed before merge; the local suite passed 94 tests with four skipped, and a fresh database migration succeeded.
+
+The `REMOTE_SIDE_EFFECT_RECONCILIATION` control remains `inPlace: false` and `STALE_JOB_SIDE_EFFECTS` remains `fullyMitigated: false`. GitHub does not enforce the worker's fencing token, so an already submitted effect can land between observations. A real branch/PR recovery in the dedicated staging VM also needs its scoped GitHub credential and provider login; it has not been completed. Keep [issue #7](https://github.com/Bturbs/Blueprint-Gate/issues/7) open for that evidence and the residual timing risk.
+
 ## Deployment facts to verify
 
 - Which repositories are registered, and whether separate model PR review or automatic merge is enabled for each.
