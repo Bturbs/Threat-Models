@@ -1,6 +1,5 @@
 # Threat Models
 
-This repository currently contains no threat model data. The `threatModels/`
-directory is retained for shared generation assets only. Site and report builds
-should therefore produce no model pages or reports until model YAML files are
-added.
+The first structured model covers [Blueprint Gate](threatModels/BlueprintGate/BlueprintGate.yaml),
+the policy-gated AI software delivery platform. See its
+[evidence and open deployment questions](threatModels/BlueprintGate/EVIDENCE.md).

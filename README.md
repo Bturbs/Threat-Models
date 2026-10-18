@@ -1,9 +1,14 @@
 # Structured Threat Models
 
-> **Current repository state:** this repository contains no threat model YAML
-> files. Build commands can be used to verify an empty model set; they should
-> not generate model reports or model pages. The shared assets under
-> `threatModels/assets/` are retained for future use.
+The first model is [Blueprint Gate](threatModels/BlueprintGate/BlueprintGate.yaml).
+Its [evidence notes](threatModels/BlueprintGate/EVIDENCE.md) distinguish implemented
+controls from deployment settings that still need confirmation.
+
+Verify the model from a local TM-Tool checkout with:
+
+```bash
+npx tsx src/scripts/verify-threat-model.ts ../Threat-Models/threatModels/BlueprintGate/BlueprintGate.yaml
+```
 
 This repository is prepared to hold structured threat models in YAML format and generate reports in Markdown, HTML, PDF, and MkDocs.
 
@@ -44,57 +49,9 @@ npm run serve:mkdocsSite
 
 ## Threat Model YAML Structure
 
-Threat models are defined as YAML files in the [threatModels](threatModels/) folder. Below is a detailed example of the structure:
+Models use schema version 2. The [Blueprint Gate model](threatModels/BlueprintGate/BlueprintGate.yaml) is a verified example with objectives, assets, attackers, STRIDE threats, CVSS vectors, and countermeasures.
 
-```yaml
-threats:
-  - ID: TM-MODULE-ID-01  # Unique identifier
-    # Assets impacted by this threat
-    assets:
-      - ID: Asset-ID-1
-      - ID: Asset-ID-2
-    # CVSS 3.1 Score and Vector
-    CVSS:
-      base: 7.5
-      vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N
-    threatType: Spoofing  # STRIDE category
-    # Detailed description (Markdown supported)
-    description: |
-      A detailed explanation of how the threat manifests
-      and what the potential impact is.
-    # Metadata for filtering
-    public: true          # Set to false to hide in public reports
-    fullyMitigated: true  # Current status of mitigation
-    # List of countermeasures/mitigations
-    countermeasures:
-      - ID: CM-01
-        description: |
-          Description of the specific control implemented.
-        inPlace: true     # Whether the control is currently active
-        public: true
-      - ID: CM-02
-        description: |
-          Another mitigation...
-        inPlace: false    # Track planned but not yet implemented controls
-        public: true
-```
-
-### Key Fields
-
-- **CVSS**: Mandatory field for calculating risk.
-- **threatType**: Should follow the STRIDE model (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege).
-- **fullyMitigated**: A boolean flag used to track residual risk.
-- **inPlace**: Tracks the deployment status of specific countermeasures.
-
----
-
-## Validation & Rules
-
-The tool enforces several business rules on the YAML files:
-1. **Mandatory Fields**: Every threat must have a `description`, `CVSS`, and `threatType`.
-2. **Asset Links**: Threats must link to at least one asset defined in the system.
-3. **Mitigation tracking**: If a threat is marked `fullyMitigated: true`, all linked countermeasures SHOULD ideally be `inPlace: true`.
-4. **CVSS Validity**: The vector string must be a valid CVSS 3.1 vector.
+Each threat describes the exploit in `attack` and the consequence in `impactDesc`. References to objectives, attackers, and assets use `REFID`. A control is marked `inPlace: true` only when implementation or deployment evidence supports it. See the [evidence notes](threatModels/BlueprintGate/EVIDENCE.md) for the baseline review.
 
 ---
 
