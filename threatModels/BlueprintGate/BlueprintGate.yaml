@@ -260,9 +260,10 @@ threats:
           Local staging now uses an unmounted Lima VM with a separate agent
           identity and supervisor-only credentials. A hostile agent fixture
           could not read the supervisor home or modify protected Git metadata.
-          Provider egress is still unrestricted, other issue worktrees share
-          the agent identity, base Git object history remains readable, and
-          no real ticket has completed in the VM.
+          The agent's filesystem view now hides other issue worktrees; model
+          verification has no network access. Provider egress is still
+          unrestricted, active base Git history remains readable, and no real
+          ticket has completed in the VM.
         inPlace: false
         public: true
         operational: true
@@ -312,7 +313,9 @@ threats:
           Local staging runs configured checks in a rootless, read-only,
           networkless container inside an unmounted Lima VM. A hostile check
           fixture could not read supervisor files or reach the network; a
-          normal fixture passed. Provider and GitHub authentication and a
+          normal fixture passed. The separate provider and verifier processes
+          now have a filesystem view limited to the active ticket worktree and
+          required read-only paths. Provider and GitHub authentication and a
           real issue job have not been exercised in that VM.
         inPlace: false
         public: true
