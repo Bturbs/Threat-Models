@@ -243,6 +243,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/1
     countermeasures:
       - ID: MARK_UNTRUSTED_INPUT
         title: Label issue and repository content as untrusted
@@ -288,6 +289,7 @@ threats:
       vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/2
     countermeasures:
       - ID: CHECK_COMMAND_ALLOWLIST
         title: Use configured check commands
@@ -329,6 +331,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/3
     countermeasures:
       - ID: SCOPED_HYBRID_CREDENTIAL
         title: Scope and revoke hybrid worker credentials
@@ -375,6 +378,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/4
     countermeasures:
       - ID: ADMIN_BEARER_CHECK
         title: Require the control token for administrative endpoints
@@ -422,6 +426,7 @@ threats:
       vector: 'CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/5
     countermeasures:
       - ID: CREDENTIAL_PLANE_SEPARATION
         title: Separate control and worker GitHub credentials
@@ -466,6 +471,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/6
     countermeasures:
       - ID: PROVIDER_CLASSIFICATION_ROUTING
         title: Allow only classified provider routes
@@ -508,6 +514,7 @@ threats:
       vector: 'CVSS:3.1/AV:L/AC:H/PR:H/UI:N/S:U/C:N/I:H/A:L'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/7
     countermeasures:
       - ID: FENCED_JOB_COMPLETION
         title: Fence stale job completion
@@ -547,6 +554,7 @@ threats:
       vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:H'
     pentestTestable: false
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/8
     countermeasures:
       - ID: CURRENT_REVISION_GATE
         title: Bind dispatch to verified current model and human approval
@@ -595,6 +603,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:N/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/9
     countermeasures:
       - ID: EXACT_HEAD_MODEL_REVIEW
         title: Check independent review on the exact model head
@@ -637,6 +646,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/10
     countermeasures:
       - ID: OPT_IN_MERGE_CHECKS
         title: Apply opt-in merge eligibility checks
@@ -677,6 +687,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/11
     countermeasures:
       - ID: SIGNED_DEDUPED_WEBHOOK
         title: Verify and deduplicate webhook deliveries
@@ -718,6 +729,7 @@ threats:
       vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N'
     pentestTestable: true
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/12
     countermeasures:
       - ID: REMOTE_HTTPS_REQUIREMENT
         title: Reject non-HTTPS remote worker URLs
@@ -760,6 +772,7 @@ threats:
       vector: 'CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:U/C:N/I:H/A:H'
     pentestTestable: false
     fullyMitigated: false
+    ticketLink: https://github.com/Bturbs/Blueprint-Gate/issues/13
     countermeasures:
       - ID: DURABLE_JOB_QUEUE
         title: Persist job state and fence claims
