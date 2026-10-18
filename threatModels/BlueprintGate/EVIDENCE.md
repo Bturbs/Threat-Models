@@ -58,6 +58,14 @@ The active Mac staging API runs with `HYBRID_MODE=true`. Its [Caddy worker proxy
 
 `INDEPENDENT_EVIDENCE_REVIEW` remains `inPlace: false` and `FALSE_MODEL_ASSURANCE` remains `fullyMitigated: false`. The owner has not performed the substantive review of a real ticket's model and evidence. The gate enforces a review record but cannot prove that the model includes every relevant boundary or that the submitted evidence is sound. In this solo project, independence means the human owner reviews agent-authored work. Keep [issue #8](https://github.com/Bturbs/Blueprint-Gate/issues/8) open for an actual review and negative/positive workflow evidence.
 
+## Untrusted work filesystem progress
+
+[Blueprint Gate PR #32](https://github.com/Bturbs/Blueprint-Gate/pull/32), merged at [revision `9664daf`](https://github.com/Bturbs/Blueprint-Gate/tree/9664daf), adds opt-in Bubblewrap confinement to the dedicated VM worker. Provider CLIs see their own home and active ticket worktree, a paired application worktree only read-only when needed, and protected Git metadata read-only. The model verifier has a read-only view of its tool and model worktree with no network. Other issue worktrees and the supervisor home are masked. The full local suite passed 102 tests with four skipped and both CI jobs passed.
+
+In the Lima VM, the extended isolation fixture passed: the agent could write the active fixture but could not see the supervisor home or other worktrees, and the networkless view could not connect out. A linked Git worktree remained usable for `git status` inside the sandbox while shared Git metadata was read-only. The disposable test worktree was removed. The VM then installed the merged revision, enabled `untrusted_sandbox` in its protected configuration, reran the isolation fixture, and completed an authenticated paused HTTPS poll. The API remained paused with zero running jobs.
+
+`ISOLATE_UNTRUSTED_WORK`, `DISPOSABLE_WORKER_HOST`, `ISSUE_PROMPT_INJECTION`, and `WORKTREE_CODE_EXECUTION` remain false. Provider egress is unrestricted, the active base Git history is readable to the agent, and a real ticket has not run with provider and repository-scoped GitHub credentials. Keep [issue #1](https://github.com/Bturbs/Blueprint-Gate/issues/1) and [issue #2](https://github.com/Bturbs/Blueprint-Gate/issues/2) open for a normal and hostile ticket sequence, credential isolation, and the remaining network boundary.
+
 ## Deployment facts to verify
 
 - Which repositories are registered, and whether separate model PR review or automatic merge is enabled for each.
