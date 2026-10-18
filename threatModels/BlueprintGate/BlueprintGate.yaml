@@ -312,8 +312,9 @@ threats:
     title: Stolen worker credential claims or completes jobs
     attack: |
       An attacker obtains a worker bearer token from a host or configuration
-      and calls the job API as that worker. In local mode the shared token is
-      broader than a repository-scoped hybrid credential.
+      and calls the job API as that worker. Tokens now expire and are scoped,
+      but a coding CLI running under the worker host account can still read a
+      token file accessible to that account if the host is not isolated.
     threatType: Spoofing, Tampering
     impactDesc: |
       Jobs may be claimed, yielded, or completed with attacker-supplied results,
@@ -353,12 +354,13 @@ threats:
   - ID: ADMIN_BEARER_ABUSE
     title: Administrative bearer token enables unaccountable decisions
     attack: |
-      The local startup path exports the control token before launching the
-      worker. Coding CLI subprocesses inherit that worker environment, so
-      hostile worktree content or a compromised CLI can read the administrator
-      credential. A holder can approve a security design, accept a risk,
-      register policy, or alter pause state. Actor names are supplied in
-      request bodies rather than bound to authenticated human identities.
+      The startup path now removes the control token from the worker process,
+      and worker subprocesses use restricted environments. A compromised CLI
+      running under the same host account can still read accessible credential
+      files, including the local control configuration, without host isolation.
+      A holder can approve a security design, accept a risk, register policy,
+      or alter pause state. Actor names are supplied in request bodies rather
+      than bound to authenticated human identities.
     threatType: Spoofing, Repudiation
     impactDesc: |
       An attacker can authorize code dispatch or record an exception while the
@@ -400,7 +402,7 @@ threats:
           Run worker and coding CLI processes with an explicit environment
           allowlist that excludes administrator credentials and other secrets
           unrelated to the active job.
-        inPlace: false
+        inPlace: true
         public: true
 
   - ID: GITHUB_CREDENTIAL_COMPROMISE
