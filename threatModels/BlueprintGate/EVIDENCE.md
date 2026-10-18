@@ -26,6 +26,12 @@ This retrospective model covers the implemented code and the first rollout plan.
 
 The `REMOTE_SIDE_EFFECT_RECONCILIATION` control remains `inPlace: false` and `STALE_JOB_SIDE_EFFECTS` remains `fullyMitigated: false`. GitHub does not enforce the worker's fencing token, so an already submitted effect can land between observations. A real branch/PR recovery in the dedicated staging VM also needs its scoped GitHub credential and provider login; it has not been completed. Keep [issue #7](https://github.com/Bturbs/Blueprint-Gate/issues/7) open for that evidence and the residual timing risk.
 
+## Human decision identity progress
+
+[Blueprint Gate PR #27](https://github.com/Bturbs/Blueprint-Gate/pull/27), merged at [revision `8fdcdfc`](https://github.com/Bturbs/Blueprint-Gate/tree/8fdcdfc), adds a separately supplied GitHub user token, a live `/user` check, numeric reviewer and operator role allowlists, actor mismatch rejection, and authenticated approval and audit actors. The full local suite passed 97 tests with four skipped; both CI jobs passed. On the isolated Mac staging stack, enforcement was enabled for owner ID `64413370`: control token alone returned HTTP 401, an invalid user token returned 401, and the owner's user token succeeded. The pause audit event recorded `github:64413370:Bturbs`. The stack remained paused with zero jobs. The older API and scheduler were stopped after confirming zero jobs; its database and checkout were retained.
+
+`HUMAN_IDENTITY_BINDING` is `inPlace: true` for the active staging API, while `ADMIN_BEARER_ABUSE` remains `fullyMitigated: false`. A compromise of the Mac operator account could acquire both bearer credentials, and the VM has not yet been provisioned with a distinct repository-scoped delivery identity for a live worker impersonation exercise. Keep [issue #4](https://github.com/Bturbs/Blueprint-Gate/issues/4) open until the credential boundary and authorized end-to-end operation are verified.
+
 ## Deployment facts to verify
 
 - Which repositories are registered, and whether separate model PR review or automatic merge is enabled for each.
