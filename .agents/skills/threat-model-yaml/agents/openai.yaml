@@ -1,0 +1,4 @@
+interface:
+  display_name: "Threat Model YAML"
+  short_description: "Structured YAML threat modeling"
+  default_prompt: "Use $threat-model-yaml to create or review a structured threat model YAML."

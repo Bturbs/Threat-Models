@@ -78,6 +78,10 @@ npx tsx node_modules/.bin/threat-model-tool <path-to-yaml> <output-dir> --mainTi
 
 ## AI Assistance
 
+The repository includes a [Codex threat-modeling skill](.agents/skills/threat-model-yaml/SKILL.md)
+with schema rules, evidence guidance, and a small-budget approach to PlantUML
+information-flow sequences. Its supporting references are kept beside the skill.
+
 This project includes prompts designed to help security architects generate YAML models using LLMs (like GPT-4 or Claude).
 
 - **Baseline Prompts**: Located in `ai/prompts/`, these help establish the GRC baseline for new modules.
