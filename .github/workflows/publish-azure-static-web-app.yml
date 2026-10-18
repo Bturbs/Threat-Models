@@ -1,0 +1,93 @@
+name: Publish Security Site to Azure
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'threatModels/**'
+      - 'security_site/**'
+      - 'Makefile'
+      - '.github/workflows/publish-azure-static-web-app.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-static-web-app
+  cancel-in-progress: true
+
+env:
+  BASE_MODEL_DIR: threatModels
+  MKDOC_ASSET_DIR: security_site/mkdocs
+  BUILD_DIR: build
+  SITE_NAME: Threat Models
+  TOOL_DEP: git+https://github.com/corda/threat-model-tool
+
+jobs:
+  buildAndDeploy:
+    if: ${{ vars.PUBLISH_TO_AZURE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out threat models
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MkDocs dependencies
+        run: pip install mkdocs mkdocs-material
+
+      - name: Prepare tool CLI
+        run: |
+          rm -rf tm-cli
+          mkdir -p tm-cli
+          cd tm-cli
+          npm init -y
+          npm install --no-save tsx "${TOOL_DEP}"
+
+      - name: Build MkDocs site and PDFs
+        run: |
+          make build-mkdocs \
+            BASE_MODEL_DIR="${BASE_MODEL_DIR}" \
+            MKDOC_ASSET_DIR="${MKDOC_ASSET_DIR}" \
+            BUILD_DIR="${BUILD_DIR}" \
+            SITE_NAME="${SITE_NAME}"
+
+      - name: Create an empty site when no threat models are present
+        run: |
+          SITE_DIR="${BUILD_DIR}/site-mkdocs"
+          HAS_MODELS=false
+          for MODEL_DIR in "${BASE_MODEL_DIR}"/*/; do
+            [ -d "${MODEL_DIR}" ] || continue
+            MODEL_NAME="$(basename "${MODEL_DIR}")"
+            if [ -f "${MODEL_DIR}${MODEL_NAME}.yaml" ]; then
+              HAS_MODELS=true
+              break
+            fi
+          done
+
+          if [ "${HAS_MODELS}" = false ] && [ ! -f "${SITE_DIR}/index.html" ]; then
+            bash security_site/empty-site/build.sh "${SITE_DIR}"
+          fi
+
+      - name: Confirm static site was built
+        run: test -f "${BUILD_DIR}/site-mkdocs/index.html"
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: build/site-mkdocs
+          output_location: ''
+          skip_app_build: true
+          production_branch: main

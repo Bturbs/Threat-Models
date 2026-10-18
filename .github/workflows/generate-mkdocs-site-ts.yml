@@ -7,9 +7,10 @@ on:
     - master
     - main
     paths:
-    - '**.yaml'
+    - 'threatModels/**'
     - '.github/workflows/generate-mkdocs-site-ts.yml'
     - 'security_site/**'
+    - 'Makefile'
 
 permissions:
   contents: read
@@ -29,6 +30,7 @@ env:
 
 jobs:
   buildAndDeploy:
+    if: ${{ vars.PUBLISH_TO_GITHUB_PAGES == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out threat-modeling repo

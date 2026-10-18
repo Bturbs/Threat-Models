@@ -45,6 +45,19 @@ This generates a full MkDocs site in `build/site-mkdocs`. To preview:
 npm run serve:mkdocsSite
 ```
 
+### Publish the security site
+
+The generated `build/site-mkdocs` folder can be published through either workflow. Both serve the same public static site; the YAML source repository can stay private with Azure.
+
+| Host | Repository requirement | Setup |
+| --- | --- | --- |
+| [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) | Public repository on GitHub Free | Enable Pages with **GitHub Actions** as the source, then set the repository Actions variable `PUBLISH_TO_GITHUB_PAGES` to `true`. |
+| [Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/plans) | Azure subscription; the GitHub repository may remain private | Create a **Free** Static Web App, add its deployment token as the repository secret `AZURE_STATIC_WEB_APPS_API_TOKEN`, then set the Actions variable `PUBLISH_TO_AZURE` to `true`. |
+
+For Azure, choose **Other** under **Deployment details → Source** when creating the Static Web App in the Azure portal. This lets the [repository workflow](.github/workflows/publish-azure-static-web-app.yml) deploy the already generated site without Azure creating another workflow. Copy the token from the app's **Overview → Manage deployment token**. Keep it in the GitHub secret, never in a file or commit. After setting the secret and variable, run **Publish Security Site to Azure** from the repository's Actions tab for the first deployment. Later changes to threat models or site assets on `main` deploy automatically. The Azure portal shows the public site URL after deployment.
+
+GitHub Pages uses the existing [Pages workflow](.github/workflows/generate-mkdocs-site-ts.yml). Run **Generate Security Site (Node)** from Actions after enabling Pages and its variable; later source changes deploy automatically. Neither workflow runs its deployment job until its variable is set. Review the generated content before enabling either host: the site is visible on the public internet even when the repository is private.
+
 ---
 
 ## Threat Model YAML Structure
