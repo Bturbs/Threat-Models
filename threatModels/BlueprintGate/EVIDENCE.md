@@ -44,6 +44,12 @@ The active isolated Mac staging stack uses its own PostgreSQL volume. With dispa
 
 `TESTED_DATABASE_RESTORE` and `JOB_STATE_LOSS` remain false because all copies are on the same Mac. An encrypted copy on separately protected storage and a restore from that copy are still needed for [issue #13](https://github.com/Bturbs/Blueprint-Gate/issues/13).
 
+## Local VM TLS transport progress
+
+The active Mac staging API runs with `HYBRID_MODE=true`. Its [Caddy worker proxy](https://github.com/Bturbs/Blueprint-Gate/blob/8fdcdfc/deploy/local-tls/Caddyfile) binds to loopback port 8443 and exposes only worker routes; `/control` returned HTTP 404. The dedicated Lima VM reaches this port through an SSH reverse tunnel. Without the Caddy private root, a VM HTTPS health request failed certificate verification; with that root supplied explicitly, the VM worker completed a paused authenticated poll. A synthetic ticket was then claimed and completed from the VM over the validated HTTPS route, both HTTP 200, and the API was immediately paused again with zero running jobs. The resulting ticket state was `REQUIREMENTS_READY`. No worker or administrator bearer was printed or stored in the source checkout.
+
+`TRUSTED_TLS_TERMINATION` is `inPlace: true` for this local Mac/VM topology. `HYBRID_CHANNEL_INTERCEPTION` remains `fullyMitigated: false` because no externally reachable hybrid endpoint, public certificate, or remote worker deployment has been defined or verified. Keep [issue #12](https://github.com/Bturbs/Blueprint-Gate/issues/12) open for any such deployment and its trust/rotation policy.
+
 ## Deployment facts to verify
 
 - Which repositories are registered, and whether separate model PR review or automatic merge is enabled for each.

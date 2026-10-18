@@ -746,7 +746,9 @@ threats:
     attack: |
       A remote deployment terminates TLS incorrectly or exposes a control
       endpoint without trusted certificate validation. A network attacker then
-      intercepts worker credentials, job content, or completion results.
+      intercepts worker credentials, job content, or completion results. The
+      current Mac-to-Lima path uses a loopback SSH tunnel and a locally trusted
+      Caddy HTTPS proxy; any later external topology needs separate review.
     threatType: Information Disclosure, Tampering
     impactDesc: |
       Work data leaks and an attacker may impersonate a worker or alter job
@@ -775,9 +777,12 @@ threats:
       - ID: TRUSTED_TLS_TERMINATION
         title: Verify deployed TLS termination
         description: |
-          Deploy the control API behind a trusted HTTPS endpoint and validate
-          certificate handling and proxy access controls in staging.
-        inPlace: false
+          The local Mac staging API runs in hybrid mode behind a loopback-only
+          Caddy HTTPS proxy. The Lima VM rejected its untrusted private CA,
+          then trusted the specific CA and completed a synthetic claim and
+          job through the HTTPS route. The proxy returned 404 for /control.
+          No externally reachable remote worker deployment is configured.
+        inPlace: true
         public: true
         operational: true
         operator: Platform operator
