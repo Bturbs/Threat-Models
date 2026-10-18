@@ -38,6 +38,12 @@ The active Mac staging stack issued a repository- and capability-scoped credenti
 
 `WORKER_CREDENTIAL_LIFECYCLE` is now `inPlace: true` for the active local deployment. `WORKER_IDENTITY_THEFT` remains `fullyMitigated: false`: a stolen current token remains usable until detected and revoked, and no real provider/GitHub delivery job has yet been exercised in the VM. Keep [issue #3](https://github.com/Bturbs/Blueprint-Gate/issues/3) open for that sequence and the residual exposure.
 
+## Active staging backup progress
+
+The active isolated Mac staging stack uses its own PostgreSQL volume. With dispatch paused and the scheduler stopped, a fresh custom-format dump restored into a separate database; comparison matched the live core rows for repositories, tickets, jobs, approvals, audit events, risk acceptances, worker credentials, and pause state. The backup directory and dump had modes 0700 and 0600. The existing macOS launchd daily backup and weekly restore-check jobs were repointed to this database and a separate private backup directory; forced runs of both exited zero. The restore check validated the current database schema and tables. The older stopped stack retains its database and historical backups.
+
+`TESTED_DATABASE_RESTORE` and `JOB_STATE_LOSS` remain false because all copies are on the same Mac. An encrypted copy on separately protected storage and a restore from that copy are still needed for [issue #13](https://github.com/Bturbs/Blueprint-Gate/issues/13).
+
 ## Deployment facts to verify
 
 - Which repositories are registered, and whether separate model PR review or automatic merge is enabled for each.

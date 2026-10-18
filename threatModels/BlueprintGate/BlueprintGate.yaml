@@ -818,8 +818,11 @@ threats:
       - ID: TESTED_DATABASE_RESTORE
         title: Maintain and test database backups
         description: |
-          Back up the deployed database to protected storage and periodically
-          restore it in a separate environment.
+          The active Mac staging database has daily local dumps and a weekly
+          separate-database restore check. A fresh dump matched paused live
+          core rows and both launchd jobs exited successfully. Copies remain
+          on the same Mac; encrypted separately protected storage and a
+          restore from that copy have not been demonstrated.
         inPlace: false
         public: true
         operational: true
