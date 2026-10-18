@@ -324,8 +324,10 @@ threats:
     attack: |
       An attacker obtains a worker bearer token from a host or configuration
       and calls the job API as that worker. Tokens expire and are scoped.
-      The staged VM keeps its token in the supervisor's private home, but a
-      compromised supervisor or misconfigured worker host can still expose it.
+      The staged VM keeps its token in the supervisor's private home and a
+      rotated token invalidated the old one without losing a queued job. A
+      compromised supervisor or misconfigured worker host can still expose
+      the current token before revocation.
     threatType: Spoofing, Tampering
     impactDesc: |
       Jobs may be claimed, yielded, or completed with attacker-supplied results,
@@ -355,11 +357,13 @@ threats:
       - ID: WORKER_CREDENTIAL_LIFECYCLE
         title: Set expiry and rotate worker credentials
         description: |
-          Require expiry, rotation, and secure storage for deployed worker
-          credentials. Local VM staging stores a scoped token outside the
-          checkout and denied an agent read of a supervisor-only sentinel;
-          a real ticket and recovery sequence still need verification.
-        inPlace: false
+          Credentials require expiry and can be rotated or revoked under a
+          global pause. Local staging stored its scoped token mode 0600 in
+          the VM supervisor's private home; the agent could not read that
+          home. A live rotation rejected the old token, accepted the new one,
+          and preserved a queued job. A separate revocation rejected further
+          claims. A real ticket and recovery sequence remain unverified.
+        inPlace: true
         public: true
         operational: true
         operator: Platform operator

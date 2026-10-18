@@ -32,6 +32,12 @@ The `REMOTE_SIDE_EFFECT_RECONCILIATION` control remains `inPlace: false` and `ST
 
 `HUMAN_IDENTITY_BINDING` is `inPlace: true` for the active staging API, while `ADMIN_BEARER_ABUSE` remains `fullyMitigated: false`. A compromise of the Mac operator account could acquire both bearer credentials, and the VM has not yet been provisioned with a distinct repository-scoped delivery identity for a live worker impersonation exercise. Keep [issue #4](https://github.com/Bturbs/Blueprint-Gate/issues/4) open until the credential boundary and authorized end-to-end operation are verified.
 
+## Worker credential lifecycle progress
+
+The active Mac staging stack issued a repository- and capability-scoped credential to the dedicated Lima VM. The token was transferred over SSH directly to the VM supervisor's mode-0600 file. With dispatch paused, the VM's claim authenticated and returned no job. After an authorized rotation, the same old token returned HTTP 401; the replacement token authenticated and still returned no job. The queued staging ticket/job remained `QUEUED` throughout. A second scoped fixture credential returned HTTP 200 before revocation and 401 after revocation. The rotation and revocation audit events both carried the verified owner actor from [Blueprint Gate PR #27](https://github.com/Bturbs/Blueprint-Gate/pull/27). The API suite also verifies expiry, scope, heartbeat, yield, and completion checks.
+
+`WORKER_CREDENTIAL_LIFECYCLE` is now `inPlace: true` for the active local deployment. `WORKER_IDENTITY_THEFT` remains `fullyMitigated: false`: a stolen current token remains usable until detected and revoked, and no real provider/GitHub delivery job has yet been exercised in the VM. Keep [issue #3](https://github.com/Bturbs/Blueprint-Gate/issues/3) open for that sequence and the residual exposure.
+
 ## Deployment facts to verify
 
 - Which repositories are registered, and whether separate model PR review or automatic merge is enabled for each.
