@@ -12,9 +12,11 @@ scope:
     threat-model verification and review, and delivery policy. It covers the
     documented local deployment and optional hybrid worker mode. GitHub, coding
     CLI providers, and the threat-model tool are external dependencies; their
-    internal implementations are outside this model. Production network,
-    backup, host-isolation, and GitHub branch-protection configurations have
-    not been demonstrated and are not treated as deployed controls.
+    internal implementations are outside this model. No worker is currently
+    running. In-place software controls describe implemented code, not a live
+    deployment. Production network, backup, host-isolation, and GitHub
+    branch-protection configurations have not been demonstrated and are not
+    treated as deployed controls.
   securityObjectives:
     - ID: CONFIDENTIALITY
       title: Confidentiality of credentials and work data
@@ -130,6 +132,13 @@ scope:
         Outbound worker requests for claims, heartbeats, and results. Hybrid
         workers require an HTTPS control URL.
       inScope: true
+    - ID: PROVIDER_PROMPT_FLOW
+      type: dataflow
+      title: Worker prompt and context sent to a coding provider
+      description: |
+        Issue content, approved artifacts, findings, and selected worktree
+        context can be sent by the host CLI to an approved model provider.
+      inScope: true
     - ID: GITHUB_DELIVERY
       type: dataflow
       title: GitHub branch, review, check, and merge flow
@@ -148,6 +157,13 @@ scope:
       title: Threat-model verifier implementation
       description: |
         External tool used to validate root threat-model YAML.
+      inScope: false
+    - ID: MODEL_PROVIDER
+      type: system
+      title: External coding model provider
+      description: |
+        Service reached by an approved host coding CLI. Its internal handling
+        of prompts and responses is outside this model.
       inScope: false
   attackers:
     - ID: ISSUE_AUTHOR
@@ -182,8 +198,10 @@ analysis: |
   The engineering gate checks the current threat-model revision, findings, and
   a human approval; YAML verification alone establishes structure, not the
   effectiveness of a design. Separate model PR review and automatic merge are
-  policy options. Deployment controls and GitHub protection settings require
-  operational validation before their risk can be marked mitigated.
+  policy options. Provider CLIs are another trust boundary because work
+  context can leave the worker host. Deployment controls and GitHub protection
+  settings require operational validation before their risk can be marked
+  mitigated.
 threats:
   - ID: ISSUE_PROMPT_INJECTION
     title: Issue content redirects a coding worker
@@ -397,6 +415,51 @@ threats:
         public: true
         operational: true
         operator: GitHub organization operator
+
+  - ID: PROVIDER_CONTEXT_DISCLOSURE
+    title: Sensitive work context reaches an unsuitable model provider
+    attack: |
+      An issue author induces a coding CLI to include sensitive worktree data
+      in a prompt, or an operator configures routing that permits a provider
+      for a data classification the organization did not intend to share.
+      The worker sends issue and approved-artifact context to the selected CLI;
+      the CLI can also read repository files during its stage.
+    threatType: Information Disclosure
+    impactDesc: |
+      Repository data, security findings, or other work context may be sent
+      outside the intended trust boundary and retained by an unsuitable
+      external service.
+    impactedSecObj:
+      - REFID: CONFIDENTIALITY
+    attackers:
+      - REFID: ISSUE_AUTHOR
+      - REFID: PRIVILEGED_OPERATOR
+    assets:
+      - REFID: PROVIDER_PROMPT_FLOW
+      - REFID: REPOSITORY_WORKTREE
+      - REFID: MODEL_PROVIDER
+    CVSS:
+      vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:N/A:N'
+    pentestTestable: true
+    fullyMitigated: false
+    countermeasures:
+      - ID: PROVIDER_CLASSIFICATION_ROUTING
+        title: Allow only classified provider routes
+        description: |
+          Runtime selection checks repository policy for allowed providers
+          and permitted data classifications before invoking a CLI.
+        inPlace: true
+        public: true
+      - ID: PROVIDER_DATA_MINIMIZATION
+        title: Restrict data exposed to coding providers
+        description: |
+          Define a deployment-specific data policy, exclude secret-bearing
+          files from worker context, and limit prompt content to what each
+          stage needs.
+        inPlace: false
+        public: true
+        operational: true
+        operator: Platform operator
 
   - ID: STALE_JOB_SIDE_EFFECTS
     title: A stale worker leaves Git side effects after losing its claim

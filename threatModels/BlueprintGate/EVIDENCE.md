@@ -2,7 +2,7 @@
 
 Baseline source: [Blueprint Gate revision 1fb3eff](https://github.com/Bturbs/Blueprint-Gate/tree/1fb3effc84e5da670da998dd2858a1ba64bb342d).
 
-This retrospective model covers the implemented code and documented local and hybrid deployment options. An in-place control means its behavior is present in source. It does not establish that a production deployment uses it or that an independent effectiveness review has passed.
+This retrospective model covers the implemented code and documented local and hybrid deployment options. The project owner confirmed on 2026-10-18 that no worker is currently running. An in-place software control means its behavior is present in source. It does not establish that a production deployment uses it or that an independent effectiveness review has passed.
 
 | Boundary or threat | Evidence |
 | --- | --- |
@@ -11,6 +11,7 @@ This retrospective model covers the implemented code and documented local and hy
 | Worker authentication and scoped hybrid claims | [Credential issuance, authentication, and claim checks](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/api.py). |
 | Administrative decisions | [Bearer authentication and approval endpoints](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/api.py) use request-supplied actor strings. |
 | GitHub credential placement | [Control token broker](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/github_auth.py) and [host-worker Git operations](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/worker.py). |
+| Model provider context | [Worker prompt construction](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/worker.py) includes issue text and prior artifacts; [runtime adapters and classification routing](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/runtimes.py) invoke approved coding CLIs. |
 | Stale claims and remote effects | [Fencing and worker affinity](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/api.py) and [worker claim checks](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/worker.py). |
 | Model verification and approval | [Verifier adapter](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/threat_models.py), [model stage](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/worker.py), and [revision-bound gate](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/workflow.py). |
 | Separate model PR review | [Exact-head independent review check](https://github.com/Bturbs/Blueprint-Gate/blob/1fb3effc84e5da670da998dd2858a1ba64bb342d/src/adp/threat_review.py). The policy is optional. |
