@@ -78,8 +78,7 @@ jobs:
           done
 
           if [ "${HAS_MODELS}" = false ] && [ ! -f "${SITE_DIR}/index.html" ]; then
-            mkdir -p "${SITE_DIR}"
-            cp security_site/empty-site/index.html "${SITE_DIR}/index.html"
+            bash security_site/empty-site/build.sh "${SITE_DIR}"
           fi
 
       - name: Upload generated site

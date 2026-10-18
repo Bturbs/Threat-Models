@@ -65,6 +65,27 @@ body.wy-body-for-nav {
   color: #0c535c;
 }
 
+.rst-content .tm-empty-state {
+  max-width: 680px;
+  margin-top: 32px;
+  padding: 24px 28px;
+  border: 1px solid var(--tm-border);
+  border-left: 4px solid var(--tm-accent);
+  border-radius: 4px;
+  background: #f9fbfa;
+}
+
+.rst-content .tm-empty-state strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+
+.rst-content .tm-empty-state p {
+  margin-bottom: 0;
+  color: #546973;
+}
+
 .wy-table-responsive table td,
 .wy-table-responsive table th {
   white-space: normal;
