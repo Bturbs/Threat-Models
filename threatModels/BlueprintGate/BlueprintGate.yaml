@@ -257,6 +257,12 @@ threats:
         description: |
           Run untrusted jobs under a dedicated disposable identity or VM with
           minimal filesystem, process, network, and credential access.
+          Local staging now uses an unmounted Lima VM with a separate agent
+          identity and supervisor-only credentials. A hostile agent fixture
+          could not read the supervisor home or modify protected Git metadata.
+          Provider egress is still unrestricted, other issue worktrees share
+          the agent identity, base Git object history remains readable, and
+          no real ticket has completed in the VM.
         inPlace: false
         public: true
         operational: true
@@ -303,6 +309,11 @@ threats:
         description: |
           Use a dedicated disposable account or VM and restrict credentials
           and network access available during code execution.
+          Local staging runs configured checks in a rootless, read-only,
+          networkless container inside an unmounted Lima VM. A hostile check
+          fixture could not read supervisor files or reach the network; a
+          normal fixture passed. Provider and GitHub authentication and a
+          real issue job have not been exercised in that VM.
         inPlace: false
         public: true
         operational: true
