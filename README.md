@@ -51,14 +51,28 @@ npm run serve:mkdocsSite
 
 The generated `build/site-mkdocs` folder can be published through either workflow. Both serve the same public static site; the YAML source repository can stay private with Azure.
 
-| Host | Repository requirement | Setup |
+#### Choose a host
+
+| Host | Choose it when | Requirement |
 | --- | --- | --- |
-| [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) | Public repository on GitHub Free | Enable Pages with **GitHub Actions** as the source, then set the repository Actions variable `PUBLISH_TO_GITHUB_PAGES` to `true`. |
-| [Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/plans) | Azure subscription; the GitHub repository may remain private | Create a **Free** Static Web App, add its deployment token as the repository secret `AZURE_STATIC_WEB_APPS_API_TOKEN`, then set the Actions variable `PUBLISH_TO_AZURE` to `true`. |
+| [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) | You want the site hosted entirely on GitHub. | A public repository on GitHub Free, or an eligible paid plan for a private repository. |
+| [Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/plans) | You want the YAML repository to be able to remain private, or prefer Azure hosting. | An Azure subscription with a Static Web App; the **Free** hosting plan is sufficient for this site. |
+
+**Current choice:** Azure is enabled and serves the [hosted site](https://proud-wave-00847161e.6.azurestaticapps.net/). This repository is currently public, so GitHub Pages is also available on GitHub Free, but Pages has not been configured.
+
+The workflows are selected with repository variables under **Settings → Secrets and variables → Actions → Variables**:
+
+| Publish to | `PUBLISH_TO_AZURE` | `PUBLISH_TO_GITHUB_PAGES` |
+| --- | --- | --- |
+| Azure only (current) | `true` | Unset or `false` |
+| GitHub Pages only | Unset or `false` | `true` |
+| Both | `true` | `true` |
+
+To switch to GitHub Pages, first enable Pages with **GitHub Actions** as the source in **Settings → Pages**. Then set the variables to the GitHub Pages only row above and run **Generate Security Site (Node)** from Actions. Once the new URL works, update the hosted-site link at the top of this README. To switch back to Azure, use the Azure only row and run **Publish Security Site to Azure**. An unset or `false` variable skips that host's deployment job.
 
 For Azure, choose **Other** under **Deployment details → Source** when creating the Static Web App in the Azure portal. This lets the [repository workflow](.github/workflows/publish-azure-static-web-app.yml) deploy the already generated site without Azure creating another workflow. Copy the token from the app's **Overview → Manage deployment token**. Keep it in the GitHub secret, never in a file or commit. After setting the secret and variable, run **Publish Security Site to Azure** from the repository's Actions tab for the first deployment. Later changes to threat models or site assets on `main` deploy automatically. The Azure portal shows the public site URL after deployment.
 
-GitHub Pages uses the existing [Pages workflow](.github/workflows/generate-mkdocs-site-ts.yml). Run **Generate Security Site (Node)** from Actions after enabling Pages and its variable; later source changes deploy automatically. Neither workflow runs its deployment job until its variable is set. Review the generated content before enabling either host: the site is visible on the public internet even when the repository is private.
+GitHub Pages uses the existing [Pages workflow](.github/workflows/generate-mkdocs-site-ts.yml); later source changes on `main` deploy automatically when its variable is enabled. Review the generated content before enabling either host: the site is visible on the public internet even when the repository is private.
 
 ---
 
