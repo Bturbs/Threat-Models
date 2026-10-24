@@ -1,5 +1,7 @@
 # Structured Threat Models
 
+**Hosted site:** [View the threat models](https://proud-wave-00847161e.6.azurestaticapps.net/).
+
 The first model is [Blueprint Gate](threatModels/BlueprintGate/BlueprintGate.yaml).
 Its [evidence notes](threatModels/BlueprintGate/EVIDENCE.md) distinguish implemented
 controls from deployment settings that still need confirmation.
